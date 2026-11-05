@@ -1,0 +1,16 @@
+## Interface: 16001
+## Title: Gamepad XIV
+## Notes: FFXIV-style controller play: cross hotbars, targeting, camera and interact.
+## Version: @project-version@
+## SavedVariablesPerCharacter: GamepadXIVDB
+## IconTexture: Interface\AddOns\GamepadXIV\Icon
+## AddonCompartmentFunc: GamepadXIV_OnCompartmentClick
+## OptionalDeps: Blizzard_Gamepad, Blizzard_GamepadActionBars
+
+Core.lua
+Snippets.lua
+Bar.lua
+Input.lua
+Edit.lua
+Config.lua
+Minimap.lua

@@ -1,0 +1,40 @@
+# Pushing a v* tag publishes to CurseForge and GitHub Releases.
+# Pushing to main only builds the package and keeps it as a run artifact.
+name: Package and release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the packager reads the tags and history for the version and changelog
+
+      - name: Build test package
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: BigWigsMods/packager@v2
+        with:
+          args: -d
+          pandoc: false
+
+      - name: Publish release
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        uses: BigWigsMods/packager@v2
+        with:
+          args: -p ${{ vars.CURSEFORGE_PROJECT_ID }}
+          pandoc: false
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GamepadXIV
+          path: .release/*.zip
