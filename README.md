@@ -280,7 +280,7 @@ git push origin v0.1.0
 
 The repository needs two settings, under Settings > Secrets and variables > Actions:
 
-- Secret `CF_API_KEY`: a CurseForge API token.
+- Secret `CF_API_TOKEN`: a CurseForge API token.
 - Variable `CURSEFORGE_PROJECT_ID`: the project ID from the CurseForge project page.
 
 ## Credits and licenses
