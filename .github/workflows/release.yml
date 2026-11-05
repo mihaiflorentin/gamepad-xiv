@@ -38,3 +38,5 @@ jobs:
         with:
           name: GamepadXIV
           path: .release/*.zip
+          include-hidden-files: true # .release is a dot folder, which is skipped otherwise
+          if-no-files-found: error
