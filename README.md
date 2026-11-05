@@ -285,6 +285,8 @@ The repository needs two settings, under Settings > Secrets and variables > Acti
 
 ## Credits and licenses
 
+Gamepad XIV is released under the BSD 3-Clause License; see `LICENSE`.
+
 Gamepad XIV's double tap timing is adapted from [CrossHotbar](https://github.com/ChainStratagem/CrossHotbar) by ChainStratagem, used under the BSD 3-Clause License. The full license is in `LICENSE-CrossHotbar.txt`. If you play the regular version of WoW, [CrossHotbar on CurseForge](https://www.curseforge.com/wow/addons/crosshotbar) is worth a look.
 
 Gamepad XIV is a separate addon, and is not endorsed by CrossHotbar or its author.
