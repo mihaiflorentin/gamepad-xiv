@@ -3,3 +3,4 @@ package-as: GamepadXIV
 ignore:
   - tests
   - tools
+  - docs

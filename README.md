@@ -28,6 +28,22 @@ Its double tap timing is adapted from [CrossHotbar](https://github.com/ChainStra
 - **Settings panel and slash commands**, saved per character.
 - **Hand-over to Forever:** vehicles, possession and Forever's own bar editor get their normal controls back.
 
+## Screenshots
+
+The crossbar, with the two rows and the controller button art:
+
+![The crossbar](docs/screenshots/crossbar.png)
+
+Settings:
+
+![General settings](docs/screenshots/settings-general.png)
+
+![Crossbar settings](docs/screenshots/settings-crossbar.png)
+
+![Layer, form and stance settings](docs/screenshots/settings-layers-forms.png)
+
+![Input settings](docs/screenshots/settings-input.png)
+
 ## Installation
 
 Copy the `GamepadXIV` folder to `Interface/AddOns/`. Turn on the Gamepad UI in game, then enable the addon in the AddOns list. Type `/fc status` to see what is active. After adding or updating files, restart the game rather than only using `/reload`.
