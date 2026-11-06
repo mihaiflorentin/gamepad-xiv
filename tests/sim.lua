@@ -12,6 +12,8 @@ local unitsThatExist = { player = true }
 
 local ALLOWED = {
 	UnitExists = function(unit) return unitsThatExist[unit] and 1 or nil end,
+	UnitIsDead = function(unit) return unitsThatExist["dead-" .. unit] end,
+	abs = math.abs,
 	GetActionInfo = function(slot)
 		if unitsThatExist["flyout" .. tostring(slot)] then
 			return "flyout", 77
@@ -67,6 +69,8 @@ local function NewFrame(name)
 	local frame = { name = name, attrs = {}, refs = {}, bindings = {}, methods = {}, calls = {} }
 	function frame:GetName() return self.name end
 	function frame:GetAttribute(key) return self.attrs[key] end
+	function frame:IsVisible() return not self.hidden end
+	function frame:GetRect() return unpack(self.rect) end
 	function frame:GetFrameRef(key) return assert(self.refs[key], "missing frame ref " .. key) end
 	function frame:SetBinding(_, key, action)
 		assert(action ~= nil, "nil action for " .. key)
@@ -101,7 +105,7 @@ local function NewFrame(name)
 end
 
 local driver = NewFrame("GamepadXIVDriver")
-for _, key in ipairs({ "ApplyLayer", "BindAll", "UpdateTargetBindings", "UpdateYield", "OnTrigger", "BeginEdit", "EndEdit", "SetSoft", "UpdateForm", "CycleGroup", "OpenFlyout", "CloseFlyout", "SetClear" }) do
+for _, key in ipairs({ "ApplyLayer", "BindAll", "UpdateTargetBindings", "UpdateYield", "OnTrigger", "BeginEdit", "EndEdit", "SetSoft", "UpdateForm", "CycleGroup", "MoveFrameCursor", "OpenFlyout", "CloseFlyout", "SetClear" }) do
 	driver.attrs[key] = S[key]
 end
 
@@ -138,6 +142,14 @@ driver.attrs["ctx-PAD3-notarget"] = "TOGGLEWORLDMAP"
 driver.attrs["ctx-PADLSTICK-target"] = "LOCK"
 driver.attrs["ctx-PADLSTICK-notarget"] = "TOGGLESHEATH"
 driver.attrs["ctx-PAD2-ground"] = "BACK"
+driver.attrs["ctx-PADDLEFT-target"] = "BASE_PADDLEFT"
+driver.attrs["ctx-PADDRIGHT-target"] = "BASE_PADDRIGHT"
+driver.attrs["ctx-PADDUP-target"] = "BASE_PADDUP"
+driver.attrs["ctx-PADDDOWN-target"] = "BASE_PADDDOWN"
+driver.attrs["ctx-PADDLEFT-party"] = "FRAME_LEFT"
+driver.attrs["ctx-PADDRIGHT-party"] = "FRAME_RIGHT"
+driver.attrs["ctx-PADDUP-party"] = "FRAME_UP"
+driver.attrs["ctx-PADDDOWN-party"] = "FRAME_DOWN"
 driver.attrs["soft-PAD1"] = "SOFT_CONFIRM"
 driver.attrs["soft-PAD2"] = "SOFT_CANCEL"
 driver.attrs["fc-soft"] = ""
@@ -806,6 +818,113 @@ Check("pet chords: L2 + R1 still targets", driver.bindings.PADRSHOULDER, "TARGET
 L2.release()
 Wait(L2, 3)
 driver.attrs["fc-petChords"] = 0
+
+-- D-pad party selection: Off, In a raid and Always.
+local function DpadMode(mode, inRaid)
+	driver.attrs["fc-dpadParty"] = mode
+	driver.attrs["fc-inRaid"] = inRaid
+	driver:RunAttribute("UpdateTargetBindings")
+	driver:RunAttribute("ApplyLayer")
+	return driver.bindings.PADDLEFT, driver.bindings.PADDRIGHT
+end
+local function CheckDpad(name, mode, inRaid, left, right)
+	local gotLeft, gotRight = DpadMode(mode, inRaid)
+	Check(name .. ": left", gotLeft, left)
+	Check(name .. ": right", gotRight, right)
+end
+CheckDpad("dpad off, in a raid", "off", 1, "BASE_PADDLEFT", "BASE_PADDRIGHT")
+CheckDpad("dpad raid option, no raid", "raid", 0, "BASE_PADDLEFT", "BASE_PADDRIGHT")
+CheckDpad("dpad raid option, in a raid", "raid", 1, "FRAME_LEFT", "FRAME_RIGHT")
+CheckDpad("dpad always, no raid", "always", 0, "FRAME_LEFT", "FRAME_RIGHT")
+CheckDpad("dpad always, in a raid", "always", 1, "FRAME_LEFT", "FRAME_RIGHT")
+Check("dpad always: up moves over the frames", driver.bindings.PADDUP, "FRAME_UP")
+Check("dpad always: down moves over the frames", driver.bindings.PADDDOWN, "FRAME_DOWN")
+CheckDpad("dpad back off", "off", 0, "BASE_PADDLEFT", "BASE_PADDRIGHT")
+Check("dpad back off: up is the party again", driver.bindings.PADDUP, "BASE_PADDUP")
+
+-- D-pad left/right: take turns between enemy and friend tab targeting.
+do
+	local function NewTargetCycle(step)
+		local button, fn = RunButton(S.TargetCyclePreClick, { ["fc-step"] = step })
+		return function()
+			fn(button, "LeftButton", true)
+			return button.attrs.macrotext
+		end
+	end
+	local nextTarget, prevTarget = NewTargetCycle(1), NewTargetCycle(-1)
+	driver.attrs["fc-targetCycle"] = nil
+	Check("target cycle: starts on enemies", nextTarget(), "/targetenemy")
+	Check("target cycle: then friendlies", nextTarget(), "/targetfriend")
+	Check("target cycle: back to enemies", nextTarget(), "/targetenemy")
+	Check("target cycle: reverse takes the next turn", prevTarget(), "/targetfriend 1")
+	Check("target cycle: reverse enemies", prevTarget(), "/targetenemy 1")
+	driver.attrs["fc-dpadTarget"] = "enemy"
+	Check("target enemies only: next", nextTarget(), "/targetenemy")
+	Check("target enemies only: stays on enemies", nextTarget(), "/targetenemy")
+	Check("target enemies only: previous", prevTarget(), "/targetenemy 1")
+	driver.attrs["fc-dpadTarget"] = "friend"
+	Check("target friendly only: next", nextTarget(), "/targetfriend")
+	Check("target friendly only: stays on friendlies", nextTarget(), "/targetfriend")
+	Check("target friendly only: previous", prevTarget(), "/targetfriend 1")
+	driver.attrs["fc-dpadTarget"] = "both"
+	driver.attrs["fc-targetCycle"] = nil
+	Check("target both: turns again", nextTarget(), "/targetenemy")
+	Check("target both: friend turn", nextTarget(), "/targetfriend")
+end
+
+-- D-pad party selection: moving over the frames, two columns of three and two.
+do
+	local function AddFrame(index, unit, x, y)
+		local frame = NewFrame("uf" .. index)
+		frame.attrs.unit = unit
+		frame.rect = { x, y, 90, 40 }
+		driver.refs["uf" .. index] = frame
+		unitsThatExist[unit] = true
+		return frame
+	end
+	AddFrame(1, "raid1", 0, 100)
+	AddFrame(2, "raid2", 0, 50)
+	AddFrame(3, "raid3", 0, 0)
+	AddFrame(4, "raid4", 100, 100)
+	AddFrame(5, "raid5", 100, 50)
+	AddFrame(6, "raid6", 200, 100).hidden = true
+	AddFrame(7, "raid7", 300, 100)
+	unitsThatExist.raid7 = nil
+	driver.attrs["fc-ufCount"] = 7
+	driver.attrs["fc-ufCursor"] = nil
+	ClearSoft()
+	local function Move(dx, dy)
+		driver:RunAttribute("MoveFrameCursor", dx, dy)
+		return driver.attrs["fc-soft"]
+	end
+	local UP, DOWN, LEFT, RIGHT = { 0, 1 }, { 0, -1 }, { -1, 0 }, { 1, 0 }
+	local function Press(direction) return Move(direction[1], direction[2]) end
+	Check("frames: first press is the top left", Press(DOWN), "raid1")
+	Check("frames: down", Press(DOWN), "raid2")
+	Check("frames: down again", Press(DOWN), "raid3")
+	Check("frames: down wraps in the column", Press(DOWN), "raid1")
+	Check("frames: up wraps in the column", Press(UP), "raid3")
+	Check("frames: right with an empty row goes to the nearest", Press(RIGHT), "raid5")
+	Check("frames: up", Press(UP), "raid4")
+	Check("frames: left", Press(LEFT), "raid1")
+	Check("frames: left wraps in the row, skipping hidden and missing", Press(LEFT), "raid4")
+	Check("frames: right wraps in the row", Press(RIGHT), "raid1")
+	ClearSoft()
+	Check("frames: no soft target reselects the last frame", Press(DOWN), "raid1")
+	driver.refs.uf1.hidden = true
+	Check("frames: cursor frame gone starts at the top left", Press(DOWN), "raid2")
+	driver.refs.uf1.hidden = nil
+	driver.attrs["fc-ufCount"] = 0
+	driver.attrs["fc-ufCursor"] = nil
+	ClearSoft()
+	for index = 1, 7 do
+		unitsThatExist["raid" .. index] = nil
+		driver.refs["uf" .. index] = nil
+	end
+	driver.attrs["fc-cycle-party"] = 0
+	Check("frames: none on screen falls back to the party", Press(DOWN), "player")
+	ClearSoft()
+end
 
 print(failures == 0 and "ALL PASSED" or (failures .. " FAILED"))
 os.exit(failures == 0 and 0 or 1)

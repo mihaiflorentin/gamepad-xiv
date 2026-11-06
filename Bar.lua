@@ -374,6 +374,14 @@ local function FindCompactFrame(unit)
 			return frame
 		end
 	end
+	for group = 1, 8 do
+		for member = 1, 5 do
+			local frame = _G["CompactRaidGroup" .. group .. "Member" .. member]
+			if frame and frame.unit == unit and frame:IsVisible() then
+				return frame
+			end
+		end
+	end
 end
 
 -- The frame showing a unit, whichever party or raid style is in use.

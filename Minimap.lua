@@ -42,6 +42,20 @@ local function GetMenuRows()
 			onClick = function() SetSetting("triggerMode", mode) end,
 		}
 	end
+	local function DpadTargetRow(mode, label)
+		return {
+			text = "D-pad arrows: " .. label,
+			isChecked = function() return ns.db.dpadTarget == mode end,
+			onClick = function() SetSetting("dpadTarget", mode) end,
+		}
+	end
+	local function DpadRow(mode, label)
+		return {
+			text = "D-pad party selection: " .. label,
+			isChecked = function() return ns.db.dpadParty == mode end,
+			onClick = function() SetSetting("dpadParty", mode) end,
+		}
+	end
 	return {
 		{ text = "Edit crossbar", onClick = function() ns.ToggleEditor() end, closes = true },
 		{ text = "Move bars", onClick = function() ns.ToggleMove() end, closes = true },
@@ -63,6 +77,12 @@ local function GetMenuRows()
 		ModeRow("hold", "Hold"),
 		ModeRow("toggle", "Toggle"),
 		ModeRow("mixed", "Mixed"),
+		DpadTargetRow("enemy", "Enemies only"),
+		DpadTargetRow("friend", "Friendly only"),
+		DpadTargetRow("both", "Both"),
+		DpadRow("off", "Off"),
+		DpadRow("raid", "In a raid"),
+		DpadRow("always", "Always"),
 		{ text = "Reset bar positions", onClick = function() ns.ResetPositions() end, closes = true },
 		{ text = "Hide minimap icon", onClick = function() SetMinimapShown(false) end, closes = true },
 	}

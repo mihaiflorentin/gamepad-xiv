@@ -15,7 +15,7 @@ Its double tap timing is adapted from [CrossHotbar](https://github.com/ChainStra
 - **Selection feedback:** the selected bar grows and glows with a short animation, and the others shrink and dim.
 - **Range indicator:** an ability turns red while your target is out of its range. Abilities with no range stay as they are.
 - **Controller button art:** optional button icons on every slot, in the style of your controller, plus an original addon icon.
-- **Targeting:** WoW's tab target on the D-pad, R1 + L2 and L1 + R2; camera lock-on on L3; a soft target for party and raid members.
+- **Targeting:** enemies and friendlies in turn on D-pad left/right, tab target on R1 + L2 and L1 + R2; camera lock-on on L3; a soft target for party and raid members.
 - **Party selection:** double tap L1 or use the D-pad, with the name above the crossbar and a gold outline on the member's frame.
 - **Face target:** an optional, experimental setting that turns your character toward the enemy when casting.
 - **Camera and movement:** L1 + right stick zoom, L1 + left stick forward auto-run, hold B to walk, Y / B to ascend and descend, first / third person on R3.
@@ -143,6 +143,8 @@ Open them with `/fc config`, L2/R2 + Start, the minimap icon, or Options > AddOn
 | Forms change the bottom row | gives each form or stance its own set | on |
 | Form 1-4 uses | the set each form or stance uses | sets 5-8 |
 | L2 / R2 activation | Hold, Toggle or Mixed | Hold |
+| D-pad arrow selection | Enemies only, Friendly only or Both: what D-pad left / right select | Both |
+| D-pad party selection | Off, In a raid or Always: when the whole D-pad moves over the party and raid frames | Off |
 | WXHB swaps face buttons only | keeps the D-pad on the bottom row during a double tap (4 slots) | off |
 | Double tap window | window in 0.2 s steps (2-4) | 2 |
 | Hold B to walk | walks while B is held | on |
@@ -155,6 +157,8 @@ Left click opens the settings, and dragging moves the icon around the minimap. R
 - Edit crossbar, Move bars, Move or remove an ability, and Settings
 - Enable layout and Face target
 - L2 / R2 activation (Hold, Toggle, Mixed)
+- D-pad arrow selection: Enemies only, Friendly only or Both
+- D-pad party selection: Off, In a raid or Always
 - Reset bar positions and Hide minimap icon
 
 The menu closes on a click elsewhere and when you enter combat. Using the minimap icon with a controller needs the virtual cursor (L1 + R3). The same entry also appears in the minimap's AddOn compartment. If you hide the icon, `/fc minimap` or `Show minimap icon` in the settings brings it back.
@@ -209,8 +213,8 @@ The client asks you to confirm experimental camera features the first time. The 
 | B | Cancel; hold to walk; while flying or swimming, descend |
 | X | Map; with a target, the target menu |
 | Y | Jump; while flying or swimming, ascend |
-| D-pad left / right | WoW's tab target: previous / next enemy (real target) |
-| D-pad up / down | temporary target through the party, starting with yourself |
+| D-pad left / right | previous / next target (real target); see `D-pad arrow selection` and `D-pad party selection` |
+| D-pad up / down | temporary target through the party, starting with yourself; see `D-pad party selection` |
 | L2 or R2 + R1 / L1 | next / previous enemy |
 | L1 + L2 | hunters and warlocks: Forever's pet commands (attack, follow and so on) |
 | R1 + R2 | hunters and warlocks: Forever's pet spells |
@@ -233,6 +237,8 @@ FFXIV reference: [Controls](https://ffxiv.consolegameswiki.com/wiki/Controls) an
 
 **Party selection:** with no L2/R2 held, a double tap on L1 (or D-pad up/down) starts with yourself and steps through the party members. The name appears above the crossbar, and the member's frame gets a gold outline.
 
+**D-pad party selection:** this setting gives the whole D-pad to the party and raid frames on screen, and each direction moves to the frame that way, wrapping at the end of a row or column. The selection is a temporary target. Pressing a direction with no temporary target selects the frame you were last on. `Always` applies everywhere; `In a raid` applies only in a raid, and elsewhere the D-pad works as normal. With no compact frames on screen, it steps through the party list instead. Frames that appear during combat can only be reached after combat. Enemy tab target stays on L1 + D-pad up/down, R1 + L2 and L1 + R2.
+
 **The temporary target (soft target)** is used for party and raid, as in FFXIV: the next ability goes to it, your real target stays unchanged, and after the ability you return to your real target. A confirms it and B cancels it.
 
 L1 on its own does nothing: holding it is a layer, like the triggers, and rotation stops so the right stick only zooms.
@@ -243,6 +249,7 @@ L1 on its own does nothing: holding it is a layer, like the triggers, and rotati
 
 - **The double tap window is approximate: normally 0.2-0.4 s, sometimes shorter in combat.** Secure code has no clock and uses a timer that certain events advance. `/fc tap 3` widens it.
 - **Enemy cycling is WoW's tab target**, with real targets. Objects are picked up with A through soft interact.
+- **`Both` takes turns between enemies and friendlies.** WoW has no tab target over both, and addons cannot tell the units around you apart in combat, so each press alternates WoW's enemy and friend tab targets. With only enemies or only friendlies around, every other press does nothing; `Enemies only` and `Friendly only` avoid that.
 - **There is no Enmity list.** WoW does not give addons an aggro list, so L1 + D-pad up/down does tab target.
 - **The soft target's target circle** is only the name shown above the crossbar, plus the gold outline on party and raid frames.
 - **Abilities are assigned by drag and drop on the crossbar**, not through an FFXIV-style menu. For sets 1-3, Forever's own editor also works (Spellbook, then Y).
@@ -281,7 +288,7 @@ If you see "Gamepad XIV has been blocked from an action", choose `Ignore`, and r
 5. Double tap R2, hold, and use several abilities: the top right bar is selected, with the animation. Releasing returns to normal.
 6. **Repeat 4 and 5 in combat.** This is the most important test.
 7. Open and close the inventory out of combat, then repeat 4. Window navigation must work, and the bars must stay functional.
-8. Press D-pad up, then use a heal: it lands on you and your real target does not change. Try tab target on D-pad left/right, R1 + L2 and L1 + R2.
+8. Press D-pad up, then use a heal: it lands on you and your real target does not change. Try D-pad left/right on enemies and friendlies, and tab target on R1 + L2 and L1 + R2.
    Enter a form or stance, including in combat: the bottom row changes, and R1 + a button changes that form's set.
 9. L1 alone does nothing. Try L1 + left stick forward (auto-run), L1 + right stick (zoom), double tap L1 (party) and L1 + R1. If something does not work, run `/fc debug` and include its output in your report.
 10. Enter combat with edit mode open: the panel closes, slots cast again, and L2 and R2 stop acting as clicks.

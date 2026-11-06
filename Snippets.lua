@@ -209,9 +209,23 @@ S.UpdateTargetBindings = [[
 	self:SetAttribute("base-PADLSTICK", self:GetAttribute("ctx-PADLSTICK" .. suffix))
 	-- Flying or swimming, B descends instead of cancelling.
 	self:SetAttribute("base-PAD2", (IsFlying() or IsSwimming()) and "SITORSTAND" or self:GetAttribute("ctx-PAD2-ground"))
+	-- D-pad left and right tab target, unless the party selection option takes the whole D-pad.
+	local dpadParty = self:GetAttribute("fc-dpadParty")
+	local partyMode = dpadParty == "always" or (dpadParty == "raid" and self:GetAttribute("fc-inRaid") == 1)
+	local dpadSuffix = partyMode and "-party" or "-target"
+	self:SetAttribute("base-PADDLEFT", self:GetAttribute("ctx-PADDLEFT" .. dpadSuffix))
+	self:SetAttribute("base-PADDRIGHT", self:GetAttribute("ctx-PADDRIGHT" .. dpadSuffix))
+	self:SetAttribute("base-PADDUP", self:GetAttribute("ctx-PADDUP" .. dpadSuffix))
+	self:SetAttribute("base-PADDDOWN", self:GetAttribute("ctx-PADDDOWN" .. dpadSuffix))
 ]]
 
 S.OnStateTarget = [[
+	self:RunAttribute("UpdateTargetBindings")
+	self:RunAttribute("ApplyLayer")
+]]
+
+S.OnStateRaid = [[
+	self:SetAttribute("fc-inRaid", newstate)
 	self:RunAttribute("UpdateTargetBindings")
 	self:RunAttribute("ApplyLayer")
 ]]
@@ -627,6 +641,96 @@ S.L1Click = [[
 S.CyclePreClick = [[
 	if down then
 		self:GetFrameRef("driver"):RunAttribute("CycleGroup", self:GetAttribute("fc-step"), self:GetAttribute("fc-raidOnly"))
+	end
+]]
+
+-- D-pad left/right: enemy tab targeting, friend tab targeting, or turns between the two, since neither
+-- of WoW's bindings covers both. Secure code cannot tell enemies from friends around the player.
+S.TargetCyclePreClick = [[
+	if not down then
+		return
+	end
+	local driver = self:GetFrameRef("driver")
+	local mode = driver:GetAttribute("fc-dpadTarget")
+	local command
+	if mode == "enemy" then
+		command = "/targetenemy"
+	elseif mode == "friend" then
+		command = "/targetfriend"
+	else
+		command = driver:GetAttribute("fc-targetCycle") == "/targetenemy" and "/targetfriend" or "/targetenemy"
+		driver:SetAttribute("fc-targetCycle", command)
+	end
+	if self:GetAttribute("fc-step") < 0 then
+		command = command .. " 1"
+	end
+	self:SetAttribute("macrotext", command)
+]]
+
+-- D-pad with party selection active: moves over the party or raid frames on screen.
+S.FrameMovePreClick = [[
+	if down then
+		self:GetFrameRef("driver"):RunAttribute("MoveFrameCursor", self:GetAttribute("fc-dx"), self:GetAttribute("fc-dy"))
+	end
+]]
+
+-- Driver: a press with no soft target selects the frame the cursor was last on (or the top left one).
+-- Otherwise the nearest frame in that direction on the same row or column wins, then the far end of
+-- that row or column, then the nearest frame on another one. Without frames, it steps through the list.
+S.MoveFrameCursor = [[
+	local dx, dy = ...
+	local cursor = self:GetAttribute("fc-ufCursor")
+	local currentX, currentY, tolerance
+	if cursor then
+		local frame = self:GetFrameRef("uf" .. cursor)
+		local unit = frame and frame:IsVisible() and frame:GetAttribute("unit")
+		local left, bottom, width, height
+		if unit and UnitExists(unit) then
+			left, bottom, width, height = frame:GetRect()
+		end
+		if left then
+			if self:GetAttribute("fc-soft") == "" then
+				self:RunAttribute("SetSoft", unit)
+				return
+			end
+			currentX, currentY = left + width / 2, bottom + height / 2
+			tolerance = (dx ~= 0 and height or width) / 2
+		end
+	end
+
+	local bestIndex, bestUnit, bestScore
+	for index = 1, self:GetAttribute("fc-ufCount") or 0 do
+		local frame = self:GetFrameRef("uf" .. index)
+		local unit = frame and frame:IsVisible() and frame:GetAttribute("unit")
+		local left, bottom, width, height
+		if unit and UnitExists(unit) then
+			left, bottom, width, height = frame:GetRect()
+		end
+		if left then
+			local x, y = left + width / 2, bottom + height / 2
+			local score
+			if not currentX then
+				score = x - y
+			elseif index ~= cursor then
+				local along = (x - currentX) * dx + (y - currentY) * dy
+				local across = abs((x - currentX) * dy) + abs((y - currentY) * dx)
+				if across <= tolerance then
+					score = along > 0 and along or 100000 + along
+				elseif along > 0 then
+					score = 200000 + along + across
+				end
+			end
+			if score and (not bestScore or score < bestScore) then
+				bestIndex, bestUnit, bestScore = index, unit, score
+			end
+		end
+	end
+
+	if bestUnit then
+		self:SetAttribute("fc-ufCursor", bestIndex)
+		self:RunAttribute("SetSoft", bestUnit)
+	elseif not currentX then
+		self:RunAttribute("CycleGroup", dx - dy, dx ~= 0 and 1 or 0)
 	end
 ]]
 

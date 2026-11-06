@@ -74,6 +74,28 @@ function ns.CreateConfig()
 			ns.Sync()
 		end)
 
+	layout:AddInitializer(CreateSettingsListSectionHeaderInitializer("Targeting"))
+	do
+		local setting = AddSetting("dpadTarget", "D-pad arrow selection", Settings.VarType.String, defaults.dpadTarget, ns.Sync)
+		Settings.CreateDropdown(category, setting, function()
+			local container = Settings.CreateControlTextContainer()
+			container:Add("enemy", "Enemies only")
+			container:Add("friend", "Friendly only")
+			container:Add("both", "Both")
+			return container:GetData()
+		end, "What D-pad left and right select. Both takes turns between enemies and friendlies. Not used while D-pad party selection is active.")
+	end
+	do
+		local setting = AddSetting("dpadParty", "D-pad party selection", Settings.VarType.String, defaults.dpadParty, ns.Sync)
+		Settings.CreateDropdown(category, setting, function()
+			local container = Settings.CreateControlTextContainer()
+			container:Add("off", "Off")
+			container:Add("raid", "In a raid")
+			container:Add("always", "Always")
+			return container:GetData()
+		end, "Off: D-pad left and right take turns between enemies and friendlies. In a raid or Always: the whole D-pad moves over the party and raid frames on screen.")
+	end
+
 	layout:AddInitializer(CreateSettingsListSectionHeaderInitializer("Crossbar"))
 	AddSlider("scale", "Scale", defaults.scale, 0.5, 1.5, 0.05, nil, ns.Sync)
 	AddSlider("x", "Horizontal position", defaults.x, -1500, 1500, 10, nil, ns.Sync)

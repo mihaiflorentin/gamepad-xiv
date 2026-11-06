@@ -190,10 +190,14 @@ local function SetupBaseBindings()
 	local inspect = ForeverButtonBinding(2, "TOGGLEWORLDMAP")
 	local back, backButton = ForeverButtonBinding(3, "TOGGLEGAMEMENU")
 
-	driver:SetAttribute("base-PADDLEFT", "TARGETPREVIOUSENEMY")
-	driver:SetAttribute("base-PADDRIGHT", "TARGETNEARESTENEMY")
-	driver:SetAttribute("base-PADDUP", "CLICK GamepadXIVPartyPrev:LeftButton")
-	driver:SetAttribute("base-PADDDOWN", "CLICK GamepadXIVPartyNext:LeftButton")
+	driver:SetAttribute("ctx-PADDLEFT-target", "CLICK GamepadXIVTargetPrev:LeftButton")
+	driver:SetAttribute("ctx-PADDRIGHT-target", "CLICK GamepadXIVTargetNext:LeftButton")
+	driver:SetAttribute("ctx-PADDLEFT-party", "CLICK GamepadXIVFrameLeft:LeftButton")
+	driver:SetAttribute("ctx-PADDRIGHT-party", "CLICK GamepadXIVFrameRight:LeftButton")
+	driver:SetAttribute("ctx-PADDUP-target", "CLICK GamepadXIVPartyPrev:LeftButton")
+	driver:SetAttribute("ctx-PADDDOWN-target", "CLICK GamepadXIVPartyNext:LeftButton")
+	driver:SetAttribute("ctx-PADDUP-party", "CLICK GamepadXIVFrameUp:LeftButton")
+	driver:SetAttribute("ctx-PADDDOWN-party", "CLICK GamepadXIVFrameDown:LeftButton")
 	driver:SetAttribute("base-PAD1", interact)
 	driver:SetAttribute("ctx-PAD2-ground", back)
 	driver:SetAttribute("soft-PAD1", "CLICK GamepadXIVSoftConfirm:LeftButton")
@@ -263,6 +267,50 @@ local function CreateCycle(name, step, raidOnly)
 	button:RegisterForClicks("AnyDown")
 	button:SetAttribute("fc-step", step)
 	button:SetAttribute("fc-raidOnly", raidOnly and 1 or 0)
+end
+
+local function CreateTargetCycle(name, step)
+	local button = CreateSecureButton(name, S.TargetCyclePreClick, "PreClick")
+	button:RegisterForClicks("AnyDown")
+	button:SetAttribute("type", "macro")
+	button:SetAttribute("fc-step", step)
+end
+
+local function CreateFrameMove(name, dx, dy)
+	local button = CreateSecureButton(name, S.FrameMovePreClick, "PreClick")
+	button:RegisterForClicks("AnyDown")
+	button:SetAttribute("fc-dx", dx)
+	button:SetAttribute("fc-dy", dy)
+end
+
+-- Secure code can only reach frames handed to it out of combat. The frame in each slot can change,
+-- so a change in their number also forgets the cursor.
+local function RefreshUnitFrameRefs()
+	if InCombatLockdown() then
+		return
+	end
+	local count = 0
+	local function Add(frame)
+		if frame and frame:IsProtected() then
+			count = count + 1
+			SecureHandlerSetFrameRef(driver, "uf" .. count, frame)
+		end
+	end
+	for _, frame in ipairs(CompactPartyFrame and CompactPartyFrame.memberUnitFrames or {}) do
+		Add(frame)
+	end
+	for i = 1, 40 do
+		Add(_G["CompactRaidFrame" .. i])
+	end
+	for group = 1, 8 do
+		for member = 1, 5 do
+			Add(_G["CompactRaidGroup" .. group .. "Member" .. member])
+		end
+	end
+	if driver:GetAttribute("fc-ufCount") ~= count then
+		driver:SetAttribute("fc-ufCount", count)
+		driver:SetAttribute("fc-ufCursor", nil)
+	end
 end
 
 local function CreatePlainButton(name, onClick)
@@ -392,6 +440,9 @@ function ns.PrintDebug()
 	Report("SoftTargetIconInteract =", GetCVar("SoftTargetIconInteract"), "experimental accepted:", ns.db.experimentalAccepted)
 	local plate = C_NamePlate.GetNamePlateForUnit("softinteract")
 	Report("interact target nameplate:", plate and plate:GetName() or "none")
+	Report("D-pad party selection:", ns.db.dpadParty, "in raid:", driver:GetAttribute("fc-inRaid"),
+		"last target command:", driver:GetAttribute("fc-targetCycle"))
+	Report("target exists:", UnitExists("target"), "soft enemy:", UnitExists("softenemy"), "soft friend:", UnitExists("softfriend"))
 	if state then
 		for i = 1, state.stickCount do
 			Report("stick", i, C_GamePad.StickIndexToConfigName(i - 1))
@@ -813,6 +864,7 @@ function ns.CreateInput()
 	driver:SetAttribute("OnTrigger", S.OnTrigger)
 	driver:SetAttribute("SetSoft", S.SetSoft)
 	driver:SetAttribute("CycleGroup", S.CycleGroup)
+	driver:SetAttribute("MoveFrameCursor", S.MoveFrameCursor)
 	driver:SetAttribute("OpenFlyout", S.OpenFlyout)
 	driver:SetAttribute("CloseFlyout", S.CloseFlyout)
 	driver:SetAttribute("SetClear", S.SetClear)
@@ -828,6 +880,7 @@ function ns.CreateInput()
 	driver:SetAttribute("_onstate-fcmounted", S.OnStateTarget)
 	driver:SetAttribute("_onstate-fcmove", S.OnStateTarget)
 	driver:SetAttribute("_onstate-fcvehicle", S.OnStateVehicle)
+	driver:SetAttribute("_onstate-fcraid", S.OnStateRaid)
 	driver:SetAttribute("UpdateForm", S.UpdateForm)
 	driver:SetAttribute("_onstate-fcform", S.OnStateForm)
 
@@ -891,6 +944,12 @@ function ns.CreateInput()
 	CreateCycle("GamepadXIVPartyNext", 1, false)
 	CreateCycle("GamepadXIVRaidPrev", -1, true)
 	CreateCycle("GamepadXIVRaidNext", 1, true)
+	CreateTargetCycle("GamepadXIVTargetPrev", -1)
+	CreateTargetCycle("GamepadXIVTargetNext", 1)
+	CreateFrameMove("GamepadXIVFrameUp", 0, 1)
+	CreateFrameMove("GamepadXIVFrameDown", 0, -1)
+	CreateFrameMove("GamepadXIVFrameLeft", -1, 0)
+	CreateFrameMove("GamepadXIVFrameRight", 1, 0)
 
 	local softConfirm = CreateSecureButton("GamepadXIVSoftConfirm", S.SoftConfirmPreClick, "PreClick")
 	softConfirm:RegisterForClicks("AnyDown")
@@ -949,6 +1008,7 @@ function ns.CreateInput()
 	RegisterStateDriver(driver, "fcmove", "[flying][swimming] 1; 0")
 	RegisterStateDriver(driver, "fcform", "[bonusbar:1] 1; [bonusbar:2] 2; [bonusbar:3] 3; [bonusbar:4] 4; 0")
 	RegisterStateDriver(driver, "fcvehicle", "[overridebar][vehicleui][possessbar] 1; 0")
+	RegisterStateDriver(driver, "fcraid", "[group:raid] 1; 0")
 
 	-- Forever's window bindings are priority overrides, so they win while a window is focused.
 	-- Closing one writes empty overrides back, so bindings are reasserted afterwards.
@@ -978,10 +1038,19 @@ function ns.CreateInput()
 	events:RegisterEvent("PLAYER_TARGET_CHANGED")
 	events:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
 	events:RegisterEvent("SPELLS_CHANGED")
+	events:RegisterEvent("GROUP_ROSTER_UPDATE")
 	events:SetScript("OnEvent", function(_, event, cvar)
 		if event == "ACTIONBAR_SLOT_CHANGED" or event == "SPELLS_CHANGED" then
 			UpdateFlyouts()
 			return
+		end
+		-- Blizzard creates the frames on its own roster update, which may run after this one.
+		if event == "GROUP_ROSTER_UPDATE" then
+			C_Timer.After(0.5, RefreshUnitFrameRefs)
+			return
+		end
+		if event == "PLAYER_REGEN_ENABLED" then
+			RefreshUnitFrameRefs()
 		end
 		if event == "PLAYER_TARGET_CHANGED" then
 			if not UnitExists("target") then
@@ -1094,6 +1163,8 @@ function ns.Sync()
 
 	driver:SetAttribute("fc-priority", db.priorityBindings and 1 or 0)
 	driver:SetAttribute("fc-w4", db.wxhbFourSlots and 1 or 0)
+	driver:SetAttribute("fc-dpadParty", db.dpadParty)
+	driver:SetAttribute("fc-dpadTarget", db.dpadTarget)
 	if driver:GetAttribute("fc-triggerMode") ~= db.triggerMode then
 		driver:SetAttribute("fc-triggerMode", db.triggerMode)
 		driver:SetAttribute("fc-latch", "")
@@ -1119,6 +1190,7 @@ function ns.Sync()
 	driver:SetAttribute("fc-page", mainPageUnit and mainPageUnit:GetCurrentPage() or nil)
 	UpdateFlyouts()
 	UpdateCameraCVars()
+	RefreshUnitFrameRefs()
 	SecureHandlerExecute(driver, [[
 		self:RunAttribute("UpdateForm")
 		self:RunAttribute("UpdateYield")
