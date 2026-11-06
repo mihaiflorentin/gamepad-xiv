@@ -618,6 +618,7 @@ S.FlyoutCancelClick = [[
 -- L1 held is a layer, like the triggers; a double tap steps through the party or raid.
 S.L1Click = [[
 	local driver = self:GetFrameRef("driver")
+	self:SetAttribute("unit", nil)
 	if not down then
 		if driver:GetAttribute("fc-layer") == "L1" then
 			driver:SetAttribute("fc-layer", "BASE")
@@ -632,6 +633,8 @@ S.L1Click = [[
 	if self:GetAttribute("fc-ready") == 0 then
 		self:SetAttribute("fc-ticks", 0)
 		driver:RunAttribute("CycleGroup", 1, 1)
+		self:SetAttribute("unit", driver:GetAttribute("fc-realPick"))
+		driver:SetAttribute("fc-realPick", nil)
 	else
 		self:SetAttribute("fc-ticks", driver:GetAttribute("fc-tapTicks"))
 	end
@@ -640,7 +643,10 @@ S.L1Click = [[
 -- D-pad up/down and L1 + left/right: soft target through the party or raid list.
 S.CyclePreClick = [[
 	if down then
-		self:GetFrameRef("driver"):RunAttribute("CycleGroup", self:GetAttribute("fc-step"), self:GetAttribute("fc-raidOnly"))
+		local driver = self:GetFrameRef("driver")
+		driver:RunAttribute("CycleGroup", self:GetAttribute("fc-step"), self:GetAttribute("fc-raidOnly"))
+		self:SetAttribute("unit", driver:GetAttribute("fc-realPick"))
+		driver:SetAttribute("fc-realPick", nil)
 	end
 ]]
 
@@ -670,16 +676,33 @@ S.TargetCyclePreClick = [[
 -- D-pad with party selection active: moves over the party or raid frames on screen.
 S.FrameMovePreClick = [[
 	if down then
-		self:GetFrameRef("driver"):RunAttribute("MoveFrameCursor", self:GetAttribute("fc-dx"), self:GetAttribute("fc-dy"))
+		local driver = self:GetFrameRef("driver")
+		driver:RunAttribute("MoveFrameCursor", self:GetAttribute("fc-dx"), self:GetAttribute("fc-dy"))
+		self:SetAttribute("unit", driver:GetAttribute("fc-realPick"))
+		driver:SetAttribute("fc-realPick", nil)
+	end
+]]
+
+-- Driver: party selection's result. With Party targeting on Hard, the button that was pressed sets
+-- the real target, since only a click can do that.
+S.SelectGroupUnit = [[
+	local unit = ...
+	if self:GetAttribute("fc-partyTargeting") == "hard" then
+		self:SetAttribute("fc-realPick", unit)
+	else
+		self:RunAttribute("SetSoft", unit)
 	end
 ]]
 
 -- Driver: a press with no soft target selects the frame the cursor was last on (or the top left one).
+-- On Hard there is no selection to lose, so every press moves.
 -- Otherwise the nearest frame in that direction on the same row or column wins, then the far end of
 -- that row or column, then the nearest frame on another one. Without frames, it steps through the list.
 S.MoveFrameCursor = [[
 	local dx, dy = ...
+	local real = self:GetAttribute("fc-partyTargeting") == "hard"
 	local cursor = self:GetAttribute("fc-ufCursor")
+	local cursorUnit
 	local currentX, currentY, tolerance
 	if cursor then
 		local frame = self:GetFrameRef("uf" .. cursor)
@@ -689,10 +712,11 @@ S.MoveFrameCursor = [[
 			left, bottom, width, height = frame:GetRect()
 		end
 		if left then
-			if self:GetAttribute("fc-soft") == "" then
-				self:RunAttribute("SetSoft", unit)
+			if self:GetAttribute("fc-soft") == "" and not real then
+				self:RunAttribute("SelectGroupUnit", unit)
 				return
 			end
+			cursorUnit = unit
 			currentX, currentY = left + width / 2, bottom + height / 2
 			tolerance = (dx ~= 0 and height or width) / 2
 		end
@@ -728,9 +752,11 @@ S.MoveFrameCursor = [[
 
 	if bestUnit then
 		self:SetAttribute("fc-ufCursor", bestIndex)
-		self:RunAttribute("SetSoft", bestUnit)
+		self:RunAttribute("SelectGroupUnit", bestUnit)
 	elseif not currentX then
 		self:RunAttribute("CycleGroup", dx - dy, dx ~= 0 and 1 or 0)
+	elseif real then
+		self:RunAttribute("SelectGroupUnit", cursorUnit)
 	end
 ]]
 
@@ -740,9 +766,14 @@ S.CycleGroup = [[
 	local useRaid = raidOnly == 1 and UnitExists("raid1")
 	local prefix = useRaid and "raid" or "party"
 	local count = useRaid and 40 or 4
-	local index = self:GetAttribute("fc-cycle-" .. prefix) or 0
+	local stored = self:GetAttribute("fc-cycle-" .. prefix)
+	local index = stored or 0
+	local restart = self:GetAttribute("fc-soft") == ""
+	if self:GetAttribute("fc-partyTargeting") == "hard" then
+		restart = not stored
+	end
 
-	if self:GetAttribute("fc-soft") == "" and not useRaid then
+	if restart and not useRaid then
 		index = 0
 	else
 		for _ = 0, count do
@@ -763,5 +794,5 @@ S.CycleGroup = [[
 	end
 
 	self:SetAttribute("fc-cycle-" .. prefix, index)
-	self:RunAttribute("SetSoft", (index == 0) and "player" or (prefix .. index))
+	self:RunAttribute("SelectGroupUnit", (index == 0) and "player" or (prefix .. index))
 ]]

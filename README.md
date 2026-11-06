@@ -145,6 +145,7 @@ Open them with `/fc config`, L2/R2 + Start, the minimap icon, or Options > AddOn
 | L2 / R2 activation | Hold, Toggle or Mixed | Hold |
 | D-pad arrow selection | Enemies only, Friendly only or Both: what D-pad left / right select | Both |
 | D-pad party selection | Off, In a raid or Always: when the whole D-pad moves over the party and raid frames | Off |
+| Party targeting | Soft or Hard: whether party selection sets a temporary target or your real target | Soft |
 | WXHB swaps face buttons only | keeps the D-pad on the bottom row during a double tap (4 slots) | off |
 | Double tap window | window in 0.2 s steps (2-4) | 2 |
 | Hold B to walk | walks while B is held | on |
@@ -159,6 +160,7 @@ Left click opens the settings, and dragging moves the icon around the minimap. R
 - L2 / R2 activation (Hold, Toggle, Mixed)
 - D-pad arrow selection: Enemies only, Friendly only or Both
 - D-pad party selection: Off, In a raid or Always
+- Party targeting: Soft or Hard
 - Reset bar positions and Hide minimap icon
 
 The menu closes on a click elsewhere and when you enter combat. Using the minimap icon with a controller needs the virtual cursor (L1 + R3). The same entry also appears in the minimap's AddOn compartment. If you hide the icon, `/fc minimap` or `Show minimap icon` in the settings brings it back.
@@ -240,6 +242,8 @@ FFXIV reference: [Controls](https://ffxiv.consolegameswiki.com/wiki/Controls) an
 **D-pad party selection:** this setting gives the whole D-pad to the party and raid frames on screen, and each direction moves to the frame that way, wrapping at the end of a row or column. The selection is a temporary target. Pressing a direction with no temporary target selects the frame you were last on. `Always` applies everywhere; `In a raid` applies only in a raid, and elsewhere the D-pad works as normal. With no compact frames on screen, it steps through the party list instead. Frames that appear during combat can only be reached after combat. Enemy tab target stays on L1 + D-pad up/down, R1 + L2 and L1 + R2.
 
 **The temporary target (soft target)** is used for party and raid, as in FFXIV: the next ability goes to it, your real target stays unchanged, and after the ability you return to your real target. A confirms it and B cancels it.
+
+**Party targeting:** set it to `Hard` and party selection (D-pad and double tap L1) changes your real target instead, with no temporary target. The name above the crossbar and the gold outline do not appear, and every press moves on from the last frame or member, even if you have targeted something else since.
 
 L1 on its own does nothing: holding it is a layer, like the triggers, and rotation stops so the right stick only zooms.
 

@@ -105,7 +105,7 @@ local function NewFrame(name)
 end
 
 local driver = NewFrame("GamepadXIVDriver")
-for _, key in ipairs({ "ApplyLayer", "BindAll", "UpdateTargetBindings", "UpdateYield", "OnTrigger", "BeginEdit", "EndEdit", "SetSoft", "UpdateForm", "CycleGroup", "MoveFrameCursor", "OpenFlyout", "CloseFlyout", "SetClear" }) do
+for _, key in ipairs({ "ApplyLayer", "BindAll", "UpdateTargetBindings", "UpdateYield", "OnTrigger", "BeginEdit", "EndEdit", "SetSoft", "UpdateForm", "CycleGroup", "SelectGroupUnit", "MoveFrameCursor", "OpenFlyout", "CloseFlyout", "SetClear" }) do
 	driver.attrs[key] = S[key]
 end
 
@@ -923,6 +923,70 @@ do
 	end
 	driver.attrs["fc-cycle-party"] = 0
 	Check("frames: none on screen falls back to the party", Press(DOWN), "player")
+	ClearSoft()
+end
+
+-- Party targeting on Hard: party selection goes to the pressed button's real target.
+do
+	driver.attrs["fc-partyTargeting"] = "hard"
+	ClearSoft()
+	local function AddFrame(index, unit, x, y)
+		local frame = NewFrame("uf" .. index)
+		frame.attrs.unit = unit
+		frame.rect = { x, y, 90, 40 }
+		driver.refs["uf" .. index] = frame
+		unitsThatExist[unit] = true
+	end
+	AddFrame(1, "raid1", 0, 100)
+	AddFrame(2, "raid2", 0, 50)
+	driver.attrs["fc-ufCount"] = 2
+	driver.attrs["fc-ufCursor"] = nil
+	local move, moveFn = RunButton(S.FrameMovePreClick, { ["fc-dx"] = 0, ["fc-dy"] = -1 })
+	local function Move()
+		moveFn(move, "LeftButton", true)
+		return move.attrs.unit
+	end
+	Check("party targeting hard: first press targets the top left", Move(), "raid1")
+	Check("party targeting hard: no soft target", driver.attrs["fc-soft"], "")
+	Check("party targeting hard: every press moves", Move(), "raid2")
+	Check("party targeting hard: wraps", Move(), "raid1")
+	Check("party targeting hard: pick is spent", driver.attrs["fc-realPick"], nil)
+	unitsThatExist.raid2 = nil
+	Check("party targeting hard: one frame targets it again", Move(), "raid1")
+	unitsThatExist.raid1 = nil
+	driver.refs.uf1, driver.refs.uf2 = nil, nil
+	driver.attrs["fc-ufCount"] = 0
+	driver.attrs["fc-ufCursor"] = nil
+
+	driver.attrs["fc-cycle-party"] = nil
+	unitsThatExist.party1 = true
+	local cycle, cycleFn = RunButton(S.CyclePreClick, { ["fc-step"] = 1, ["fc-raidOnly"] = 0 })
+	local function Cycle()
+		cycleFn(cycle, "LeftButton", true)
+		return cycle.attrs.unit
+	end
+	Check("party targeting hard: list starts on the player", Cycle(), "player")
+	Check("party targeting hard: list moves on", Cycle(), "party1")
+	Check("party targeting hard: list leaves the soft target alone", driver.attrs["fc-soft"], "")
+
+	local l1 = NewFrame("GamepadXIVL1")
+	l1.refs.driver = driver
+	l1.attrs["fc-ready"] = 0
+	local l1Fn = assert(loadstring("local self, button, down = ...\n" .. S.L1Click))
+	setfenv(l1Fn, setmetatable({}, { __index = ALLOWED }))
+	driver.attrs["fc-cycle-party"] = nil
+	l1Fn(l1, "LeftButton", true)
+	Check("party targeting hard: double tap L1 targets", l1.attrs.unit, "player")
+	l1Fn(l1, "LeftButton", false)
+	Check("party targeting hard: L1 release targets nothing", l1.attrs.unit, nil)
+	unitsThatExist.party1 = nil
+	driver.attrs["fc-partyTargeting"] = "soft"
+	driver.attrs["fc-cycle-party"] = nil
+
+	local softMove, softFn = RunButton(S.CyclePreClick, { ["fc-step"] = 1, ["fc-raidOnly"] = 0 })
+	softFn(softMove, "LeftButton", true)
+	Check("party targeting soft: soft target set", driver.attrs["fc-soft"], "player")
+	Check("party targeting soft: button targets nothing", softMove.attrs.unit, nil)
 	ClearSoft()
 end
 

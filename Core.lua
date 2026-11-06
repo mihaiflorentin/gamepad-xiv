@@ -46,6 +46,7 @@ ns.DEFAULTS = {
 	clusterPadding = 16, -- gap between the D-pad and face button diamonds of a side
 	dpadTarget = "both", -- "enemy", "friend" or "both": what D-pad left and right select
 	dpadParty = "off", -- "off", "raid" or "always": when the whole D-pad selects party members
+	partyTargeting = "soft", -- "soft" or "hard": party selection sets a soft target or the real one
 	formsChangeBar = true,
 	formSet1 = 5, -- set each form or stance starts on; R1 + button changes it while in that form
 	formSet2 = 6,

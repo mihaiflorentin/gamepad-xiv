@@ -256,6 +256,7 @@ end
 
 local function CreateL1()
 	local button = CreateSecureButton("GamepadXIVL1", S.L1Click)
+	button:SetAttribute("type", "target")
 	button:SetAttribute("fc-ready", 1)
 	button:SetAttribute("fc-ticks", 0)
 	button:SetAttribute("_onattributechanged", S.TriggerAttribute)
@@ -265,6 +266,7 @@ end
 local function CreateCycle(name, step, raidOnly)
 	local button = CreateSecureButton(name, S.CyclePreClick, "PreClick")
 	button:RegisterForClicks("AnyDown")
+	button:SetAttribute("type", "target")
 	button:SetAttribute("fc-step", step)
 	button:SetAttribute("fc-raidOnly", raidOnly and 1 or 0)
 end
@@ -279,6 +281,7 @@ end
 local function CreateFrameMove(name, dx, dy)
 	local button = CreateSecureButton(name, S.FrameMovePreClick, "PreClick")
 	button:RegisterForClicks("AnyDown")
+	button:SetAttribute("type", "target")
 	button:SetAttribute("fc-dx", dx)
 	button:SetAttribute("fc-dy", dy)
 end
@@ -864,6 +867,7 @@ function ns.CreateInput()
 	driver:SetAttribute("OnTrigger", S.OnTrigger)
 	driver:SetAttribute("SetSoft", S.SetSoft)
 	driver:SetAttribute("CycleGroup", S.CycleGroup)
+	driver:SetAttribute("SelectGroupUnit", S.SelectGroupUnit)
 	driver:SetAttribute("MoveFrameCursor", S.MoveFrameCursor)
 	driver:SetAttribute("OpenFlyout", S.OpenFlyout)
 	driver:SetAttribute("CloseFlyout", S.CloseFlyout)
@@ -1165,6 +1169,13 @@ function ns.Sync()
 	driver:SetAttribute("fc-w4", db.wxhbFourSlots and 1 or 0)
 	driver:SetAttribute("fc-dpadParty", db.dpadParty)
 	driver:SetAttribute("fc-dpadTarget", db.dpadTarget)
+	local partyTargeting = driver:GetAttribute("fc-partyTargeting")
+	driver:SetAttribute("fc-partyTargeting", db.partyTargeting)
+	if partyTargeting and partyTargeting ~= db.partyTargeting then
+		driver:SetAttribute("fc-cycle-party", nil)
+		driver:SetAttribute("fc-cycle-raid", nil)
+		SecureHandlerExecute(driver, [[ self:RunAttribute("SetSoft", "") ]])
+	end
 	if driver:GetAttribute("fc-triggerMode") ~= db.triggerMode then
 		driver:SetAttribute("fc-triggerMode", db.triggerMode)
 		driver:SetAttribute("fc-latch", "")

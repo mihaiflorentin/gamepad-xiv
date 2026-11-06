@@ -56,6 +56,13 @@ local function GetMenuRows()
 			onClick = function() SetSetting("dpadParty", mode) end,
 		}
 	end
+	local function PartyTargetingRow(mode, label)
+		return {
+			text = "Party targeting: " .. label,
+			isChecked = function() return ns.db.partyTargeting == mode end,
+			onClick = function() SetSetting("partyTargeting", mode) end,
+		}
+	end
 	return {
 		{ text = "Edit crossbar", onClick = function() ns.ToggleEditor() end, closes = true },
 		{ text = "Move bars", onClick = function() ns.ToggleMove() end, closes = true },
@@ -83,6 +90,8 @@ local function GetMenuRows()
 		DpadRow("off", "Off"),
 		DpadRow("raid", "In a raid"),
 		DpadRow("always", "Always"),
+		PartyTargetingRow("soft", "Soft"),
+		PartyTargetingRow("hard", "Hard"),
 		{ text = "Reset bar positions", onClick = function() ns.ResetPositions() end, closes = true },
 		{ text = "Hide minimap icon", onClick = function() SetMinimapShown(false) end, closes = true },
 	}

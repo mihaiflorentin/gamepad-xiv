@@ -95,6 +95,15 @@ function ns.CreateConfig()
 			return container:GetData()
 		end, "Off: D-pad left and right take turns between enemies and friendlies. In a raid or Always: the whole D-pad moves over the party and raid frames on screen.")
 	end
+	do
+		local setting = AddSetting("partyTargeting", "Party targeting", Settings.VarType.String, defaults.partyTargeting, ns.Sync)
+		Settings.CreateDropdown(category, setting, function()
+			local container = Settings.CreateControlTextContainer()
+			container:Add("soft", "Soft")
+			container:Add("hard", "Hard")
+			return container:GetData()
+		end, "Soft: selecting a party or raid member sets a temporary target for the next ability, and your real target stays. Hard: it changes your real target.")
+	end
 
 	layout:AddInitializer(CreateSettingsListSectionHeaderInitializer("Crossbar"))
 	AddSlider("scale", "Scale", defaults.scale, 0.5, 1.5, 0.05, nil, ns.Sync)
