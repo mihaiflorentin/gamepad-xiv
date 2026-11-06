@@ -130,8 +130,12 @@ S.ApplyLayer = [[
 	end
 
 	if active then
-		self:SetBinding(priority, "PADRSHOULDER", "TARGETNEARESTENEMY")
-		self:SetBinding(priority, "PADLSHOULDER", "TARGETPREVIOUSENEMY")
+		-- Forever opens its pet menus from R1 + R2 and L1 + L2, so pet classes keep those two free.
+		local petChords = self:GetAttribute("fc-petChords") == 1
+		local rightHeld = active == "R" or active == "WR"
+		local leftHeld = active == "L" or active == "WL"
+		self:SetBinding(priority, "PADRSHOULDER", (petChords and rightHeld) and "NONE" or "TARGETNEARESTENEMY")
+		self:SetBinding(priority, "PADLSHOULDER", (petChords and leftHeld) and "NONE" or "TARGETPREVIOUSENEMY")
 		self:SetBindingClick(priority, "PADBACK", "GamepadXIVEditToggle", "LeftButton")
 		self:SetBindingClick(priority, "PADFORWARD", "GamepadXIVConfigToggle", "LeftButton")
 	elseif layer == "L1" then

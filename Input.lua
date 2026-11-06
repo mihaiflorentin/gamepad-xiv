@@ -913,6 +913,18 @@ function ns.CreateInput()
 	local pageButton = pageUnit and pageUnit.PageTracker and pageUnit.PageTracker.ChangePageButton
 	driver:SetAttribute("fc-numPages", 3)
 
+	-- Forever turns these two buttons into the pet menus for hunters and warlocks, on the bar this
+	-- addon hides. They keep working from Forever's own chords, so only their art has to stay visible.
+	local className = UnitClassBase("player")
+	if pageUnit and (className == "HUNTER" or className == "WARLOCK") then
+		driver:SetAttribute("fc-petChords", 1)
+		for _, key in ipairs({ "LeftClassAction", "RightClassAction", "LeftInputPrompt", "RightInputPrompt" }) do
+			if pageUnit[key] then
+				pageUnit[key]:SetIgnoreParentAlpha(true)
+			end
+		end
+	end
+
 	for n = 1, #FLYOUT_KEYS do
 		local pick = CreateSecureButton("GamepadXIVFlyoutPick" .. n)
 		pick:SetAttribute("type", "spell")

@@ -180,6 +180,14 @@ The menu closes on a click elsewhere and when you enter combat. Using the minima
 | `/fc minimap` | shows or hides the minimap icon |
 | `/fc debug` | reports bindings, CVars and the sticks for 10 seconds |
 
+## Pets
+
+Forever gives hunters and warlocks two round buttons near the bottom of the screen instead of a pet bar, and they stay visible with this addon:
+
+- **L1 + L2** opens the pet commands, and **R1 + R2** opens the pet spells.
+- Press both buttons together to open a menu, then aim with the right stick. Any other button press closes it, as in Forever.
+- For these two classes, L2 + L1 and R2 + R1 no longer change target. L2 + R1 and R2 + L1 still do.
+
 ## Face target
 
 FFXIV turns your character toward the target whenever you use an attack. WoW has no way for an addon to do exactly that, so `Face target (turn toward the enemy)` near the top of the settings is the closest option:
@@ -204,6 +212,8 @@ The client asks you to confirm experimental camera features the first time. The 
 | D-pad left / right | WoW's tab target: previous / next enemy (real target) |
 | D-pad up / down | temporary target through the party, starting with yourself |
 | L2 or R2 + R1 / L1 | next / previous enemy |
+| L1 + L2 | hunters and warlocks: Forever's pet commands (attack, follow and so on) |
+| R1 + R2 | hunters and warlocks: Forever's pet spells |
 | L1 + left stick forward | auto-run |
 | Double tap L1 | party selection: starts with yourself, and the next double tap moves to the next member |
 | L1 + right stick up / down | zoom in / zoom out |
@@ -238,7 +248,6 @@ L1 on its own does nothing: holding it is a layer, like the triggers, and rotati
 - **Abilities are assigned by drag and drop on the crossbar**, not through an FFXIV-style menu. For sets 1-3, Forever's own editor also works (Spellbook, then Y).
 - **Forms without a WoW bonus bar (Travel Form, for example) do not change the set**, and abilities on Forever's stance bar are not copied over. Vehicles and possession hand control back to Forever's bar.
 - **The client's world icon for interact is off**, because it cannot show the right button. Objects and units without a nameplate use the prompt over your character.
-- **Forever's pet bar is not available while the addon is active.** Pet classes can only use it after `/fc off`.
 - **The hidden Forever bar still receives mouse clicks** at the bottom of the screen, even though it is invisible.
 - **Holding R1 and pressing R2 cancels set selection** until you press R1 again.
 - **Face target also moves the camera**, and it and lock-on use an experimental CVar (`test_cameraTargetFocusEnemyEnable`) that may disappear.

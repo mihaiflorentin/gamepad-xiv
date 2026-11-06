@@ -793,5 +793,19 @@ Check("mixed: WXHB release clears", Layer(), "BASE")
 driver.attrs["fc-triggerMode"] = "hold"
 Wait(R2, 3)
 
+-- Hunters and warlocks keep Forever's pet chords free.
+driver.attrs["fc-petChords"] = 1
+R2.press()
+Check("pet chords: R2 leaves R1 free", driver.bindings.PADRSHOULDER, "NONE")
+Check("pet chords: R2 + L1 still targets", driver.bindings.PADLSHOULDER, "TARGETPREVIOUSENEMY")
+R2.release()
+Wait(R2, 3)
+L2.press()
+Check("pet chords: L2 leaves L1 free", driver.bindings.PADLSHOULDER, "NONE")
+Check("pet chords: L2 + R1 still targets", driver.bindings.PADRSHOULDER, "TARGETNEARESTENEMY")
+L2.release()
+Wait(L2, 3)
+driver.attrs["fc-petChords"] = 0
+
 print(failures == 0 and "ALL PASSED" or (failures .. " FAILED"))
 os.exit(failures == 0 and 0 or 1)
