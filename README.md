@@ -4,7 +4,7 @@ An FFXIV-style controller layout for WoW Forever (client 1.60.1, Interface 16001
 It runs on top of Forever's Gamepad UI: action slots, interact, cancel, the radial menu and window navigation stay the game's own.
 Its double tap timing is adapted from [CrossHotbar](https://github.com/ChainStratagem/CrossHotbar) by ChainStratagem; see [Credits and licenses](#credits-and-licenses).
 
-**Status: early testing, on one character so far.** Confirmed in game: the two rows, bar selection, the interact prompt, skinning, the flyout picker and the spellbook bind. Not yet confirmed: L1 zoom, auto-run and double tap, moving and removing an ability, and face target. See the [in-game checklist](#in-game-checklist).
+**Status: early testing.** Confirmed in game: the two rows, bar selection, the interact prompt, skinning, the flyout picker, the spellbook bind, L1 zoom, auto-run, double tap, D-pad targeting and raid frame movement, death and party invite popups, and loot rolls. Not yet confirmed: moving and removing an ability, and face target. See the [in-game checklist](#in-game-checklist). Found a bug? [Report it on CurseForge](https://legacy.curseforge.com/wow/addons/gamepad-xiv/issues).
 
 ## Features
 
@@ -111,6 +111,7 @@ The gap between the D-pad group and the face button group is set in the settings
 Directly on the crossbar, out of combat:
 
 - Drag a spell, item or macro onto any visible slot, on either row. This works at any time, without edit mode.
+- Buttons from other addons can go on the crossbar through a macro. In Forever, `/click` needs `1` at the end to press the button, for example `/click PallyPowerAuto LeftButton 1`; with `Down` or nothing there, the button does not act.
 - Drag a slot off the bar to move it, even when the bars are locked.
 - In the spellbook, the `Bind to Action Bar` button still works and shows this crossbar. Press L2 or R2 + a button. Choosing set 1-3 with R1 also moves Forever's page, so the slot lands on that set. Sets 4-8 are not Forever pages: the slot lands on the page shown at the top, so drag abilities onto those sets instead. The L2+R2 bars of pages 1-3 are sets 4 left, 4 right and 5 left.
 - `/fc edit` or L2/R2 + Back opens edit mode. The arrows choose the set shown on the bottom row, and `Expanded` shows the Expanded Hold bars there. In this mode slots do not cast: click picks up or places an action, and right click clears it.
@@ -278,6 +279,8 @@ L1 on its own does nothing: holding it is a layer, like the triggers, and rotati
 Slots 13-68 are shared with keyboard and mouse mode: whatever you put there also appears on those bars.
 
 ## Reporting problems
+
+Report bugs and ideas on the [CurseForge issue tracker](https://legacy.curseforge.com/wow/addons/gamepad-xiv/issues). Include what happened and what you expected, the steps to get there, the addon version, your controller and your other addons.
 
 The addon keeps its latest 40 Lua errors, from any addon, and its own blocked actions, in `errorLog` inside `WTF/Account/<account>/<realm>/<character>/SavedVariables/GamepadXIV.lua`. Run `/reload` to write the file, then attach that part to your report.
 
