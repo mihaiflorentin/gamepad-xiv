@@ -990,5 +990,25 @@ do
 	ClearSoft()
 end
 
+-- Death popups: face buttons press the popup's buttons, without touching other buttons or layers.
+do
+	local base1, base2, base3 = driver.bindings.PAD1, driver.bindings.PAD2, driver.bindings.PAD3
+	driver.attrs["popup-PAD1"] = "StaticPopup1Button1"
+	driver.attrs["popup-PAD4"] = "StaticPopup1Button4"
+	driver:RunAttribute("ApplyLayer")
+	Check("death popup: A presses the first button", driver.bindings.PAD1, "CLICK StaticPopup1Button1:LeftButton")
+	Check("death popup: Y presses the fourth button", driver.bindings.PAD4, "CLICK StaticPopup1Button4:LeftButton")
+	Check("death popup: B without a button unchanged", driver.bindings.PAD2, base2)
+	Check("death popup: X without a button unchanged", driver.bindings.PAD3, base3)
+	L2.press()
+	Check("death popup: L2 still casts", driver.bindings.PAD1 ~= "CLICK StaticPopup1Button1:LeftButton", true)
+	L2.release()
+	Wait(L2, 3)
+	driver.attrs["popup-PAD1"] = nil
+	driver.attrs["popup-PAD4"] = nil
+	driver:RunAttribute("ApplyLayer")
+	Check("death popup gone: A back", driver.bindings.PAD1, base1)
+end
+
 print(failures == 0 and "ALL PASSED" or (failures .. " FAILED"))
 os.exit(failures == 0 and 0 or 1)

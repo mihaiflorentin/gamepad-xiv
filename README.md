@@ -148,7 +148,7 @@ Open them with `/fc config`, L2/R2 + Start, the minimap icon, or Options > AddOn
 | Party targeting | Soft or Hard: whether party selection sets a temporary target or your real target | Soft |
 | WXHB swaps face buttons only | keeps the D-pad on the bottom row during a double tap (4 slots) | off |
 | Double tap window | window in 0.2 s steps (2-4) | 2 |
-| Hold B to walk | walks while B is held | on |
+| Hold B / Circle to walk | walks while the button is held | on |
 | Priority bindings | use only if R2 does not change the bar | off |
 
 ## Minimap icon
@@ -244,6 +244,10 @@ FFXIV reference: [Controls](https://ffxiv.consolegameswiki.com/wiki/Controls) an
 **The temporary target (soft target)** is used for party and raid, as in FFXIV: the next ability goes to it, your real target stays unchanged, and after the ability you return to your real target. A confirms it and B cancels it.
 
 **Party targeting:** set it to `Hard` and party selection (D-pad and double tap L1) changes your real target instead, with no temporary target. The name above the crossbar and the gold outline do not appear, and every press moves on from the last frame or member, even if you have targeted something else since.
+
+**Death, resurrection and party invite popups:** Forever does not focus these by itself, so about a second after one appears, the face buttons press its buttons directly, as shown below the popup in your controller's art. For example, A / Cross releases your spirit and Y / Triangle opens the recap. The wait keeps a button press meant for the fight from answering it. Anything that shows up in combat gets this when combat ends.
+
+**Loot rolls:** Forever does not focus the roll window by itself, so press Back with no L2/R2 held, as the prompt below the window shows, then use the buttons it shows, such as A / Cross for Need and B / Circle for Pass. This also works in combat.
 
 L1 on its own does nothing: holding it is a layer, like the triggers, and rotation stops so the right stick only zooms.
 

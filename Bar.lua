@@ -253,7 +253,6 @@ function ns.CreateBar()
 	root.softText:SetPoint("BOTTOM", root, "CENTER", 0, 84)
 	root.softHint = root:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	root.softHint:SetPoint("TOP", root.softText, "BOTTOM", 0, -2)
-	root.softHint:SetText("Next ability goes here. A: make target. B: cancel.")
 	root.softHint:Hide()
 
 	-- Border on the unit frame of the temporary target.
@@ -403,6 +402,8 @@ function ns.ShowSoftTarget(unit)
 	local root = ns.root
 	root.softBorder:Hide()
 	root.softHint:SetShown(unit ~= "")
+	root.softHint:SetText(format("Next ability goes here. %s make target. %s cancel.",
+		ns.ButtonMarkup("PAD1", "A / Cross:"), ns.ButtonMarkup("PAD2", "B / Circle:")))
 	if unit == "" then
 		root.softText:SetText("")
 		return

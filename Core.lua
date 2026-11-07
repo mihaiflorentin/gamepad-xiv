@@ -115,6 +115,15 @@ local function BuildSideSlots()
 	return sides
 end
 
+-- A controller button as text, in the art of the controller in use. The fallback covers no controller.
+function ns.ButtonMarkup(key, fallback, size)
+	local utility = InputIconTextureSetUtility
+	if utility and utility.GetActiveInputIconButtonTextures(key) then
+		return CreateAtlasMarkup(utility.GetNormalActiveInputIconButtonTexture(key), size or 18, size or 18)
+	end
+	return fallback
+end
+
 -- Keeps the latest errors in the saved variables, so a report does not depend on copying them by hand.
 local MAX_LOGGED_ERRORS = 40
 local pendingErrors = {}

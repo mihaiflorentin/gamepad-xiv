@@ -263,6 +263,94 @@ local function CreateL1()
 	RegisterAttributeDriver(button, "fc-ready", 1)
 end
 
+-- The popups Forever does not focus by itself that need a quick answer from the controller.
+-- Going through Forever's focus for them left its bindings blocking the controller after answering.
+local ANSWERED_POPUPS = {
+	DEATH = true, RESURRECT = true, RESURRECT_NO_SICKNESS = true, RESURRECT_NO_TIMER = true,
+	SKINNED_REPOP = true, RECOVER_CORPSE = true, RECOVER_CORPSE_INSTANCE = true, AREA_SPIRIT_HEAL = true,
+	PARTY_INVITE = true,
+}
+local POPUP_KEYS = { PAD1 = "GetButton1", PAD2 = "GetButton2", PAD3 = "GetButton3", PAD4 = "GetButton4" }
+local POPUP_KEY_ORDER = { "PAD1", "PAD2", "PAD3", "PAD4" }
+local POPUP_KEY_NAMES = { PAD1 = "A / Cross", PAD2 = "B / Circle", PAD3 = "X / Square", PAD4 = "Y / Triangle" }
+
+local function GetAnsweredPopup()
+	for index = 1, 4 do
+		local popup = _G["StaticPopup" .. index]
+		if popup and popup:IsShown() and ANSWERED_POPUPS[popup.which] then
+			return popup, index
+		end
+	end
+end
+
+local function GetPopupButton(popup, key)
+	local getter = popup and popup[POPUP_KEYS[key]]
+	local button = getter and getter(popup)
+	if button and button:IsShown() then
+		return button
+	end
+end
+
+-- Temporary: what Forever's input stack looks like around these popups. /reload makes it readable.
+local function DescribeInputState()
+	local parts = {}
+	local manager = GamepadMode and GamepadMode.FrameControlsManager
+	if manager then
+		local focused = manager.focusedFrame
+		tinsert(parts, "uiFocused=" .. tostring(manager.isUIFocused))
+		tinsert(parts, "focused=" .. tostring(focused and focused.GetName and focused:GetName()))
+		tinsert(parts, "shown=" .. #manager.shownFrames)
+		tinsert(parts, "catcher=" .. tostring(manager.fallThroughCatcherActive))
+	end
+	local stack = {}
+	local bindings = GamepadSharedUtility and GamepadSharedUtility.InputBindingManager
+	for _, set in ipairs(bindings and bindings.bindingSetStack or {}) do
+		tinsert(stack, tostring(set.name))
+	end
+	tinsert(parts, "stack=[" .. table.concat(stack, ",") .. "]")
+	for _, key in ipairs({ "PAD1", "PAD2", "PADDDOWN", "PADBACK" }) do
+		tinsert(parts, key .. "=" .. tostring(GetBindingAction(key, true)))
+	end
+	return table.concat(parts, " ")
+end
+
+local function LogInputState(reason)
+	local log = ns.db.popupLog or {}
+	ns.db.popupLog = log
+	tinsert(log, date("%H:%M:%S") .. " " .. reason .. " " .. DescribeInputState())
+	if #log > 60 then
+		tremove(log, 1)
+	end
+end
+
+local popupHint
+
+-- Stays on what the bindings really do: in combat they only change when combat ends.
+local function UpdatePopupHint()
+	local index = driver:GetAttribute("fc-answeredPopup") or 0
+	local popup = index > 0 and _G["StaticPopup" .. index]
+	if not popup or not popup:IsShown() or not ns.IsActive() then
+		if popupHint then
+			popupHint:Hide()
+		end
+		return
+	end
+	if not popupHint then
+		popupHint = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	end
+	local parts = {}
+	for _, key in ipairs(POPUP_KEY_ORDER) do
+		local button = GetPopupButton(popup, key)
+		if button then
+			tinsert(parts, ns.ButtonMarkup(key, POPUP_KEY_NAMES[key], 28) .. " " .. (button:GetText() or ""))
+		end
+	end
+	popupHint:SetText(table.concat(parts, "    "))
+	popupHint:ClearAllPoints()
+	popupHint:SetPoint("TOP", popup, "BOTTOM", 0, -8)
+	popupHint:Show()
+end
+
 local function CreateCycle(name, step, raidOnly)
 	local button = CreateSecureButton(name, S.CyclePreClick, "PreClick")
 	button:RegisterForClicks("AnyDown")
@@ -438,6 +526,7 @@ function ns.PrintDebug()
 		Report(key, "=", GetBindingAction(key, true))
 	end
 	ns.PrintInputCVars(Report)
+	Report("input state:", DescribeInputState())
 	local state = GetPadState()
 	Report("pad state:", state and "yes" or "NONE")
 	Report("SoftTargetIconInteract =", GetCVar("SoftTargetIconInteract"), "experimental accepted:", ns.db.experimentalAccepted)
@@ -707,7 +796,7 @@ local function ShowFlyoutPanel(flyoutID)
 			end
 		end
 	end
-	flyoutPanel.cancel:SetText("B / Circle: cancel")
+	flyoutPanel.cancel:SetText(ns.ButtonMarkup("PAD2", "B / Circle:") .. " cancel")
 	flyoutPanel:SetSize(300, 54 + #spells * 40)
 	flyoutPanel:Show()
 end
@@ -1022,6 +1111,43 @@ function ns.CreateInput()
 		hooksecurefunc(manager, "ClearBindings", function() ns.Sync() end)
 	end
 
+	-- A timer leaves Blizzard's popup code before anything here runs. The wait after one appears
+	-- keeps a button press meant for the fight from answering it, such as releasing by accident.
+	local function OnPopupChanged(popup)
+		C_Timer.After(popup:IsShown() and 1 or 0, function()
+			LogInputState((popup:IsShown() and "shown " or "hidden ") .. tostring(popup.which))
+			local _, index = GetAnsweredPopup()
+			if index or (driver:GetAttribute("fc-answeredPopup") or 0) ~= 0 then
+				ns.Sync()
+			end
+			UpdatePopupHint()
+		end)
+	end
+	for index = 1, 4 do
+		local popup = _G["StaticPopup" .. index]
+		if popup then
+			popup:HookScript("OnShow", OnPopupChanged)
+			popup:HookScript("OnHide", OnPopupChanged)
+		end
+	end
+
+	-- Forever shows loot rolls without focus, and nothing on screen says Back is what focuses them.
+	local lootFrame = GamepadGroupLootRollFrame
+	if lootFrame then
+		local lootHint = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+		lootHint:SetPoint("TOP", lootFrame, "BOTTOM", 0, -8)
+		lootHint:Hide()
+		lootFrame:HookScript("OnShow", function()
+			lootHint:SetText(ns.ButtonMarkup("PADBACK", "Back", 28) .. " Roll on loot")
+			lootHint:SetShown(ns.IsActive())
+			C_Timer.After(0, function() LogInputState("loot shown") end)
+		end)
+		lootFrame:HookScript("OnHide", function()
+			lootHint:Hide()
+			C_Timer.After(0, function() LogInputState("loot hidden") end)
+		end)
+	end
+
 	-- Forever's own bar editor needs its triggers and bar back while it is open.
 	if GamepadActionBarEditFrame then
 		GamepadActionBarEditFrame:HookScript("OnShow", function()
@@ -1169,6 +1295,12 @@ function ns.Sync()
 	driver:SetAttribute("fc-w4", db.wxhbFourSlots and 1 or 0)
 	driver:SetAttribute("fc-dpadParty", db.dpadParty)
 	driver:SetAttribute("fc-dpadTarget", db.dpadTarget)
+	local answeredPopup, answeredPopupIndex = GetAnsweredPopup()
+	driver:SetAttribute("fc-answeredPopup", answeredPopupIndex or 0)
+	for _, key in ipairs(POPUP_KEY_ORDER) do
+		local button = GetPopupButton(answeredPopup, key)
+		driver:SetAttribute("popup-" .. key, button and button:GetName() or nil)
+	end
 	local partyTargeting = driver:GetAttribute("fc-partyTargeting")
 	driver:SetAttribute("fc-partyTargeting", db.partyTargeting)
 	if partyTargeting and partyTargeting ~= db.partyTargeting then
@@ -1206,4 +1338,5 @@ function ns.Sync()
 		self:RunAttribute("UpdateForm")
 		self:RunAttribute("UpdateYield")
 	]])
+	UpdatePopupHint()
 end

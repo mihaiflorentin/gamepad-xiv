@@ -157,7 +157,7 @@ function ns.CreateConfig()
 		"The D-pad keeps the bottom row while the double tap row is selected.", ns.Sync)
 	AddSlider("doubleTapTicks", "Double tap window", defaults.doubleTapTicks, 2, 4, 1,
 		"In 0.2 second steps: 2 is about 0.2-0.4 seconds, and it can be shorter in combat.", ns.Sync)
-	AddCheckbox("holdToWalk", "Hold B to walk", defaults.holdToWalk, nil, ns.Sync)
+	AddCheckbox("holdToWalk", "Hold B / Circle to walk", defaults.holdToWalk, nil, ns.Sync)
 	AddCheckbox("priorityBindings", "Priority bindings", defaults.priorityBindings,
 		"Turn on only if R2 does not change the bar. Then check that menus can still be navigated.", ns.Sync)
 

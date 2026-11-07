@@ -95,7 +95,13 @@ S.ApplyLayer = [[
 			if soft ~= "" then
 				action = self:GetAttribute("soft-" .. key) or action
 			end
-			self:SetBinding(priority, key, action)
+			-- Forever leaves some popups unfocused, such as death and party invites, so their buttons get pressed directly.
+			local popupButton = self:GetAttribute("popup-" .. key)
+			if popupButton then
+				self:SetBindingClick(priority, key, popupButton, "LeftButton")
+			else
+				self:SetBinding(priority, key, action)
+			end
 		end
 	end
 
