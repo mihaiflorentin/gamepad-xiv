@@ -431,10 +431,11 @@ end
 -- L1 + right stick zooms. Rotation is frozen while L1 is held, so the stick only zooms.
 local function CreateZoomWatcher()
 	local watcher = CreateFrame("Frame")
-	local DEAD_ZONE = 0.2
-	local ZOOM_PER_SECOND = 15
-	local MIN_STEP = 0.25
-	local pending = 0
+	-- Past the dead zone the speed starts from zero and grows with the square of the push,
+	-- so a light push zooms finely and a full push quickly. Each frame zooms a little, which the
+	-- camera blends smoothly; batching into larger steps made it jerky.
+	local DEAD_ZONE = 0.15
+	local MAX_ZOOM_PER_SECOND = 25
 	local frozen = false
 
 	local function SetFrozen(freeze)
@@ -455,19 +456,18 @@ local function CreateZoomWatcher()
 		local active = ns.l1Held and ns.IsActive()
 		SetFrozen(active and true or false)
 		if not active then
-			pending = 0
 			return
 		end
 		local y = GetCameraStickY(GetPadState())
-		if math.abs(y) > DEAD_ZONE then
-			pending = pending + ZOOM_PER_SECOND * y * elapsed
+		local push = (math.abs(y) - DEAD_ZONE) / (1 - DEAD_ZONE)
+		if push <= 0 then
+			return
 		end
-		if pending >= MIN_STEP then
-			CameraZoomIn(pending)
-			pending = 0
-		elseif pending <= -MIN_STEP then
-			CameraZoomOut(-pending)
-			pending = 0
+		local amount = MAX_ZOOM_PER_SECOND * math.min(push, 1) ^ 2 * elapsed
+		if y > 0 then
+			CameraZoomIn(amount)
+		else
+			CameraZoomOut(amount)
 		end
 	end)
 end
@@ -999,6 +999,7 @@ function ns.CreateInput()
 	CreateTrigger("GamepadXIVL2", "L")
 	CreateTrigger("GamepadXIVR2", "R")
 	CreateL1()
+	CreateSecureButton("GamepadXIVStickUp", S.StickUpClick)
 	CreateSecureButton("GamepadXIVR1", S.R1Click)
 	CreateCycle("GamepadXIVPartyPrev", -1, false)
 	CreateCycle("GamepadXIVPartyNext", 1, false)

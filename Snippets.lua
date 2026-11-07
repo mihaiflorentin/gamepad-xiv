@@ -158,7 +158,12 @@ S.ApplyLayer = [[
 		self:SetBinding(priority, "PADFORWARD", "SCREENSHOT")
 	else
 		self:SetBindingClick(priority, "PADRSHOULDER", "GamepadXIVR1", "LeftButton")
-		self:SetBindingClick(priority, "PADLSHOULDER", "GamepadXIVL1", "LeftButton")
+		-- Already moving forward, L1 starts auto-run instead of its layer.
+		if self:GetAttribute("fc-stickUp") == 1 then
+			self:SetBinding(priority, "PADLSHOULDER", "TOGGLEAUTORUN")
+		else
+			self:SetBindingClick(priority, "PADLSHOULDER", "GamepadXIVL1", "LeftButton")
+		end
 		self:SetBinding(priority, "PADBACK", "TOGGLEUIFOCUS")
 		self:SetBinding(priority, "PADFORWARD", "OPENRADIAL")
 	end
@@ -167,13 +172,13 @@ S.ApplyLayer = [[
 	if active then
 		-- Trigger + R3 moves or removes an ability, standing in for FFXIV's trigger + touchpad.
 		self:SetBindingClick(priority, "PADRSTICK", "GamepadXIVClearStart", "LeftButton")
-		self:ClearBinding("PADLSTICKUP")
+		self:SetBindingClick(priority, "PADLSTICKUP", "GamepadXIVStickUp", "LeftButton")
 	elseif layer == "L1" then
 		self:SetBindingClick(priority, "PADRSTICK", "GamepadXIVCursor", "LeftButton")
 		self:SetBinding(priority, "PADLSTICKUP", "TOGGLEAUTORUN")
 	else
 		self:SetBindingClick(priority, "PADRSTICK", "GamepadXIVView", "LeftButton")
-		self:ClearBinding("PADLSTICKUP")
+		self:SetBindingClick(priority, "PADLSTICKUP", "GamepadXIVStickUp", "LeftButton")
 	end
 
 	self:CallMethod("OnLayerChanged", layer, left, right, set, form)
@@ -274,6 +279,7 @@ S.UpdateYield = [[
 		self:SetAttribute("fc-consumed", "")
 		self:SetAttribute("fc-layer", "BASE")
 		self:SetAttribute("fc-flyout", "")
+		self:SetAttribute("fc-stickUp", 0)
 		if self:GetAttribute("fc-clear") ~= 0 then
 			self:RunAttribute("SetClear", 0)
 		end
@@ -643,6 +649,16 @@ S.L1Click = [[
 		driver:SetAttribute("fc-realPick", nil)
 	else
 		self:SetAttribute("fc-ticks", driver:GetAttribute("fc-tapTicks"))
+	end
+]]
+
+-- Left stick pushed forward: only tracked, so L1 can start auto-run while already moving.
+S.StickUpClick = [[
+	local driver = self:GetFrameRef("driver")
+	local value = down and 1 or 0
+	if driver:GetAttribute("fc-stickUp") ~= value then
+		driver:SetAttribute("fc-stickUp", value)
+		driver:RunAttribute("ApplyLayer")
 	end
 ]]
 

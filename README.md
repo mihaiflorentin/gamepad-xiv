@@ -18,7 +18,7 @@ Its double tap timing is adapted from [CrossHotbar](https://github.com/ChainStra
 - **Targeting:** enemies and friendlies in turn on D-pad left/right, tab target on R1 + L2 and L1 + R2; camera lock-on on L3; a soft target for party and raid members.
 - **Party selection:** double tap L1 or use the D-pad, with the name above the crossbar and a gold outline on the member's frame.
 - **Face target:** an optional, experimental setting that turns your character toward the enemy when casting.
-- **Camera and movement:** L1 + right stick zoom, L1 + left stick forward auto-run, hold B to walk, Y / B to ascend and descend, first / third person on R3.
+- **Camera and movement:** L1 + right stick zoom, L1 + left stick forward auto-run (in either order), hold B to walk, Y / B to ascend and descend, first / third person on R3.
 - **Interact prompt:** A / Cross in your controller's art, with the action's icon (loot, talk, skinning, mining, herbalism) and the target's name, over your character (movable) and on nameplates.
 - **Flyouts:** spells like Aspect open a controller picker, with each choice on a button and B / Circle to cancel, including in combat.
 - **Menus:** map, character, spellbook and inventory on L1 + a face button, with context-sensitive X and A.
@@ -220,7 +220,7 @@ The client asks you to confirm experimental camera features the first time. The 
 | L2 or R2 + R1 / L1 | next / previous enemy |
 | L1 + L2 | hunters and warlocks: Forever's pet commands (attack, follow and so on) |
 | R1 + R2 | hunters and warlocks: Forever's pet spells |
-| L1 + left stick forward | auto-run |
+| L1 + left stick forward | auto-run, whichever you press first |
 | Double tap L1 | party selection: starts with yourself, and the next double tap moves to the next member |
 | L1 + right stick up / down | zoom in / zoom out |
 | L1 + R1 | draw / sheathe weapon; on a mount, dismount; while flying, descend |

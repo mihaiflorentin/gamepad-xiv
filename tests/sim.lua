@@ -563,7 +563,7 @@ do
 	L1Wait(4)
 
 	-- Held L1 is a layer.
-	Check("no L1: left stick forward unbound", driver.bindings.PADLSTICKUP, nil)
+	Check("no L1: left stick forward is tracked", driver.bindings.PADLSTICKUP, "CLICK GamepadXIVStickUp:LeftButton")
 	Check("no L1: R3 is the view", driver.bindings.PADRSTICK, "CLICK GamepadXIVView:LeftButton")
 	Press()
 	Check("L1 held: layer", Layer(), "L1")
@@ -583,7 +583,7 @@ do
 	unitsThatExist.mounted = nil
 	Release()
 	Check("L1 release: base", Layer(), "BASE")
-	Check("L1 release: stick free", driver.bindings.PADLSTICKUP, nil)
+	Check("L1 release: stick tracked again", driver.bindings.PADLSTICKUP, "CLICK GamepadXIVStickUp:LeftButton")
 	Check("L1 release: R2 selects", driver.bindings.PADRTRIGGER, "CLICK GamepadXIVR2:LeftButton")
 	L1Wait(4)
 	R2.press()
@@ -1008,6 +1008,23 @@ do
 	driver.attrs["popup-PAD4"] = nil
 	driver:RunAttribute("ApplyLayer")
 	Check("death popup gone: A back", driver.bindings.PAD1, base1)
+end
+
+-- Moving forward, then L1: auto-run instead of the L1 layer.
+do
+	local stick, stickFn = RunButton(S.StickUpClick)
+	stickFn(stick, "LeftButton", true)
+	Check("stick forward: L1 starts auto-run", driver.bindings.PADLSHOULDER, "TOGGLEAUTORUN")
+	stickFn(stick, "LeftButton", false)
+	Check("stick back: L1 is its layer again", driver.bindings.PADLSHOULDER, "CLICK GamepadXIVL1:LeftButton")
+	stickFn(stick, "LeftButton", true)
+	L2.press()
+	Check("stick forward + L2: L1 keeps the L2 chord", driver.bindings.PADLSHOULDER ~= "TOGGLEAUTORUN", true)
+	Check("stick forward + L2: stick still tracked", driver.bindings.PADLSTICKUP, "CLICK GamepadXIVStickUp:LeftButton")
+	stickFn(stick, "LeftButton", false)
+	L2.release()
+	Wait(L2, 3)
+	Check("after L2: L1 is its layer", driver.bindings.PADLSHOULDER, "CLICK GamepadXIVL1:LeftButton")
 end
 
 print(failures == 0 and "ALL PASSED" or (failures .. " FAILED"))
