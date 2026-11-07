@@ -44,4 +44,5 @@ jobs:
           name: GamepadXIV
           path: .release/*.zip
           include-hidden-files: true # .release is a dot folder, which is skipped otherwise
-          if-no-files-found: error
+          # A main push that arrives with its release tag builds nothing: the packager leaves it to the tag's run.
+          if-no-files-found: ${{ startsWith(github.ref, 'refs/tags/') && 'error' || 'warn' }}
