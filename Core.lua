@@ -210,6 +210,8 @@ end
 local function InitDB()
 	GamepadXIVDB = GamepadXIVDB or {}
 	GamepadXIVDB.popupLog = nil -- left by 0.1.4's temporary logging
+	GamepadXIVDB.taintTrace = nil -- left by a temporary debug session
+	GamepadXIVDB.targetTrace = nil -- left by an earlier temporary debug session
 	for key, value in pairs(ns.DEFAULTS) do
 		if GamepadXIVDB[key] == nil then
 			GamepadXIVDB[key] = (type(value) == "table") and {} or value

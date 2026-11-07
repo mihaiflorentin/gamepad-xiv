@@ -409,16 +409,23 @@ end
 -- A hidden texture, only for asking the client which cursor a unit has.
 local probeTexture
 
--- Right stick vertical value, by the stick's configured name or else by its raw axis.
+-- Right stick vertical value. The raw "Right" stick comes first: the "Camera" and "Look" sticks are
+-- the game's processed copies, which stay near zero until the stick is pushed far.
+local function GetStickY(state, wanted)
+	for i = 1, state.stickCount do
+		if C_GamePad.StickIndexToConfigName(i - 1) == wanted then
+			return state.sticks[i].y
+		end
+	end
+end
+
 local function GetCameraStickY(state)
 	if not state then
 		return 0
 	end
-	for i = 1, state.stickCount do
-		local name = C_GamePad.StickIndexToConfigName(i - 1)
-		if name == "Camera" or name == "Look" then
-			return state.sticks[i].y
-		end
+	local y = GetStickY(state, "Right") or GetStickY(state, "Camera") or GetStickY(state, "Look")
+	if y then
+		return y
 	end
 	for i = 1, state.axisCount do
 		if C_GamePad.AxisIndexToConfigName(i - 1) == "RStickY" then
@@ -428,15 +435,275 @@ local function GetCameraStickY(state)
 	return 0
 end
 
+-- Back cycles through the interface like FFXIV. Forever's Back only moves between open windows, and
+-- chat and the quest tracker are not windows, so with nothing open it said "No interface frame to
+-- focus". Forever's shortcut bar has buttons that focus the tracker and chat; this addon's crossbars
+-- cover that bar, so Back is pointed at those buttons instead. The binding presses them, so they run
+-- as Forever's own code and nothing of this addon touches the focus manager. In combat Back is
+-- Forever's own again.
+local function CreateBackCycle()
+	local TRACKER_BUTTON, CHAT_BUTTON = "GamepadXIVShortcutTracker", "GamepadXIVShortcutChat"
+	local bar = GamepadMainActionBarFrame and GamepadMainActionBarFrame.PageUnit
+		and GamepadMainActionBarFrame.PageUnit.ShortcutsActionBar
+	if not (bar and bar.dpadTopButton and bar.dpadBottomButton) then
+		return
+	end
+	-- A binding clicks a button by its global name; these buttons have none of their own.
+	_G[TRACKER_BUTTON] = bar.dpadTopButton
+	_G[CHAT_BUTTON] = bar.dpadBottomButton
+
+	local function TrackerHasContents()
+		local tracker = ObjectiveTrackerFrame
+		return tracker and tracker:IsShown() and (not QuestObjectiveTracker or not QuestObjectiveTracker.HasContents
+			or QuestObjectiveTracker:HasContents())
+	end
+
+	local function GetBackClick()
+		local manager = GamepadMode and GamepadMode.FrameControlsManager
+		if not manager then
+			return ""
+		end
+		if manager.isUIFocused then
+			if manager.focusedFrame == ObjectiveTrackerFrame then
+				return CHAT_BUTTON
+			end
+			return ""
+		end
+		if manager.shownFrames and #manager.shownFrames > 0 then
+			return ""
+		end
+		return TrackerHasContents() and TRACKER_BUTTON or CHAT_BUTTON
+	end
+
+	local watcher = CreateFrame("Frame")
+	local elapsedSince = 0
+	local function SetBackClick(click)
+		if click ~= (driver:GetAttribute("fc-backClick") or "") then
+			driver:SetAttribute("fc-backClick", click)
+			if ns.IsActive() then
+				SecureHandlerExecute(driver, [[ self:RunAttribute("ApplyLayer") ]])
+			end
+		end
+	end
+	-- Bindings freeze in combat, and loot rolls and popups need Forever's own Back there, so it gets
+	-- Back for the whole fight. Bindings can still change while this event runs.
+	watcher:RegisterEvent("PLAYER_REGEN_DISABLED")
+	watcher:SetScript("OnEvent", function()
+		SetBackClick("")
+	end)
+	watcher:SetScript("OnUpdate", function(_, elapsed)
+		elapsedSince = elapsedSince + elapsed
+		if elapsedSince < 0.1 or InCombatLockdown() then
+			return
+		end
+		elapsedSince = 0
+		SetBackClick(GetBackClick())
+	end)
+end
+
+-- L1 + R1 on the open world map places a pin at the map cursor, or removes the pin under it, the same
+-- as Forever's own L3. The shoulders are read from the controller state rather than bound, so the
+-- map keeps its own L1 and R1 actions.
+local function CreateMapPinChord()
+	local watcher = CreateFrame("Frame")
+	local wasHeld = false
+	local function IsDown(state, binding)
+		for i = 1, state.buttonCount do
+			if C_GamePad.ButtonIndexToBinding(i - 1) == binding then
+				return state.buttons[i]
+			end
+		end
+		return false
+	end
+	watcher:SetScript("OnUpdate", function()
+		local map = WorldMapFrame
+		if not (map and map:IsVisible() and map.GamepadTryPlaceWaypoint) then
+			wasHeld = false
+			return
+		end
+		local state = GetPadState()
+		local held = state and IsDown(state, "PADLSHOULDER") and IsDown(state, "PADRSHOULDER") or false
+		if held and not wasHeld then
+			map:GamepadTryPlaceWaypoint()
+		end
+		wasHeld = held
+	end)
+end
+
+-- Forever's chat never reports clicks on links (OnHyperlinkClick does not fire, even with the mouse
+-- and links enabled on the window), so clicking an item in chat did nothing. The click does land on
+-- the line's font string, so the link is read from that line and opened the way chat would have.
+-- A line with several links opens the first item-type one.
+-- Link types that only show a tooltip when opened.
+local CHAT_LINK_TYPES = {
+	item = true, spell = true, quest = true, achievement = true, enchant = true, currency = true,
+	talent = true, battlepet = true, battlePetAbil = true, mount = true, keystone = true, instancelock = true,
+}
+
+local function EnableChatLinks()
+	local handled = false
+	local function MarkHandled()
+		handled = true
+	end
+	for i = 1, NUM_CHAT_WINDOWS or 10 do
+		local chatFrame = _G["ChatFrame" .. i]
+		if chatFrame then
+			chatFrame:HookScript("OnHyperlinkClick", MarkHandled)
+		end
+	end
+
+	local function GetChatLine()
+		local focus = GetMouseFoci and GetMouseFoci()[1]
+		if not focus or focus:GetObjectType() ~= "FontString" then
+			return
+		end
+		local container = focus:GetParent()
+		local chatFrame = container and container:GetParent()
+		if not chatFrame or not chatFrame.AddMessage or chatFrame.isUninteractable then
+			return
+		end
+		return chatFrame, focus:GetText()
+	end
+
+	local watcher = CreateFrame("Frame")
+	watcher:RegisterEvent("GLOBAL_MOUSE_DOWN")
+	watcher:RegisterEvent("GLOBAL_MOUSE_UP")
+	watcher:SetScript("OnEvent", function(_, event, button)
+		if event == "GLOBAL_MOUSE_DOWN" then
+			handled = false
+			return
+		end
+		-- Only a left click on an item-type link. Player names and channels open menus, whispers or /who,
+		-- which from addon code are blocked or taint Forever's window focus.
+		if button ~= "LeftButton" then
+			return
+		end
+		local chatFrame, text = GetChatLine()
+		local link, linkText
+		for candidate, candidateText in (text or ""):gmatch("|H(.-)|h(.-)|h") do
+			if CHAT_LINK_TYPES[candidate:match("^([^:]+)")] then
+				link, linkText = candidate, "|H" .. candidate .. "|h" .. candidateText .. "|h"
+				break
+			end
+		end
+		if not link then
+			return
+		end
+		-- Wait a frame: if chat did handle the click itself, it must not be opened twice.
+		C_Timer.After(0, function()
+			if not handled then
+				SetItemRef(link, linkText, button, chatFrame)
+			end
+		end)
+	end)
+end
+
+-- Forever closes an empty chat box as soon as it loses focus, and a Shift-click on an item takes the
+-- focus, so the link had nowhere to go. A Shift-click while the box is open and empty first puts a
+-- space in it, which keeps the box open; the space is taken out again once the link is in.
+local function KeepChatOpenForLinks()
+	-- With chat closed, the link is held and put into the box the next time chat opens. Opening chat
+	-- from this addon's code taints Forever's focus manager, which later blocks an action and shows
+	-- the "blocked from an action" popup, so chat is only ever opened by the player.
+	local PENDING_SECONDS = 30
+	local pendingLink, pendingTime
+	local function HoldLink(link)
+		if type(link) ~= "string" or not IsModifiedClick("CHATLINK") then
+			return
+		end
+		if ChatFrameUtil.GetActiveWindow() then
+			return -- the click already put the link into the open box
+		end
+		if pendingLink == link and pendingTime == GetTime() then
+			return -- both hooks fire for one click
+		end
+		pendingLink, pendingTime = link, GetTime()
+		UIErrorsFrame:AddMessage(link .. " - open chat to post it", 1, 0.82, 0)
+	end
+	local function InsertHeldLink(editBox)
+		if not pendingLink then
+			return
+		end
+		local link, age = pendingLink, GetTime() - pendingTime
+		pendingLink = nil
+		if age > PENDING_SECONDS then
+			return
+		end
+		C_Timer.After(0, function()
+			if editBox:IsShown() and editBox:GetText() == "" then
+				editBox:Insert(link)
+			end
+		end)
+	end
+	if ChatFrameUtil and ChatFrameUtil.GetActiveWindow then
+		if HandleModifiedItemClick then
+			hooksecurefunc("HandleModifiedItemClick", HoldLink)
+		end
+		if ChatFrameUtil.TryInsertChatLink then
+			hooksecurefunc(ChatFrameUtil, "TryInsertChatLink", HoldLink)
+		end
+		for i = 1, NUM_CHAT_WINDOWS or 10 do
+			local editBox = _G["ChatFrame" .. i .. "EditBox"]
+			if editBox then
+				editBox:HookScript("OnEditFocusGained", InsertHeldLink)
+			end
+		end
+	end
+
+	local watcher = CreateFrame("Frame")
+	watcher:RegisterEvent("GLOBAL_MOUSE_DOWN")
+	watcher:SetScript("OnEvent", function(_, _, button)
+		if button ~= "LeftButton" or not IsShiftKeyDown() then
+			return
+		end
+		local editBox = ChatFrameUtil and ChatFrameUtil.GetActiveWindow and ChatFrameUtil.GetActiveWindow()
+		if not editBox or not editBox:IsShown() or editBox:GetText() ~= "" then
+			return
+		end
+		editBox:SetText(" ")
+		C_Timer.After(0.1, function()
+			local text = editBox:GetText()
+			if text == " " then
+				editBox:SetText("")
+			elseif text:sub(1, 1) == " " then
+				editBox:SetText(text:sub(2))
+			end
+		end)
+	end)
+end
+
 -- L1 + right stick zooms. Rotation is frozen while L1 is held, so the stick only zooms.
 local function CreateZoomWatcher()
 	local watcher = CreateFrame("Frame")
-	-- Past the dead zone the speed starts from zero and grows with the square of the push,
-	-- so a light push zooms finely and a full push quickly. Each frame zooms a little, which the
-	-- camera blends smoothly; batching into larger steps made it jerky.
-	local DEAD_ZONE = 0.15
+	-- Past a 1% dead zone the speed starts at a slow crawl and grows with the push, so zooming
+	-- starts as soon as the stick tilts. Each frame zooms a little, which the camera blends
+	-- smoothly; batching into larger steps made it jerky.
+	local DEAD_ZONE = 0.01
+	local MIN_ZOOM_PER_SECOND = 3
 	local MAX_ZOOM_PER_SECOND = 25
 	local frozen = false
+	local SPEED_CVARS = { "GamePadCameraYawSpeed", "GamePadCameraPitchSpeed" }
+
+	-- Temporary CVars did not reach the camera, so the speeds are set for real. The previous values
+	-- are kept in the saved variables until L1 is released, so a reload or crash mid-zoom restores them.
+	local function Restore()
+		local saved = ns.db.frozenCameraSpeeds
+		if not saved then
+			return
+		end
+		local allRestored = true
+		for name, value in pairs(saved) do
+			if not pcall(SetCVar, name, value) then
+				allRestored = false
+			end
+		end
+		if allRestored then
+			ns.db.frozenCameraSpeeds = nil
+		end
+	end
+	Restore()
+	watcher:RegisterEvent("PLAYER_LOGOUT")
+	watcher:SetScript("OnEvent", Restore)
 
 	local function SetFrozen(freeze)
 		if frozen == freeze then
@@ -444,11 +711,17 @@ local function CreateZoomWatcher()
 		end
 		frozen = freeze
 		if freeze then
-			SetTemp("GamePadCameraYawSpeed", "0")
-			SetTemp("GamePadCameraPitchSpeed", "0")
+			local saved = {}
+			for _, name in ipairs(SPEED_CVARS) do
+				saved[name] = GetCVar(name)
+			end
+			ns.db.frozenCameraSpeeds = saved
+			-- 0.1 is the lowest speed the client accepts; lower values are silently ignored.
+			for _, name in ipairs(SPEED_CVARS) do
+				pcall(SetCVar, name, "0.1")
+			end
 		else
-			RemoveTemp("GamePadCameraYawSpeed")
-			RemoveTemp("GamePadCameraPitchSpeed")
+			Restore()
 		end
 	end
 
@@ -463,7 +736,8 @@ local function CreateZoomWatcher()
 		if push <= 0 then
 			return
 		end
-		local amount = MAX_ZOOM_PER_SECOND * math.min(push, 1) ^ 2 * elapsed
+		push = math.min(push, 1)
+		local amount = (MIN_ZOOM_PER_SECOND + (MAX_ZOOM_PER_SECOND - MIN_ZOOM_PER_SECOND) * push ^ 1.5) * elapsed
 		if y > 0 then
 			CameraZoomIn(amount)
 		else
@@ -510,7 +784,8 @@ function ns.PrintDebug()
 	Report("For 10 seconds: hold L1, push the right stick up and down, then the left stick forward.")
 	local remaining = 10
 	local function Sample()
-		Report("L1 layer:", ns.l1Held, "stick:", format("%.2f", GetCameraStickY(GetPadState())),
+		local padState = GetPadState()
+		Report("L1 layer:", ns.l1Held, "stick:", format("%.2f", GetCameraStickY(padState)),
 			"zoom:", format("%.1f", GetCameraZoom()), "soft:", driver:GetAttribute("fc-soft"))
 		local probe = probeTexture
 		for _, unit in ipairs({ "softinteract", "target" }) do
@@ -993,6 +1268,10 @@ function ns.CreateInput()
 	SetupBaseBindings()
 	CreateHelperButtons()
 	CreateZoomWatcher()
+	EnableChatLinks()
+	CreateMapPinChord()
+	CreateBackCycle()
+	KeepChatOpenForLinks()
 	HookInteractPrompt()
 	CreateInteractHud()
 

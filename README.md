@@ -4,7 +4,7 @@ An FFXIV-style controller layout for WoW Forever (client 1.60.1, Interface 16001
 It runs on top of Forever's Gamepad UI: action slots, interact, cancel, the radial menu and window navigation stay the game's own.
 Its double tap timing is adapted from [CrossHotbar](https://github.com/ChainStratagem/CrossHotbar) by ChainStratagem; see [Credits and licenses](#credits-and-licenses).
 
-**Status: early testing.** Confirmed in game: the two rows, bar selection, the interact prompt, skinning, the flyout picker, the spellbook bind, L1 zoom, auto-run, double tap, D-pad targeting and raid frame movement, death and party invite popups, and loot rolls. Not yet confirmed: moving and removing an ability, and face target. See the [in-game checklist](#in-game-checklist). Found a bug? [Report it on CurseForge](https://legacy.curseforge.com/wow/addons/gamepad-xiv/issues).
+**Status: early testing.** Confirmed in game: the two rows, bar selection, the interact prompt, skinning, the flyout picker, the spellbook bind, L1 zoom, auto-run, double tap, D-pad targeting and raid frame movement, death and party invite popups, loot rolls, item links in chat and L1 + R1 map pins. Not yet confirmed: moving and removing an ability, and face target. See the [in-game checklist](#in-game-checklist). Found a bug? [Report it on CurseForge](https://legacy.curseforge.com/wow/addons/gamepad-xiv/issues).
 
 ## Features
 
@@ -18,10 +18,12 @@ Its double tap timing is adapted from [CrossHotbar](https://github.com/ChainStra
 - **Targeting:** enemies and friendlies in turn on D-pad left/right, tab target on R1 + L2 and L1 + R2; camera lock-on on L3; a soft target for party and raid members.
 - **Party selection:** double tap L1 or use the D-pad, with the name above the crossbar and a gold outline on the member's frame.
 - **Face target:** an optional, experimental setting that turns your character toward the enemy when casting.
-- **Camera and movement:** L1 + right stick zoom, L1 + left stick forward auto-run (in either order), hold B to walk, Y / B to ascend and descend, first / third person on R3.
+- **Camera and movement:** L1 + right stick zoom (from a light push, with the camera held still), L1 + left stick forward auto-run (in either order), hold B to walk, Y / B to ascend and descend, first / third person on R3.
 - **Interact prompt:** A / Cross in your controller's art, with the action's icon (loot, talk, skinning, mining, herbalism) and the target's name, over your character (movable) and on nameplates.
 - **Flyouts:** spells like Aspect open a controller picker, with each choice on a button and B / Circle to cancel, including in combat.
 - **Menus:** map, character, spellbook and inventory on L1 + a face button, with context-sensitive X and A.
+- **Chat and map:** click item links in chat, Shift-click items to link them even with chat closed, and L1 + R1 to place a map pin.
+- **Back with nothing open** focuses the quest tracker, then chat, instead of Forever's "No interface frame to focus".
 - **Editing:** drag and drop directly on the crossbar, plus an edit mode for sets that are not on screen, and a controller flow to move or remove an ability.
 - **Layout:** drag each bar anywhere, or all of them together, and set the scale, opacity and the padding between button groups.
 - **Minimap icon:** left click for settings, right click for a menu, drag to move it around the minimap.
@@ -232,7 +234,8 @@ The client asks you to confirm experimental camera features the first time. The 
 | L1 + R3 | virtual cursor |
 | L2 / R2 + R3 | move or remove an ability |
 | Start | Forever's radial (main menu) |
-| Back | focus on open windows (the closest match to the HUD cycle) |
+| Back | focus on open windows; with none open, the quest tracker, then chat (the closest match to the HUD cycle) |
+| L1 + R1 (world map open) | place or remove a map pin, like L3 |
 | L1 + Back / L1 + Start | hide UI / screenshot |
 | L1 + A / B / X / Y | character / spellbook / map / inventory (added by the addon) |
 
@@ -250,7 +253,11 @@ FFXIV reference: [Controls](https://ffxiv.consolegameswiki.com/wiki/Controls) an
 
 **Loot rolls:** Forever does not focus the roll window by itself, so press Back with no L2/R2 held, as the prompt below the window shows, then use the buttons it shows, such as A / Cross for Need and B / Circle for Pass. This also works in combat.
 
-L1 on its own does nothing: holding it is a layer, like the triggers, and rotation stops so the right stick only zooms.
+L1 on its own does nothing: holding it is a layer, like the triggers. While it is held, the right stick only zooms: camera turning drops to 0.1, the lowest the client accepts, and your own speeds come back on release.
+
+**Item links:** left-clicking an item, spell, quest or achievement link in chat opens it (player names are left to Forever); Forever does not pass link clicks to chat, so the addon reads the link from the line you clicked. Shift-click an item with chat open to add its link, even with nothing typed yet. With chat closed, the link is held for 30 seconds and goes into the box when you open chat; the addon does not open chat itself, because that leads to the "blocked from an action" message. In the bags, Y / Triangle then Share in Chat also works.
+
+**Back with nothing open:** Forever's Back only moves between open windows. With none open, Back focuses the quest tracker (or chat, when the tracker is empty or hidden, as with Questie), and from the tracker it moves to chat. B / Circle returns to the game. In combat Back is Forever's own, so loot rolls and popups still work. Questie's own tracker is not supported yet.
 
 **Game settings changed by the addon:** while active, the addon sets `GamePadEmulateShift`, `GamePadEmulateCtrl` and `GamePadEmulateAlt` to `none` and `GamePadStickAxisButtons` to `1`, which saves them to `Config.wtf`. Your original values stay in the addon's data and come back with `/fc off`, or when Forever takes over, for example in a vehicle. If you disable the addon in the AddOns list without `/fc off`, the values stay changed. It also turns off the client's interact icon (`SoftTargetIconInteract`) and the input legend for the session only.
 
@@ -288,7 +295,7 @@ If something does not respond, run `/fc debug`, follow its message for 10 second
 
 If you see "Gamepad XIV has been blocked from an action", choose `Ignore`, and report it with the error log.
 
-**Known issue:** opening the chat with the `/` key can trigger that message, from `SetPreferredGamepadInteractTarget`. The cause is still being investigated. Each blocked action now records, under `tainted` in the error log, which values on that path addon code has written.
+**Known issue:** opening the chat with the `/` key can trigger that message, from `SetPreferredGamepadInteractTarget`. One cause, the addon opening chat itself, was found and removed in 0.1.7; others may remain. Each blocked action now records, under `tainted` in the error log, which values on that path addon code has written.
 
 ## In-game checklist
 

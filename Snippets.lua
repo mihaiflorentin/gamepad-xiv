@@ -164,7 +164,13 @@ S.ApplyLayer = [[
 		else
 			self:SetBindingClick(priority, "PADLSHOULDER", "GamepadXIVL1", "LeftButton")
 		end
-		self:SetBinding(priority, "PADBACK", "TOGGLEUIFOCUS")
+		-- Back cycles like FFXIV: open windows, else the quest tracker, then chat, then back to the game.
+		local backClick = self:GetAttribute("fc-backClick")
+		if backClick and backClick ~= "" then
+			self:SetBindingClick(priority, "PADBACK", backClick, "LeftButton")
+		else
+			self:SetBinding(priority, "PADBACK", "TOGGLEUIFOCUS")
+		end
 		self:SetBinding(priority, "PADFORWARD", "OPENRADIAL")
 	end
 
