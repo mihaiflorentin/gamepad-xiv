@@ -291,38 +291,6 @@ local function GetPopupButton(popup, key)
 	end
 end
 
--- Temporary: what Forever's input stack looks like around these popups. /reload makes it readable.
-local function DescribeInputState()
-	local parts = {}
-	local manager = GamepadMode and GamepadMode.FrameControlsManager
-	if manager then
-		local focused = manager.focusedFrame
-		tinsert(parts, "uiFocused=" .. tostring(manager.isUIFocused))
-		tinsert(parts, "focused=" .. tostring(focused and focused.GetName and focused:GetName()))
-		tinsert(parts, "shown=" .. #manager.shownFrames)
-		tinsert(parts, "catcher=" .. tostring(manager.fallThroughCatcherActive))
-	end
-	local stack = {}
-	local bindings = GamepadSharedUtility and GamepadSharedUtility.InputBindingManager
-	for _, set in ipairs(bindings and bindings.bindingSetStack or {}) do
-		tinsert(stack, tostring(set.name))
-	end
-	tinsert(parts, "stack=[" .. table.concat(stack, ",") .. "]")
-	for _, key in ipairs({ "PAD1", "PAD2", "PADDDOWN", "PADBACK" }) do
-		tinsert(parts, key .. "=" .. tostring(GetBindingAction(key, true)))
-	end
-	return table.concat(parts, " ")
-end
-
-local function LogInputState(reason)
-	local log = ns.db.popupLog or {}
-	ns.db.popupLog = log
-	tinsert(log, date("%H:%M:%S") .. " " .. reason .. " " .. DescribeInputState())
-	if #log > 60 then
-		tremove(log, 1)
-	end
-end
-
 local popupHint
 
 -- Stays on what the bindings really do: in combat they only change when combat ends.
@@ -526,7 +494,6 @@ function ns.PrintDebug()
 		Report(key, "=", GetBindingAction(key, true))
 	end
 	ns.PrintInputCVars(Report)
-	Report("input state:", DescribeInputState())
 	local state = GetPadState()
 	Report("pad state:", state and "yes" or "NONE")
 	Report("SoftTargetIconInteract =", GetCVar("SoftTargetIconInteract"), "experimental accepted:", ns.db.experimentalAccepted)
@@ -1115,7 +1082,6 @@ function ns.CreateInput()
 	-- keeps a button press meant for the fight from answering it, such as releasing by accident.
 	local function OnPopupChanged(popup)
 		C_Timer.After(popup:IsShown() and 1 or 0, function()
-			LogInputState((popup:IsShown() and "shown " or "hidden ") .. tostring(popup.which))
 			local _, index = GetAnsweredPopup()
 			if index or (driver:GetAttribute("fc-answeredPopup") or 0) ~= 0 then
 				ns.Sync()
@@ -1140,11 +1106,9 @@ function ns.CreateInput()
 		lootFrame:HookScript("OnShow", function()
 			lootHint:SetText(ns.ButtonMarkup("PADBACK", "Back", 28) .. " Roll on loot")
 			lootHint:SetShown(ns.IsActive())
-			C_Timer.After(0, function() LogInputState("loot shown") end)
 		end)
 		lootFrame:HookScript("OnHide", function()
 			lootHint:Hide()
-			C_Timer.After(0, function() LogInputState("loot hidden") end)
 		end)
 	end
 
