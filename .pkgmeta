@@ -1,5 +1,10 @@
 package-as: GamepadXIV
 
+# The CurseForge changelog comes from this file instead of the commit messages.
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
 ignore:
   - tests
   - tools

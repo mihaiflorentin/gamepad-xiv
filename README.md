@@ -345,6 +345,8 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
+Before tagging, replace the notes in `CHANGELOG.md` with the new version's: the packager sends that whole file to CurseForge as the changelog, instead of the commit messages.
+
 The repository needs two settings, under Settings > Secrets and variables > Actions:
 
 - Secret `CF_API_TOKEN`: a CurseForge API token.
