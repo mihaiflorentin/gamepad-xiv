@@ -8,7 +8,6 @@ local TAB_LABELS = { "Set", "Expanded" }
 local panel
 local shownTab = TAB_SET
 local shownSet = 1
-local cursorWasOn = false
 
 local function GetTabSides()
 	local db = ns.db
@@ -124,9 +123,6 @@ function ns.OnEditEnded()
 		panel:Hide()
 	end
 	ns.RefreshVisuals()
-	if ns.IsGamepadUI() and not cursorWasOn then
-		SetGamePadCursorControl(false)
-	end
 end
 
 function ns.ToggleEditor()
@@ -142,7 +138,7 @@ function ns.ToggleEditor()
 		return
 	end
 	if not ns.IsActive() then
-		ns.Print("Editing needs the layout to be active. See /fc status.")
+		ns.Print("Editing needs the layout to be active. See /gxiv status.")
 		return
 	end
 
@@ -152,12 +148,6 @@ function ns.ToggleEditor()
 	ns.BeginEdit(GetTabSides())
 	panel:Show()
 	RefreshPanel()
-
-	-- A controller has no pointer otherwise.
-	if ns.IsGamepadUI() then
-		cursorWasOn = IsGamePadCursorControlEnabled()
-		SetGamePadCursorControl(true)
-	end
 end
 
 -- Move mode lives inside the editor, which already brings the cursor and leaves on combat.

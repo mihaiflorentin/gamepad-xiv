@@ -10,9 +10,45 @@ local movers = {}
 local DIAMOND = { { -1, 0 }, { 0, 0.72 }, { 1, 0 }, { 0, -0.72 } }
 
 local GOLD = { 1, 0.82, 0.25 }
-local LAYER_COLORS = { L = GOLD, R = GOLD, WL = GOLD, WR = GOLD, LR = { 0.55, 1, 0.45 }, RL = { 0.55, 1, 0.45 } }
+-- The setting that colors the selected bar's highlight, for each layer.
+local ACTIVE_COLOR_KEYS = {
+	L = "activeColorBottom", R = "activeColorBottom",
+	WL = "activeColorTopLeft", WR = "activeColorTopRight",
+	LR = "activeColorCombo", RL = "activeColorCombo",
+}
 local LAYER_ROW = { L = "L", R = "R", WL = "WL", WR = "WR", LR = "L", RL = "R" }
 local TRIGGER_LABELS = { L = "L2", R = "R2" }
+
+local MEDIA = "Interface\\AddOns\\GamepadXIV\\Media\\"
+
+-- How the selected bar is highlighted.
+ns.ACTIVE_STYLES = {
+	{ "glow", "Big glow" },
+	{ "soft", "Soft glow per group" },
+	{ "ring", "Ring per group" },
+	{ "slots", "Glow per slot" },
+	{ "none", "None" },
+}
+
+-- The selection animation: the highlight swells in and settles while the side stays selected.
+local function AddSelectAnim(texture)
+	local anim = texture:CreateAnimationGroup()
+	local fade = anim:CreateAnimation("Alpha")
+	fade:SetFromAlpha(0)
+	fade:SetToAlpha(0.9)
+	fade:SetDuration(0.14)
+	fade:SetOrder(1)
+	local swell = anim:CreateAnimation("Scale")
+	swell:SetScaleFrom(0.72, 0.72)
+	swell:SetScaleTo(1, 1)
+	swell:SetDuration(0.14)
+	swell:SetOrder(1)
+	anim:SetToFinalAlpha(true)
+	anim.fade = fade
+	texture.anim = anim
+	texture:SetBlendMode("ADD")
+	texture:SetAlpha(0)
+end
 
 -- Small marks in the middle of each cluster of a selected side: a cross for the D-pad, four dots for the face buttons.
 local function CreateClusterMarks(content)
@@ -53,24 +89,23 @@ local function CreateSide(root, row)
 	if not glow:GetAtlas() then
 		glow:SetColorTexture(1, 1, 1, 0.3)
 	end
-	glow:SetBlendMode("ADD")
-	glow:SetAlpha(0)
+	AddSelectAnim(glow)
 	side.glow = glow
 
-	-- Selection animation: the glow swells in and settles while the side stays selected.
-	local anim = glow:CreateAnimationGroup()
-	local fade = anim:CreateAnimation("Alpha")
-	fade:SetFromAlpha(0)
-	fade:SetToAlpha(0.9)
-	fade:SetDuration(0.14)
-	fade:SetOrder(1)
-	local swell = anim:CreateAnimation("Scale")
-	swell:SetScaleFrom(0.72, 0.72)
-	swell:SetScaleTo(1, 1)
-	swell:SetDuration(0.14)
-	swell:SetOrder(1)
-	anim:SetToFinalAlpha(true)
-	side.selectAnim = anim
+	-- The other highlight styles: one soft glow or ring per group of four, or a glow behind each slot.
+	side.highlights = { glow = { glow }, soft = {}, ring = {}, slots = {} }
+	for sign = -1, 1, 2 do
+		local soft = content:CreateTexture(nil, "BACKGROUND")
+		soft:SetTexture(MEDIA .. "cluster_glow")
+		soft.sign = sign
+		AddSelectAnim(soft)
+		tinsert(side.highlights.soft, soft)
+		local ring = content:CreateTexture(nil, "BACKGROUND", nil, 1)
+		ring:SetTexture(MEDIA .. "cluster_ring_glow")
+		ring.sign = sign
+		AddSelectAnim(ring)
+		tinsert(side.highlights.ring, ring)
+	end
 
 	side.label = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	side.label:SetPoint("TOP", content, "TOP", 0, 4)
@@ -98,6 +133,13 @@ local function CreateSide(root, row)
 		rangeTint:AddMaskTexture(button.IconMask)
 		rangeTint:Hide()
 		button.rangeTint = rangeTint
+
+		local slotGlow = content:CreateTexture(nil, "BACKGROUND", nil, 2)
+		slotGlow:SetTexture(MEDIA .. "ring_glow")
+		slotGlow:SetPoint("CENTER", button, "CENTER")
+		slotGlow:SetSize(BUTTON_SIZE * 1.3, BUTTON_SIZE * 1.3)
+		AddSelectAnim(slotGlow)
+		tinsert(side.highlights.slots, slotGlow)
 
 		-- Slots can be dragged out of combat regardless of the action bar lock.
 		-- Blizzard's own handler already covers an unlocked bar or a modified drag.
@@ -170,11 +212,81 @@ local function LayoutSide(side, row, padding)
 		item.texture:ClearAllPoints()
 		item.texture:SetPoint("CENTER", side.marks, "CENTER", item.clusterSign * clusterX + item.x, item.y)
 	end
+	for _, key in ipairs({ "soft", "ring" }) do
+		for _, texture in ipairs(side.highlights[key]) do
+			local size = key == "soft" and 140 or 116
+			texture:ClearAllPoints()
+			texture:SetPoint("CENTER", side.content, "CENTER", texture.sign * clusterX, 0)
+			texture:SetSize(size, size)
+		end
+	end
+	side.clusterX = clusterX
+	ns.ApplyBackground(side)
+end
+
+-- The loot roll window, where the player moved it. Its first anchors are kept so a reset can restore them.
+function ns.PlaceLootFrame()
+	local frame = ns.lootFrame
+	local db = ns.db
+	if not frame or not db or ns.placingLoot then
+		return
+	end
+	if InCombatLockdown() and frame:IsProtected() then
+		return
+	end
+	-- Forever's own anchors, read while the window is still where Forever put it.
+	if not db.lootMoved and not frame.gxivMovedOnce then
+		local points = {}
+		for i = 1, frame:GetNumPoints() do
+			points[i] = { frame:GetPoint(i) }
+		end
+		frame.gxivOriginalPoints = points
+	end
+	ns.placingLoot = true
+	if db.lootMoved then
+		frame:ClearAllPoints()
+		frame:SetPoint("CENTER", UIParent, "CENTER", db.lootX, db.lootY)
+	elseif frame.gxivMovedOnce then
+		frame:ClearAllPoints()
+		for _, point in ipairs(frame.gxivOriginalPoints) do
+			frame:SetPoint(unpack(point))
+		end
+		frame.gxivMovedOnce = nil
+	end
+	if db.lootMoved then
+		frame.gxivMovedOnce = true
+	end
+	ns.placingLoot = false
+end
+
+-- The loot roll window's position from the middle of the screen, in UIParent units.
+local function GetLootPosition()
+	local db = ns.db
+	if db.lootMoved then
+		return db.lootX, db.lootY
+	end
+	local frame = ns.lootFrame
+	local x, y = frame:GetCenter()
+	local parentX, parentY = UIParent:GetCenter()
+	if not x then
+		return 0, 0
+	end
+	local ratio = frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+	return x * ratio - parentX, y * ratio - parentY
+end
+
+local function SetLootPosition(x, y)
+	local db = ns.db
+	if not db.lootMoved then
+		ns.PlaceLootFrame() -- keeps Forever's own anchors before the first move
+	end
+	db.lootMoved, db.lootX, db.lootY = true, x, y
 end
 
 function ns.ApplyLayout()
 	local root = ns.root
 	local db = ns.db
+	ns.PlaceLootFrame()
 	if ns.interactHud then
 		ns.interactHud:ClearAllPoints()
 		ns.interactHud:SetPoint("CENTER", UIParent, "CENTER", db.promptX, db.promptY)
@@ -224,6 +336,10 @@ end
 
 function ns.RefreshVisuals()
 	local root = ns.root
+	ns.ApplyTheme()
+	for _, row in ipairs(ns.ROWS) do
+		ns.ApplyBackground(root.sides[row])
+	end
 	for _, row in ipairs(ns.ROWS) do
 		local side = root.sides[row]
 		side.label:SetShown(ns.db.showSetLabels)
@@ -255,22 +371,16 @@ function ns.CreateBar()
 	root.softHint:SetPoint("TOP", root.softText, "BOTTOM", 0, -2)
 	root.softHint:Hide()
 
-	-- Border on the unit frame of the temporary target.
-	local softBorder = CreateFrame("Frame", nil, UIParent)
-	softBorder:SetFrameStrata("HIGH")
-	softBorder:Hide()
-	for _, edge in ipairs({ { "TOPLEFT", "TOPRIGHT" }, { "BOTTOMLEFT", "BOTTOMRIGHT" }, { "TOPLEFT", "BOTTOMLEFT" }, { "TOPRIGHT", "BOTTOMRIGHT" } }) do
-		local line = softBorder:CreateTexture(nil, "OVERLAY")
-		line:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
-		line:SetPoint(edge[1])
-		line:SetPoint(edge[2])
-		if edge[1]:sub(1, 3) == edge[2]:sub(1, 3) then
-			line:SetHeight(2)
-		else
-			line:SetWidth(2)
-		end
-	end
-	root.softBorder = softBorder
+	root.softBorder = ns.CreateSelectionHighlight()
+	root.targetHighlight = ns.CreateSelectionHighlight()
+	local targetWatcher = CreateFrame("Frame", nil, root)
+	targetWatcher:RegisterEvent("PLAYER_TARGET_CHANGED")
+	targetWatcher:RegisterEvent("GROUP_ROSTER_UPDATE")
+	targetWatcher:RegisterEvent("UNIT_PET")
+	-- Frames can move or appear after these events, so the frame is looked up a moment later.
+	targetWatcher:SetScript("OnEvent", function()
+		C_Timer.After(0.1, ns.UpdateTargetHighlight)
+	end)
 
 	root.editHint = CreateFrame("Frame", nil, root)
 	root.editHint:SetFrameStrata("HIGH")
@@ -308,20 +418,26 @@ function ns.ShowLayer(layer, leftSide, rightSide, set, form)
 	ns.l1Held = layer == "L1"
 
 	local activeRow = not ns.editing and LAYER_ROW[layer]
+	local style = ns.db.activeHighlight or "glow"
+	local r, g, b = ns.ColorByKey(ns.db[ACTIVE_COLOR_KEYS[layer] or "activeColorBottom"])
 	for _, row in ipairs(ns.ROWS) do
 		local side = root.sides[row]
-		if row == activeRow then
-			local color = LAYER_COLORS[layer]
-			side.glow:SetVertexColor(color[1], color[2], color[3])
-			if ns.lastLayer ~= layer then
-				side.selectAnim:Stop()
-				side.selectAnim:Play()
+		for key, textures in pairs(side.highlights) do
+			for _, texture in ipairs(textures) do
+				if row == activeRow and key == style then
+					texture:SetVertexColor(r, g, b)
+					texture.anim.fade:SetToAlpha(ns.db.activeStrength or 0.9)
+					if ns.lastLayer ~= layer then
+						texture.anim:Stop()
+						texture.anim:Play()
+					end
+				else
+					texture.anim:Stop()
+					texture:SetAlpha(0)
+				end
 			end
-		else
-			side.selectAnim:Stop()
-			side.glow:SetAlpha(0)
 		end
-		side.marks:SetShown(row == activeRow)
+		side.marks:SetShown(row == activeRow and ns.db.activeMarks ~= false)
 	end
 	root.editHint:SetShown(activeRow and true or false)
 
@@ -359,9 +475,8 @@ function ns.ShowLayer(layer, leftSide, rightSide, set, form)
 end
 
 local function FindCompactFrame(unit)
-	local compact = CompactPartyFrame and CompactPartyFrame.memberUnitFrames
-	if compact then
-		for _, frame in ipairs(compact) do
+	for _, key in ipairs({ "memberUnitFrames", "petUnitFrames" }) do
+		for _, frame in ipairs(CompactPartyFrame and CompactPartyFrame[key] or {}) do
 			if frame.unit == unit and frame:IsVisible() then
 				return frame
 			end
@@ -391,16 +506,154 @@ local function FindUnitFrame(unit)
 	end
 	if unit == "player" then
 		return PlayerFrame
+	elseif unit == "pet" then
+		return PetFrame and PetFrame:IsVisible() and PetFrame or nil
 	end
 	local index = unit:match("^party(%d)$")
 	frame = index and PartyFrame and PartyFrame["MemberFrame" .. index]
+	local petIndex = unit:match("^partypet(%d)$")
+	local owner = petIndex and PartyFrame and PartyFrame["MemberFrame" .. petIndex]
+	if owner then
+		frame = owner.PetFrame
+	end
 	return frame and frame:IsVisible() and frame or nil
+end
+
+-- Highlight on the selected party or raid member's frame. Styles: "outline" (thin gold border), "thick"
+-- (wide border), "fill" (gold tint with a border) and "pulse" (a border that fades in and out).
+-- Party frames can also get a bobbing arrow outside them, on the left or the right.
+function ns.CreateSelectionHighlight()
+	local highlight = CreateFrame("Frame", nil, UIParent)
+	highlight:SetFrameStrata("HIGH")
+	highlight:Hide()
+
+	highlight.edges = {}
+	for _, edge in ipairs({ { "TOPLEFT", "TOPRIGHT" }, { "BOTTOMLEFT", "BOTTOMRIGHT" }, { "TOPLEFT", "BOTTOMLEFT" }, { "TOPRIGHT", "BOTTOMRIGHT" } }) do
+		local line = highlight:CreateTexture(nil, "OVERLAY")
+		line:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+		line:SetPoint(edge[1])
+		line:SetPoint(edge[2])
+		line.horizontal = edge[1]:sub(1, 3) == edge[2]:sub(1, 3)
+		tinsert(highlight.edges, line)
+	end
+
+	highlight.fill = highlight:CreateTexture(nil, "ARTWORK")
+	highlight.fill:SetAllPoints()
+	highlight.fill:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.35)
+	highlight.fill:SetBlendMode("ADD")
+
+	highlight.pulse = highlight:CreateAnimationGroup()
+	highlight.pulse:SetLooping("BOUNCE")
+	local fade = highlight.pulse:CreateAnimation("Alpha")
+	fade:SetFromAlpha(1)
+	fade:SetToAlpha(0.25)
+	fade:SetDuration(0.6)
+
+	local marker = CreateFrame("Frame", nil, highlight)
+	marker:SetSize(28, 28)
+	marker.arrow = marker:CreateTexture(nil, "OVERLAY")
+	marker.arrow:SetAllPoints()
+	marker.arrow:SetTexture("Interface\\Buttons\\Arrow-Up-Up")
+	marker.bob = marker:CreateAnimationGroup()
+	marker.bob:SetLooping("BOUNCE")
+	marker.move = marker.bob:CreateAnimation("Translation")
+	marker.move:SetDuration(0.45)
+	highlight.marker = marker
+	return highlight
+end
+
+-- Colors offered for the highlight; a list rather than a color picker so the controller can cycle it.
+ns.HIGHLIGHT_COLORS = {
+	{ "gold", "Gold", 1, 0.82, 0.25 },
+	{ "white", "White", 1, 1, 1 },
+	{ "green", "Green", 0.3, 1, 0.3 },
+	{ "cyan", "Cyan", 0.2, 0.95, 1 },
+	{ "blue", "Blue", 0.3, 0.55, 1 },
+	{ "purple", "Purple", 0.75, 0.4, 1 },
+	{ "pink", "Pink", 1, 0.45, 0.8 },
+	{ "red", "Red", 1, 0.25, 0.25 },
+	{ "orange", "Orange", 1, 0.55, 0.1 },
+}
+
+function ns.ColorByKey(key)
+	for _, color in ipairs(ns.HIGHLIGHT_COLORS) do
+		if color[1] == key then
+			return color[3], color[4], color[5]
+		end
+	end
+	return GOLD[1], GOLD[2], GOLD[3]
+end
+
+-- Shows the selected bar's highlight again, after its settings change.
+function ns.RefreshActiveHighlight()
+	ns.lastLayer = nil
+	if ns.lastShown then
+		ns.ShowLayer(unpack(ns.lastShown))
+	end
+end
+
+local function GetHighlightColor()
+	for _, color in ipairs(ns.HIGHLIGHT_COLORS) do
+		if color[1] == ns.db.highlightColor then
+			return color[3], color[4], color[5]
+		end
+	end
+	return GOLD[1], GOLD[2], GOLD[3]
+end
+
+ns.GetHighlightColor = GetHighlightColor
+
+local function ApplyHighlight(highlight, frame, style, side)
+	local red, green, blue = GetHighlightColor()
+	for _, line in ipairs(highlight.edges) do
+		line:SetColorTexture(red, green, blue, 1)
+	end
+	highlight.fill:SetColorTexture(red, green, blue, 0.35)
+	highlight.marker.arrow:SetDesaturated(true)
+	highlight.marker.arrow:SetVertexColor(red, green, blue)
+	local thickness = (style == "thick") and 4 or (style == "pulse") and 3 or 2
+	for _, line in ipairs(highlight.edges) do
+		if line.horizontal then
+			line:SetHeight(thickness)
+		else
+			line:SetWidth(thickness)
+		end
+	end
+	highlight.fill:SetShown(style == "fill")
+	highlight:SetAlpha(1)
+	if style == "pulse" then
+		highlight.pulse:Play()
+	else
+		highlight.pulse:Stop()
+	end
+
+	local marker = highlight.marker
+	marker.bob:Stop()
+	marker:ClearAllPoints()
+	if side == "left" or side == "right" then
+		local pointsRight = side == "left"
+		-- The arrow art points up; it is turned to point at the frame.
+		marker.arrow:SetRotation(pointsRight and -math.pi / 2 or math.pi / 2)
+		marker:SetPoint(pointsRight and "RIGHT" or "LEFT", frame, pointsRight and "LEFT" or "RIGHT", pointsRight and -2 or 2, 0)
+		marker.move:SetOffset(pointsRight and 6 or -6, 0)
+		marker:Show()
+		marker.bob:Play()
+	else
+		marker:Hide()
+	end
+
+	highlight:ClearAllPoints()
+	highlight:SetAllPoints(frame)
+	highlight:Show()
 end
 
 -- Called from the secure driver: unit is "" when no temporary target is set.
 function ns.ShowSoftTarget(unit)
 	local root = ns.root
+	ns.softUnit = unit
 	root.softBorder:Hide()
+	root.softBorder.pulse:Stop()
+	root.softBorder.marker.bob:Stop()
 	root.softHint:SetShown(unit ~= "")
 	root.softHint:SetText(format("Next ability goes here. %s make target. %s cancel.",
 		ns.ButtonMarkup("PAD1", "A / Cross:"), ns.ButtonMarkup("PAD2", "B / Circle:")))
@@ -412,9 +665,61 @@ function ns.ShowSoftTarget(unit)
 	root.softText:SetText(UnitName(unit))
 	local frame = FindUnitFrame(unit)
 	if frame then
-		root.softBorder:ClearAllPoints()
-		root.softBorder:SetAllPoints(frame)
-		root.softBorder:Show()
+		local db = ns.db
+		if IsInRaid() then
+			ApplyHighlight(root.softBorder, frame, db.raidHighlight, "off")
+		else
+			ApplyHighlight(root.softBorder, frame, db.partyHighlight, db.partyMarker)
+		end
+	end
+end
+
+-- With Party targeting on Hard there is no temporary target, so the highlight follows the real target
+-- while it is a party or raid member or one of their pets.
+local function FindGroupTargetUnit()
+	if not UnitExists("target") then
+		return nil
+	end
+	local units = { "player", "pet" }
+	if IsInRaid() then
+		for i = 1, 40 do
+			tinsert(units, "raid" .. i)
+			tinsert(units, "raidpet" .. i)
+		end
+	else
+		for i = 1, 4 do
+			tinsert(units, "party" .. i)
+			tinsert(units, "partypet" .. i)
+		end
+	end
+	for _, unit in ipairs(units) do
+		if UnitExists(unit) and UnitIsUnit(unit, "target") then
+			return unit
+		end
+	end
+end
+
+function ns.UpdateTargetHighlight()
+	local root = ns.root
+	if not (root and root.targetHighlight) then
+		return
+	end
+	local highlight = root.targetHighlight
+	highlight:Hide()
+	highlight.pulse:Stop()
+	highlight.marker.bob:Stop()
+	if ns.db.partyTargeting ~= "hard" or not ns.IsActive() then
+		return
+	end
+	local unit = FindGroupTargetUnit()
+	local frame = unit and FindUnitFrame(unit)
+	if not frame then
+		return
+	end
+	if IsInRaid() then
+		ApplyHighlight(highlight, frame, ns.db.raidHighlight, "off")
+	else
+		ApplyHighlight(highlight, frame, ns.db.partyHighlight, ns.db.partyMarker)
 	end
 end
 
@@ -434,7 +739,7 @@ local function SetWholePosition(x, y)
 	ns.db.x, ns.db.y = x, y
 end
 
-local function CreateMover(anchor, width, height, labelText, strata, getPosition, setPosition)
+local function CreateMover(anchor, width, height, labelText, strata, getPosition, setPosition, scaleFrame)
 	local mover = CreateFrame("Frame", nil, UIParent)
 	mover:SetFrameStrata(strata)
 	mover:SetSize(width, height)
@@ -469,7 +774,7 @@ local function CreateMover(anchor, width, height, labelText, strata, getPosition
 				return
 			end
 			local cursorX, cursorY = GetCursorPosition()
-			local scale = ns.root:GetEffectiveScale()
+			local scale = (scaleFrame or ns.root):GetEffectiveScale()
 			set(startX + (cursorX - startCursorX) / scale, startY + (cursorY - startCursorY) / scale)
 			ns.ApplyLayout()
 		end)
@@ -495,6 +800,9 @@ local function CreateMovers()
 			function(x, y) db.promptX, db.promptY = x, y end)
 		-- Shown only in move mode; the prompt itself is hidden when there is nothing to interact with.
 	end
+	if ns.lootFrame then
+		movers.loot = CreateMover(ns.lootFrame, 300, 80, "LOOT ROLL", "DIALOG", GetLootPosition, SetLootPosition, UIParent)
+	end
 	-- Above every other handle, which can cover the middle of the screen.
 	movers.all = CreateMover(ns.root, 90, 30, "ALL", "FULLSCREEN_DIALOG", GetWholePosition, SetWholePosition)
 end
@@ -518,6 +826,7 @@ function ns.ResetPositions()
 	local db = ns.db
 	db.x, db.y = defaults.x, defaults.y
 	db.promptX, db.promptY = defaults.promptX, defaults.promptY
+	db.lootMoved = false
 	for _, row in ipairs(ns.ROWS) do
 		local keyX, keyY = "pos" .. row .. "x", "pos" .. row .. "y"
 		db[keyX], db[keyY] = defaults[keyX], defaults[keyY]

@@ -355,8 +355,10 @@ local function RefreshUnitFrameRefs()
 			SecureHandlerSetFrameRef(driver, "uf" .. count, frame)
 		end
 	end
-	for _, frame in ipairs(CompactPartyFrame and CompactPartyFrame.memberUnitFrames or {}) do
-		Add(frame)
+	for _, key in ipairs({ "memberUnitFrames", "petUnitFrames" }) do
+		for _, frame in ipairs(CompactPartyFrame and CompactPartyFrame[key] or {}) do
+			Add(frame)
+		end
 	end
 	for i = 1, 40 do
 		Add(_G["CompactRaidFrame" .. i])
@@ -396,9 +398,6 @@ local function CreateHelperButtons()
 		end
 	end)
 
-	CreatePlainButton("GamepadXIVCursor", function()
-		SetGamePadCursorControl(not IsGamePadCursorControlEnabled())
-	end)
 end
 
 -- Controller state. Passing no device reads the combined one; some setups only answer for the active one.
@@ -433,6 +432,54 @@ local function GetCameraStickY(state)
 		end
 	end
 	return 0
+end
+
+-- Forever bug: in gamepad mode the equipment set list is anchored to CharacterFrame.InsetRight, which
+-- is not placed in this version of the character window, so the sets were drawn in the top-left
+-- corner of the screen with no width. Forever's gamepad layout also hides Equip and Save. The pane
+-- gets its mouse layout back instead, with the same anchors as Forever's XML. Only layout changes,
+-- so nothing of Forever's code runs from this addon.
+local function FixEquipmentSetList()
+	local pane = PaperDollFrame and PaperDollFrame.EquipmentManagerPane
+	if not (pane and pane.ScrollBox and pane.ScrollBar and pane.InitializeGamepad) then
+		return
+	end
+	local function Fix()
+		if not (InputUtil and InputUtil.IsGamepadUIEnabled and InputUtil.IsGamepadUIEnabled()) then
+			return
+		end
+		local scrollBox, scrollBar = pane.ScrollBox, pane.ScrollBar
+		scrollBox:ClearAllPoints()
+		scrollBox:SetPoint("TOPLEFT", pane, "TOPLEFT", 5, -8)
+		scrollBox:SetPoint("BOTTOMRIGHT", pane, "BOTTOMRIGHT", -20, 105)
+		scrollBar:ClearAllPoints()
+		scrollBar:SetPoint("TOPLEFT", scrollBox, "TOPRIGHT", -5, -12)
+		scrollBar:SetPoint("BOTTOMLEFT", scrollBox, "BOTTOMRIGHT", 0, 0)
+		if pane.EquipSet then
+			pane.EquipSet:Show()
+		end
+		if pane.SaveSet then
+			pane.SaveSet:Show()
+		end
+	end
+	hooksecurefunc(pane, "InitializeGamepad", Fix)
+	Fix()
+
+	-- In gamepad mode a plain click on a set also picks it up onto the cursor. A set released over the
+	-- pane was a click, so it is dropped; one released elsewhere was dragged out, so it is left alone.
+	local watcher = CreateFrame("Frame")
+	watcher:RegisterEvent("GLOBAL_MOUSE_UP")
+	watcher:SetScript("OnEvent", function()
+		if not (pane:IsVisible() and pane:IsMouseOver()) then
+			return
+		end
+		-- The pickup can land after the release, so the cursor is checked a moment later.
+		C_Timer.After(0.05, function()
+			if GetCursorInfo() == "equipmentset" then
+				ClearCursor()
+			end
+		end)
+	end)
 end
 
 -- Back cycles through the interface like FFXIV. Forever's Back only moves between open windows, and
@@ -752,7 +799,7 @@ function ns.PrintInputCVars(report)
 	end
 end
 
--- /fc debug: what the game reports for the controls that cannot be checked outside the client.
+-- /gxiv debug: what the game reports for the controls that cannot be checked outside the client.
 -- The lines also go to the saved variables, so a /reload makes them readable from the file.
 function ns.PrintDebug()
 	ns.db.debugLog = {}
@@ -1188,7 +1235,106 @@ local function ConfirmClear()
 	end
 end
 
+-- The equipment slots an item of each kind goes in, for comparing a roll with what is worn.
+local EQUIP_SLOTS = {
+	INVTYPE_HEAD = { 1 }, INVTYPE_NECK = { 2 }, INVTYPE_SHOULDER = { 3 }, INVTYPE_BODY = { 4 },
+	INVTYPE_CHEST = { 5 }, INVTYPE_ROBE = { 5 }, INVTYPE_WAIST = { 6 }, INVTYPE_LEGS = { 7 },
+	INVTYPE_FEET = { 8 }, INVTYPE_WRIST = { 9 }, INVTYPE_HAND = { 10 }, INVTYPE_FINGER = { 11, 12 },
+	INVTYPE_TRINKET = { 13, 14 }, INVTYPE_CLOAK = { 15 }, INVTYPE_WEAPON = { 16, 17 },
+	INVTYPE_SHIELD = { 17 }, INVTYPE_2HWEAPON = { 16 }, INVTYPE_WEAPONMAINHAND = { 16 },
+	INVTYPE_WEAPONOFFHAND = { 17 }, INVTYPE_HOLDABLE = { 17 }, INVTYPE_RANGED = { 18 },
+	INVTYPE_THROWN = { 18 }, INVTYPE_RANGEDRIGHT = { 18 }, INVTYPE_RELIC = { 18 }, INVTYPE_TABARD = { 19 },
+}
+
+-- Item details for loot rolls: the item and what you wear in its slot, beside the roll window, for as
+-- long as it is open. Forever only shows the item while a button in the window has focus, without the
+-- comparison. These are the addon's own tooltips, so Forever's GameTooltip is left alone.
+local function SetupLootDetails(lootFrame)
+	local activeRolls = {}
+	local function CreateTip(name)
+		local tip = CreateFrame("GameTooltip", name, UIParent, "GameTooltipTemplate")
+		tip:SetClampedToScreen(true)
+		return tip
+	end
+	local itemTip = CreateTip("GamepadXIVRollTip")
+	local compareTips = { CreateTip("GamepadXIVRollCompare1"), CreateTip("GamepadXIVRollCompare2") }
+	for _, tip in ipairs(compareTips) do
+		local header = tip:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		header:SetPoint("BOTTOMLEFT", tip, "TOPLEFT", 4, 2)
+		header:SetText("Currently equipped")
+	end
+
+	local function CurrentRoll()
+		local rollID = lootFrame.rollID
+		if rollID and GetLootRollItemLink(rollID) then
+			return rollID
+		end
+		for _, id in ipairs(activeRolls) do
+			if GetLootRollItemLink(id) then
+				return id
+			end
+		end
+	end
+
+	local function Refresh()
+		itemTip:Hide()
+		for _, tip in ipairs(compareTips) do
+			tip:Hide()
+		end
+		local rollID = lootFrame:IsShown() and ns.db.lootDetails and CurrentRoll()
+		if not rollID then
+			return
+		end
+		itemTip:SetOwner(lootFrame, "ANCHOR_NONE")
+		itemTip:ClearAllPoints()
+		itemTip:SetPoint("TOPRIGHT", lootFrame, "TOPLEFT", -8, 0)
+		itemTip:SetLootRollItem(rollID)
+		itemTip:Show()
+
+		local _, _, _, equipLoc = C_Item.GetItemInfoInstant(GetLootRollItemLink(rollID))
+		local previous = itemTip
+		for index, slot in ipairs(EQUIP_SLOTS[equipLoc] or {}) do
+			local tip = compareTips[index]
+			if GetInventoryItemLink("player", slot) then
+				tip:SetOwner(lootFrame, "ANCHOR_NONE")
+				tip:ClearAllPoints()
+				tip:SetPoint("TOPRIGHT", previous, "TOPLEFT", -6, 0)
+				tip:SetInventoryItem("player", slot)
+				tip:Show()
+				previous = tip
+			end
+		end
+	end
+	ns.RefreshLootDetails = Refresh
+
+	local events = CreateFrame("Frame")
+	events:RegisterEvent("START_LOOT_ROLL")
+	events:RegisterEvent("CANCEL_LOOT_ROLL")
+	events:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
+	events:SetScript("OnEvent", function(_, event, rollID)
+		if event == "START_LOOT_ROLL" then
+			tinsert(activeRolls, rollID)
+		elseif event == "CANCEL_LOOT_ROLL" then
+			tDeleteItem(activeRolls, rollID)
+		end
+		-- The window updates on the same events; wait a moment so it shows the new roll first.
+		C_Timer.After(0.1, Refresh)
+	end)
+	lootFrame:HookScript("OnShow", function()
+		C_Timer.After(0.1, Refresh)
+	end)
+	lootFrame:HookScript("OnHide", Refresh)
+end
+
+-- WoW's own setting that compares an item with what you wear on every item tooltip, without holding Shift.
+function ns.ApplyAlwaysCompare()
+	if ns.db.alwaysCompareItems ~= nil and GetCVar("alwaysCompareItems") ~= nil then
+		SetCVar("alwaysCompareItems", ns.db.alwaysCompareItems and "1" or "0")
+	end
+end
+
 function ns.CreateInput()
+	ns.ApplyAlwaysCompare()
 	driver = CreateFrame("Frame", "GamepadXIVDriver", UIParent, "SecureHandlerStateTemplate")
 
 	driver:SetAttribute("ApplyLayer", S.ApplyLayer)
@@ -1198,6 +1344,7 @@ function ns.CreateInput()
 	driver:SetAttribute("OnTrigger", S.OnTrigger)
 	driver:SetAttribute("SetSoft", S.SetSoft)
 	driver:SetAttribute("CycleGroup", S.CycleGroup)
+	driver:SetAttribute("PartyCycleUnit", S.PartyCycleUnit)
 	driver:SetAttribute("SelectGroupUnit", S.SelectGroupUnit)
 	driver:SetAttribute("MoveFrameCursor", S.MoveFrameCursor)
 	driver:SetAttribute("OpenFlyout", S.OpenFlyout)
@@ -1269,6 +1416,7 @@ function ns.CreateInput()
 	CreateHelperButtons()
 	CreateZoomWatcher()
 	EnableChatLinks()
+	FixEquipmentSetList()
 	CreateMapPinChord()
 	CreateBackCycle()
 	KeepChatOpenForLinks()
@@ -1380,6 +1528,13 @@ function ns.CreateInput()
 	-- Forever shows loot rolls without focus, and nothing on screen says Back is what focuses them.
 	local lootFrame = GamepadGroupLootRollFrame
 	if lootFrame then
+		ns.lootFrame = lootFrame
+		-- Forever may place the window again when it opens, so a moved window is put back each time.
+		-- Only a script hook: hooking the frame's methods could taint Forever's own focus handling.
+		lootFrame:HookScript("OnShow", function()
+			ns.PlaceLootFrame()
+		end)
+		SetupLootDetails(lootFrame)
 		local lootHint = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 		lootHint:SetPoint("TOP", lootFrame, "BOTTOM", 0, -8)
 		lootHint:Hide()
@@ -1520,6 +1675,31 @@ end
 
 -- Pushes settings into the secure driver and rebinds. Attributes on protected frames cannot be
 -- written from addon code in combat, so this waits for combat to end.
+-- What L3 and R3 can do, chosen in the settings: key, label, binding.
+ns.STICK_ACTIONS = {
+	{ "sheathe", "Draw / sheathe weapon", "TOGGLESHEATH" },
+	{ "view", "First / third person", "CLICK GamepadXIVView:LeftButton" },
+	{ "autorun", "Auto-run", "TOGGLEAUTORUN" },
+	{ "walk", "Walk / run", "TOGGLERUN" },
+	{ "sit", "Sit / stand", "SITORSTAND" },
+	{ "target", "Target nearest enemy", "TARGETNEARESTENEMY" },
+	{ "assist", "Assist target", "ASSISTTARGET" },
+	{ "follow", "Follow target", "FOLLOWTARGET" },
+	{ "map", "World map", "TOGGLEWORLDMAP" },
+	{ "bags", "Bags", "OPENALLBAGS" },
+	{ "screenshot", "Screenshot", "SCREENSHOT" },
+	{ "none", "Nothing", "NONE" },
+}
+
+local function StickBinding(key, fallback)
+	for _, action in ipairs(ns.STICK_ACTIONS) do
+		if action[1] == key then
+			return action[3]
+		end
+	end
+	return fallback
+end
+
 function ns.Sync()
 	if not driver then
 		return
@@ -1531,14 +1711,26 @@ function ns.Sync()
 	ns.syncPending = false
 
 	ns.ApplyLayout()
+	if ns.softUnit and ns.softUnit ~= "" and ns.root then
+		ns.ShowSoftTarget(ns.softUnit) -- a changed highlight setting shows at once
+	end
+	if ns.UpdateTargetHighlight then
+		ns.UpdateTargetHighlight()
+	end
 
 	local db = ns.db
 	local on = db.enabled and ns.IsGamepadUI() and not ns.foreverEditorOpen
 
 	driver:SetAttribute("fc-priority", db.priorityBindings and 1 or 0)
 	driver:SetAttribute("fc-w4", db.wxhbFourSlots and 1 or 0)
+	driver:SetAttribute("fc-hide-WL", db.showTopLeft == "selected" and 1 or 0)
+	driver:SetAttribute("fc-hide-WR", db.showTopRight == "selected" and 1 or 0)
 	driver:SetAttribute("fc-dpadParty", db.dpadParty)
 	driver:SetAttribute("fc-dpadTarget", db.dpadTarget)
+	local l3 = StickBinding(db.l3Action, "TOGGLESHEATH")
+	driver:SetAttribute("ctx-PADLSTICK-target", l3)
+	driver:SetAttribute("ctx-PADLSTICK-notarget", l3)
+	driver:SetAttribute("fc-r3", StickBinding(db.r3Action, "CLICK GamepadXIVView:LeftButton"))
 	local answeredPopup, answeredPopupIndex = GetAnsweredPopup()
 	driver:SetAttribute("fc-answeredPopup", answeredPopupIndex or 0)
 	for _, key in ipairs(POPUP_KEY_ORDER) do

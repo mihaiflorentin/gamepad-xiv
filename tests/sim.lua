@@ -105,7 +105,7 @@ local function NewFrame(name)
 end
 
 local driver = NewFrame("GamepadXIVDriver")
-for _, key in ipairs({ "ApplyLayer", "BindAll", "UpdateTargetBindings", "UpdateYield", "OnTrigger", "BeginEdit", "EndEdit", "SetSoft", "UpdateForm", "CycleGroup", "SelectGroupUnit", "MoveFrameCursor", "OpenFlyout", "CloseFlyout", "SetClear" }) do
+for _, key in ipairs({ "ApplyLayer", "BindAll", "UpdateTargetBindings", "UpdateYield", "OnTrigger", "BeginEdit", "EndEdit", "SetSoft", "UpdateForm", "CycleGroup", "PartyCycleUnit", "SelectGroupUnit", "MoveFrameCursor", "OpenFlyout", "CloseFlyout", "SetClear" }) do
 	driver.attrs[key] = S[key]
 end
 
@@ -253,6 +253,18 @@ Check("WXHB release: back to base", Layer(), "BASE")
 Check("WXHB release: all bars full size", contents.R.scale, 1)
 Check("WXHB release: all bars full alpha", contents.L.alpha, 1)
 Wait(R2, 3)
+
+-- A top bar set to show only when selected is hidden until its double tap.
+driver.attrs["fc-hide-WR"] = 1
+driver:RunAttribute("ApplyLayer")
+Check("hidden top bar: invisible at rest", contents.WR.alpha, 0)
+R2.press(); R2.release(); R2.press()
+Check("hidden top bar: shows when selected", contents.WR.alpha, 1)
+R2.release()
+Check("hidden top bar: hidden again", contents.WR.alpha, 0)
+Wait(R2, 3)
+driver.attrs["fc-hide-WR"] = 0
+driver:RunAttribute("ApplyLayer")
 
 L2.press(); L2.release(); L2.press()
 Check("double tap L2 hold: WXHB left", Layer(), "WL")
@@ -467,6 +479,22 @@ Check("party: next 2", nextParty(), "party2")
 Check("party: wraps to self", nextParty(), "player")
 Check("party: previous wraps to last", prevParty(), "party2")
 
+-- Pets follow their owner in the party list.
+unitsThatExist.pet = true
+unitsThatExist.partypet1 = true
+ClearSoft()
+Check("party pets: starts on the player", nextParty(), "player")
+Check("party pets: own pet next", nextParty(), "pet")
+Check("party pets: then party1", nextParty(), "party1")
+Check("party pets: then party1's pet", nextParty(), "partypet1")
+Check("party pets: then party2", nextParty(), "party2")
+Check("party pets: previous back to the pet", prevParty(), "partypet1")
+unitsThatExist.pet = nil
+unitsThatExist.partypet1 = nil
+-- Back to where the tests below expect it: party2 selected.
+driver.attrs["fc-cycle-party"] = 4
+driver:RunAttribute("SetSoft", "party2")
+
 -- Soft target: slots aim at it, the hard target is untouched, A and B handle it.
 Check("soft: casts aim at it", castButtons.R1.attrs.unit, "party2")
 Check("soft: A confirms", driver.bindings.PAD1, "SOFT_CONFIRM")
@@ -570,7 +598,7 @@ do
 	Check("L1 held: left stick forward auto-runs", driver.bindings.PADLSTICKUP, "TOGGLEAUTORUN")
 	Check("L1 held: D-pad and face buttons change", driver.bindings.PAD1, "L1_PAD1")
 	Check("L1 held: R2 targets", driver.bindings.PADRTRIGGER, "TARGETPREVIOUSENEMY")
-	Check("L1 held: R3 is the cursor", driver.bindings.PADRSTICK, "CLICK GamepadXIVCursor:LeftButton")
+	Check("L1 held: R3 keeps its action", driver.bindings.PADRSTICK, "CLICK GamepadXIVView:LeftButton")
 	Check("L1 held: visuals told", driver.calls.OnLayerChanged[1], "L1")
 	Check("L1 held: on foot R1 sheathes", driver.bindings.PADRSHOULDER, "TOGGLESHEATH")
 	unitsThatExist.mounted = true

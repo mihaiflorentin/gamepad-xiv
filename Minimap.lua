@@ -24,7 +24,7 @@ local function SetMinimapShown(shown)
 	ns.db.minimapShown = shown
 	ns.UpdateMinimapButton()
 	if not shown then
-		ns.Print("Minimap icon hidden. /fc minimap brings it back.")
+		ns.Print("Minimap icon hidden. /gxiv minimap brings it back.")
 	end
 end
 

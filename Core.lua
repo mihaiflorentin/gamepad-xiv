@@ -38,8 +38,30 @@ ns.DEFAULTS = {
 	rangeIndicator = true,
 	showInteractPrompt = true,
 	promptX = 0, promptY = 170, -- over the character, from the middle of the screen
-	keyIconSize = 34, -- the art has wide empty margins, so this is larger than it looks
+	lootDetails = true, -- the roll item and the equipped item beside the loot roll window
+	alwaysCompareItems = true, -- WoW's alwaysCompareItems: item tooltips compare with what you wear
+	lootMoved = false, lootX = 0, lootY = 0, -- the loot roll window: Forever's place, or moved here from the middle
+	keyIconSize = 32, -- the art has wide empty margins, so this is larger than it looks
 	showSetLabels = true,
+	theme = "orb", -- a key of ns.THEMES: how the crossbar slots look
+	-- The next four are "theme" to use the theme's choice, or a key of their list in Theme.lua.
+	background = "theme", -- ns.BACKGROUNDS: what is drawn behind each group of four slots
+	slotFill = "theme", -- ns.SLOT_FILLS: the fill inside each slot, under the icon
+	l3Action = "sheathe", -- a key of ns.STICK_ACTIONS: what L3 does
+	r3Action = "view", -- a key of ns.STICK_ACTIONS: what R3 does
+	activeHighlight = "glow", -- a key of ns.ACTIVE_STYLES: how the selected bar is highlighted
+	-- Keys of ns.HIGHLIGHT_COLORS: the highlight color of each bar while it is selected.
+	activeColorBottom = "cyan", -- the bottom bars (L2, R2)
+	activeColorTopLeft = "blue", -- the top left bar (double tap L2)
+	activeColorTopRight = "blue", -- the top right bar (double tap R2)
+	activeColorCombo = "green", -- the combos (L2 then R2, R2 then L2)
+	activeStrength = 0.7, -- how bright that highlight is
+	activeMarks = true, -- the cross and dots in the middle of the selected bar's groups
+	backgroundAlpha = 0.7, -- opacity of that background
+	backgroundBorder = "theme", -- ns.BACKGROUND_BORDERS: a ring around each group of four slots
+	slotBorder = "theme", -- ns.SLOT_BORDERS: a border around each slot
+	showTopLeft = "always", -- "always" or "selected": the double tap L2 bar (top left) shows always or only while selected
+	showTopRight = "always", -- the same for the double tap R2 bar (top right)
 	scale = 1,
 	x = 0,
 	y = 90,
@@ -47,12 +69,16 @@ ns.DEFAULTS = {
 	dpadTarget = "both", -- "enemy", "friend" or "both": what D-pad left and right select
 	dpadParty = "off", -- "off", "raid" or "always": when the whole D-pad selects party members
 	partyTargeting = "soft", -- "soft" or "hard": party selection sets a soft target or the real one
+	partyHighlight = "fill", -- "outline", "thick", "fill" or "pulse": how the selected party member's frame is marked
+	raidHighlight = "thick", -- the same, for raid frames
+	partyMarker = "left", -- "off", "left" or "right": an arrow outside the selected party frame
+	highlightColor = "gold", -- a key of ns.HIGHLIGHT_COLORS: the color of the highlight and the marker
 	formsChangeBar = true,
 	formSet1 = 5, -- set each form or stance starts on; R1 + button changes it while in that form
 	formSet2 = 6,
 	formSet3 = 7,
 	formSet4 = 8,
-	-- Each side's centre relative to the whole crossbar, moved with /fc move.
+	-- Each side's centre relative to the whole crossbar, moved with /gxiv move.
 	posLx = -158, posLy = 0,
 	posRx = 158, posRy = 0,
 	posWLx = -243, posWLy = 124,
@@ -207,16 +233,50 @@ function ns.IsGamepadUI()
 	return InputUtil and InputUtil.IsGamepadUIEnabled and InputUtil.IsGamepadUIEnabled()
 end
 
+-- One-time changes to saved settings, in order. Each runs once per character profile: the number of
+-- the last one that ran is saved, so later versions never run it again and never undo what players
+-- set afterwards. Only add new entries at the end; never change or remove one that has shipped.
+local APPEARANCE_KEYS = {
+	"theme", "background", "backgroundBorder", "slotFill", "slotBorder", "backgroundAlpha",
+	"activeHighlight", "activeColorBottom", "activeColorTopLeft", "activeColorTopRight", "activeColorCombo",
+	"activeStrength", "activeMarks",
+}
+local MIGRATIONS = {
+	-- 1 (0.1.8): the redone crossbar themes. Everyone starts once on the new look.
+	function(db)
+		for _, key in ipairs(APPEARANCE_KEYS) do
+			db[key] = ns.DEFAULTS[key]
+		end
+	end,
+}
+
+local function RunMigrations(db)
+	local done = db.migration or 0
+	for index = done + 1, #MIGRATIONS do
+		MIGRATIONS[index](db)
+	end
+	db.migration = math.max(done, #MIGRATIONS)
+end
+
 local function InitDB()
 	GamepadXIVDB = GamepadXIVDB or {}
 	GamepadXIVDB.popupLog = nil -- left by 0.1.4's temporary logging
 	GamepadXIVDB.taintTrace = nil -- left by a temporary debug session
 	GamepadXIVDB.targetTrace = nil -- left by an earlier temporary debug session
+	GamepadXIVDB.holdLog = nil -- left by the Press and Hold Casting test
+	GamepadXIVDB.pressHoldCasting = nil -- a setting that was tried and removed
+	GamepadXIVDB.themeLooks = nil -- an earlier, unreleased form of migration 1
+	-- Themes that were removed fall back to Round.
+	local removed = { sleek = true, rounded = true, slate = true, halo = true, neon = true, glass = true }
+	if removed[GamepadXIVDB.theme] then
+		GamepadXIVDB.theme = "round"
+	end
 	for key, value in pairs(ns.DEFAULTS) do
 		if GamepadXIVDB[key] == nil then
 			GamepadXIVDB[key] = (type(value) == "table") and {} or value
 		end
 	end
+	RunMigrations(GamepadXIVDB)
 	ns.db = GamepadXIVDB
 	for _, entry in ipairs(pendingErrors) do
 		tinsert(ns.db.errorLog, entry)
@@ -225,20 +285,20 @@ local function InitDB()
 end
 
 local SLASH_HELP = {
-	"/fc status - shows what is active",
-	"/fc on | off - turns the layout on or off",
-	"/fc edit - edit the crossbar slots (also L2/R2 + Back)",
-	"/fc config - settings (also L2/R2 + Start)",
-	"/fc clear - move or remove an ability (also L2/R2 + R3)",
-	"/fc move - drag the bars around the screen (Shift + drag moves all of them)",
-	"/fc minimap - shows or hides the minimap icon",
-	"/fc debug - reports bindings, L1 and the right stick",
-	"/fc reset - put the bars back in their default place",
-	"/fc wxhb <L|R> <set> <L|R> - side shown by a double tap, e.g. /fc wxhb R 4 L",
-	"/fc exhb <LR|RL> <set> <L|R> - side shown by L2>R2 or R2>L2",
-	"/fc tap <2-4> - double tap window, in 0.2s ticks",
-	"/fc scale <0.5-1.5> - bar scale",
-	"/fc priority on | off - use if R2 does nothing in game",
+	"/gxiv status - shows what is active",
+	"/gxiv on | off - turns the layout on or off",
+	"/gxiv edit - edit the crossbar slots (also L2/R2 + Back)",
+	"/gxiv config - settings (also L2/R2 + Start)",
+	"/gxiv clear - move or remove an ability (also L2/R2 + R3)",
+	"/gxiv move - drag the bars around the screen (Shift + drag moves all of them)",
+	"/gxiv minimap - shows or hides the minimap icon",
+	"/gxiv debug - reports bindings, L1 and the right stick",
+	"/gxiv reset - put the bars back in their default place",
+	"/gxiv wxhb <L|R> <set> <L|R> - side shown by a double tap, e.g. /gxiv wxhb R 4 L",
+	"/gxiv exhb <LR|RL> <set> <L|R> - side shown by L2>R2 or R2>L2",
+	"/gxiv tap <2-4> - double tap window, in 0.2s ticks",
+	"/gxiv scale <0.5-1.5> - bar scale",
+	"/gxiv priority on | off - use if R2 does nothing in game",
 }
 
 local function HandleSideCommand(prefix, which, setText, sideText, valid)
@@ -246,7 +306,7 @@ local function HandleSideCommand(prefix, which, setText, sideText, valid)
 	sideText = sideText and sideText:upper()
 	which = which and which:upper()
 	if not (valid[which] and set and set >= 1 and set <= ns.NUM_SETS and (sideText == "L" or sideText == "R")) then
-		ns.Print("Usage: see /fc help")
+		ns.Print("Usage: see /gxiv help")
 		return
 	end
 	ns.db["side" .. prefix .. which] = ns.SideOf(set, sideText == "R")
@@ -281,7 +341,7 @@ local function HandleSlash(message)
 		if which == "LR" or which == "RL" then
 			HandleSideCommand("", which, b, c, { LR = true, RL = true })
 		else
-			ns.Print("Usage: see /fc help")
+			ns.Print("Usage: see /gxiv help")
 		end
 	elseif command == "tap" then
 		local ticks = tonumber(a)

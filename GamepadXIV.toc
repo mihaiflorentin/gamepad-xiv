@@ -10,6 +10,7 @@
 Core.lua
 Snippets.lua
 Bar.lua
+Theme.lua
 Input.lua
 Edit.lua
 Config.lua

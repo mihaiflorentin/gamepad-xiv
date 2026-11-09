@@ -117,6 +117,13 @@ S.ApplyLayer = [[
 		if selected and selected ~= row then
 			content:SetScale(0.78)
 			content:SetAlpha(dim)
+			-- A top bar set to show only when selected stays hidden while another bar is selected.
+			if self:GetAttribute("fc-hide-" .. row) == 1 then
+				content:SetAlpha(0)
+			end
+		elseif not selected and not editing and self:GetAttribute("fc-hide-" .. row) == 1 then
+			content:SetScale(1)
+			content:SetAlpha(0)
 		else
 			content:SetScale(selected and 1.15 or 1)
 			content:SetAlpha(1)
@@ -179,12 +186,14 @@ S.ApplyLayer = [[
 		-- Trigger + R3 moves or removes an ability, standing in for FFXIV's trigger + touchpad.
 		self:SetBindingClick(priority, "PADRSTICK", "GamepadXIVClearStart", "LeftButton")
 		self:SetBindingClick(priority, "PADLSTICKUP", "GamepadXIVStickUp", "LeftButton")
-	elseif layer == "L1" then
-		self:SetBindingClick(priority, "PADRSTICK", "GamepadXIVCursor", "LeftButton")
-		self:SetBinding(priority, "PADLSTICKUP", "TOGGLEAUTORUN")
 	else
-		self:SetBindingClick(priority, "PADRSTICK", "GamepadXIVView", "LeftButton")
-		self:SetBindingClick(priority, "PADLSTICKUP", "GamepadXIVStickUp", "LeftButton")
+		-- R3 does what is picked in the settings; first or third person by default. L1 does not change it.
+		self:SetBinding(priority, "PADRSTICK", self:GetAttribute("fc-r3") or "CLICK GamepadXIVView:LeftButton")
+		if layer == "L1" then
+			self:SetBinding(priority, "PADLSTICKUP", "TOGGLEAUTORUN")
+		else
+			self:SetBindingClick(priority, "PADLSTICKUP", "GamepadXIVStickUp", "LeftButton")
+		end
 	end
 
 	self:CallMethod("OnLayerChanged", layer, left, right, set, form)
@@ -788,12 +797,23 @@ S.MoveFrameCursor = [[
 	end
 ]]
 
+-- Driver: the unit at a step of the party cycle, with each member followed by their pet.
+S.PartyCycleUnit = [[
+	local index = ...
+	local member = (index - index % 2) / 2
+	if index % 2 == 0 then
+		return member == 0 and "player" or ("party" .. member)
+	end
+	return member == 0 and "pet" or ("partypet" .. member)
+]]
+
 -- Driver: moves the soft target. The first step in a party starts on the player, like FFXIV.
 S.CycleGroup = [[
 	local step, raidOnly = ...
 	local useRaid = raidOnly == 1 and UnitExists("raid1")
 	local prefix = useRaid and "raid" or "party"
-	local count = useRaid and 40 or 4
+	-- In a party each member is followed by their pet: 0 player, 1 pet, 2 party1, 3 partypet1, and so on.
+	local count = useRaid and 40 or 9
 	local stored = self:GetAttribute("fc-cycle-" .. prefix)
 	local index = stored or 0
 	local restart = self:GetAttribute("fc-soft") == ""
@@ -811,16 +831,20 @@ S.CycleGroup = [[
 			elseif index < 0 then
 				index = count
 			end
-			if index == 0 then
-				if prefix == "party" then
+			if useRaid then
+				if index > 0 and UnitExists("raid" .. index) then
 					break
 				end
-			elseif UnitExists(prefix .. index) then
+			elseif UnitExists(self:RunAttribute("PartyCycleUnit", index)) then
 				break
 			end
 		end
 	end
 
 	self:SetAttribute("fc-cycle-" .. prefix, index)
-	self:RunAttribute("SelectGroupUnit", (index == 0) and "player" or (prefix .. index))
+	if useRaid then
+		self:RunAttribute("SelectGroupUnit", (index == 0) and "player" or ("raid" .. index))
+	else
+		self:RunAttribute("SelectGroupUnit", self:RunAttribute("PartyCycleUnit", index))
+	end
 ]]
