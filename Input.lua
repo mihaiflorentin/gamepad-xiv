@@ -146,6 +146,19 @@ local function ApplyInputCVars(apply)
 	pcall(C_GamePad.ApplyConfigs)
 end
 
+-- Forever's class menus close on any button press. With stick axis buttons on, every tilt of the
+-- right stick is a button press too, so the menu closed the moment the stick moved. They are
+-- turned off while one is open.
+local function SetStickButtons(on)
+	if ns.db.savedCVars.GamePadStickAxisButtons == nil then
+		return -- the addon is not running its input settings
+	end
+	local value = on and INPUT_CVARS.GamePadStickAxisButtons or "0"
+	pcall(C_CVar.SetCVar, "GamePadStickAxisButtons", value)
+	SetTemp("GamePadStickAxisButtons", value)
+	pcall(C_GamePad.ApplyConfigs)
+end
+
 local function ApplyTempCVars(apply)
 	ApplyInputCVars(apply)
 	for name, value in pairs(TEMP_CVARS) do
@@ -272,7 +285,6 @@ local ANSWERED_POPUPS = {
 }
 local POPUP_KEYS = { PAD1 = "GetButton1", PAD2 = "GetButton2", PAD3 = "GetButton3", PAD4 = "GetButton4" }
 local POPUP_KEY_ORDER = { "PAD1", "PAD2", "PAD3", "PAD4" }
-local POPUP_KEY_NAMES = { PAD1 = "A / Cross", PAD2 = "B / Circle", PAD3 = "X / Square", PAD4 = "Y / Triangle" }
 
 local function GetAnsweredPopup()
 	for index = 1, 4 do
@@ -310,7 +322,7 @@ local function UpdatePopupHint()
 	for _, key in ipairs(POPUP_KEY_ORDER) do
 		local button = GetPopupButton(popup, key)
 		if button then
-			tinsert(parts, ns.ButtonMarkup(key, POPUP_KEY_NAMES[key], 28) .. " " .. (button:GetText() or ""))
+			tinsert(parts, ns.ButtonText("{" .. key .. "}", 16) .. " " .. (button:GetText() or ""))
 		end
 	end
 	popupHint:SetText(table.concat(parts, "    "))
@@ -371,6 +383,7 @@ local function RefreshUnitFrameRefs()
 	if driver:GetAttribute("fc-ufCount") ~= count then
 		driver:SetAttribute("fc-ufCount", count)
 		driver:SetAttribute("fc-ufCursor", nil)
+		driver:SetAttribute("fc-cycleFrame", nil)
 	end
 end
 
@@ -416,6 +429,22 @@ local function GetStickY(state, wanted)
 			return state.sticks[i].y
 		end
 	end
+end
+
+-- Both axes of the right stick, for the addon's ring.
+function ns.GetRightStick()
+	local state = GetPadState()
+	if not state then
+		return 0, 0
+	end
+	for _, wanted in ipairs({ "Right", "Camera", "Look" }) do
+		for i = 1, state.stickCount do
+			if C_GamePad.StickIndexToConfigName(i - 1) == wanted then
+				return state.sticks[i].x, state.sticks[i].y
+			end
+		end
+	end
+	return 0, 0
 end
 
 local function GetCameraStickY(state)
@@ -719,6 +748,13 @@ local function KeepChatOpenForLinks()
 	end)
 end
 
+-- What the right stick does while L1 is held.
+ns.L1_RIGHT_STICK = {
+	{ "zoom", "Zoom (up zooms in)" },
+	{ "zoomInverted", "Zoom (up zooms out)" },
+	{ "camera", "Turn the camera as usual" },
+}
+
 -- L1 + right stick zooms. Rotation is frozen while L1 is held, so the stick only zooms.
 local function CreateZoomWatcher()
 	local watcher = CreateFrame("Frame")
@@ -773,8 +809,10 @@ local function CreateZoomWatcher()
 	end
 
 	watcher:SetScript("OnUpdate", function(_, elapsed)
-		local active = ns.l1Held and ns.IsActive()
-		SetFrozen(active and true or false)
+		local mode = ns.db.l1RightStick
+		local active = ns.l1Held and ns.IsActive() and mode ~= "camera"
+		-- The addon's ring uses the right stick too, so the camera holds still while it is open.
+		SetFrozen((active or ns.ringOpen) and true or false)
 		if not active then
 			return
 		end
@@ -785,7 +823,7 @@ local function CreateZoomWatcher()
 		end
 		push = math.min(push, 1)
 		local amount = (MIN_ZOOM_PER_SECOND + (MAX_ZOOM_PER_SECOND - MIN_ZOOM_PER_SECOND) * push ^ 1.5) * elapsed
-		if y > 0 then
+		if (y > 0) ~= (mode == "zoomInverted") then
 			CameraZoomIn(amount)
 		else
 			CameraZoomOut(amount)
@@ -801,6 +839,17 @@ end
 
 -- /gxiv debug: what the game reports for the controls that cannot be checked outside the client.
 -- The lines also go to the saved variables, so a /reload makes them readable from the file.
+-- Which form number the bottom row follows. The game's bonus bar comes first: cat, prowl, bear and
+-- moonkin for druids, stealth for rogues. Stealth also counts on its own, and warrior stances by
+-- their stance number, for when the game gives them no bonus bar.
+function ns.FormConditions()
+	local conditions = "[bonusbar:1] 1; [bonusbar:2] 2; [bonusbar:3] 3; [bonusbar:4] 4; [stealth] 1; "
+	if UnitClassBase("player") == "WARRIOR" then
+		conditions = conditions .. "[stance:1] 1; [stance:2] 2; [stance:3] 3; "
+	end
+	return conditions .. "0"
+end
+
 function ns.PrintDebug()
 	ns.db.debugLog = {}
 	local function Report(...)
@@ -815,6 +864,23 @@ function ns.PrintDebug()
 		Report(key, "=", GetBindingAction(key, true))
 	end
 	ns.PrintInputCVars(Report)
+	Report("form: bonus bar", GetBonusBarOffset(), "shapeshift", GetShapeshiftForm(), "stealthed", IsStealthed(),
+		"driver form", driver:GetAttribute("fc-rawForm"), "used", driver:GetAttribute("fc-form"),
+		"forms change bar", driver:GetAttribute("fc-formLink"), "set", driver:GetAttribute("fc-formset-" .. (driver:GetAttribute("fc-form") or 0)))
+	Report("form conditions:", ns.FormConditions(), "->", SecureCmdOptionParse(ns.FormConditions()))
+	Report("bonus action bar:", C_ActionBar and C_ActionBar.HasBonusActionBar and C_ActionBar.HasBonusActionBar(),
+		"gamepad stance storage:", C_GamepadUI.GetFirstGamepadActionBarStorageSlotIndexForActiveStance
+			and C_GamepadUI.GetFirstGamepadActionBarStorageSlotIndexForActiveStance())
+	for form = 1, ns.NUM_FORMS do
+		local first = ns.db.stanceStorage and ns.db.stanceStorage[form]
+		local filled = 0
+		for _, slot in ipairs(ns.StanceSlots(form)) do
+			if slot > 0 and HasAction(slot) then
+				filled = filled + 1
+			end
+		end
+		Report("stance bar", form, "storage", first or "not seen yet", "has", filled, "of 8 slots filled")
+	end
 	local state = GetPadState()
 	Report("pad state:", state and "yes" or "NONE")
 	Report("SoftTargetIconInteract =", GetCVar("SoftTargetIconInteract"), "experimental accepted:", ns.db.experimentalAccepted)
@@ -848,15 +914,43 @@ function ns.PrintDebug()
 	C_Timer.After(1, Sample)
 end
 
+-- Forever tells where the active stance's gamepad slots are only while it is active. They are saved
+-- per bonus bar, so later the form changes the bar at once, in combat too.
+function ns.LearnStanceStorage()
+	if InCombatLockdown() or not C_GamepadUI or not C_GamepadUI.GetFirstGamepadActionBarStorageSlotIndexForActiveStance then
+		return
+	end
+	local form = GetBonusBarOffset()
+	if form < 1 or form > ns.NUM_FORMS then
+		return
+	end
+	local first = C_GamepadUI.GetFirstGamepadActionBarStorageSlotIndexForActiveStance()
+	if not first then
+		return
+	end
+	ns.db.stanceStorage = ns.db.stanceStorage or {}
+	if ns.db.stanceStorage[form] == first then
+		return
+	end
+	ns.db.stanceStorage[form] = first
+	local side = ns.NUM_SETS * 2 + form * 2 - 1
+	ns.sideSlots[side] = ns.StanceSlots(form)
+	for i = 1, ns.NUM_SLOTS do
+		driver:SetAttribute("slot-" .. side .. "-" .. i, ns.sideSlots[side][i])
+	end
+	SecureHandlerExecute(driver, [[ self:RunAttribute("ApplyLayer") ]])
+end
+
 local function SetupDriverData()
 	for i, key in ipairs(ns.KEYS) do
 		driver:SetAttribute("key" .. i, key)
 	end
-	for side = 1, ns.NUM_SETS * 2 do
+	for side = 1, #ns.sideSlots do
 		for i = 1, ns.NUM_SLOTS do
 			driver:SetAttribute("slot-" .. side .. "-" .. i, ns.sideSlots[side][i])
 		end
 	end
+	driver:SetAttribute("fc-stanceSides", ns.NUM_SETS * 2)
 	for key, action in pairs(L1_BINDINGS) do
 		driver:SetAttribute("l1-" .. key, action)
 	end
@@ -1018,7 +1112,7 @@ local function UpdateFlyouts()
 		return
 	end
 	ns.flyoutSpells = ns.flyoutSpells or {}
-	for side = 1, ns.NUM_SETS * 2 do
+	for side = 1, #ns.sideSlots do
 		for i = 1, ns.NUM_SLOTS do
 			local actionType, flyoutID = GetActionInfo(ns.sideSlots[side][i])
 			if actionType == "flyout" and flyoutID then
@@ -1085,7 +1179,7 @@ local function ShowFlyoutPanel(flyoutID)
 			end
 		end
 	end
-	flyoutPanel.cancel:SetText(ns.ButtonMarkup("PAD2", "B / Circle:") .. " cancel")
+	flyoutPanel.cancel:SetText(ns.ButtonText("{PAD2}", 18) .. " cancel")
 	flyoutPanel:SetSize(300, 54 + #spells * 40)
 	flyoutPanel:Show()
 end
@@ -1172,11 +1266,11 @@ local function ShowClearStage(stage)
 	end
 	local name = clearSlot and GetActionName(clearSlot) or ""
 	if stage == 1 then
-		clearPanel.text:SetText("Choose the ability to move or remove.\nHold L2 or R2, or double tap for the top row, then press its button.")
+		clearPanel.text:SetText(ns.ButtonText("Choose the ability to move or remove.\nHold {PADLTRIGGER} or {PADRTRIGGER}, or double tap for the top row, then press its button.", 18))
 	elseif stage == 2 then
 		clearPanel.text:SetText("What should happen to this ability?\n" .. name)
 	else
-		clearPanel.text:SetText("Move " .. name .. " where?\nChoose the slot. R1 + a button changes the set. An ability already there swaps.")
+		clearPanel.text:SetText("Move " .. name .. ns.ButtonText(" where?\nChoose the slot. {PADRSHOULDER} + a button changes the set. An ability already there swaps.", 18))
 	end
 	clearPanel:Show()
 end
@@ -1393,6 +1487,7 @@ function ns.CreateInput()
 	driver.OnLayerChanged = function(_, ...) ns.ShowLayer(...) end
 	driver.OnEditEnded = function() ns.OnEditEnded() end
 	driver.OnFlyoutChanged = function(_, flyoutID) ShowFlyoutPanel(flyoutID) end
+	driver.OnRing = function(_, action) ns.OnRing(action) end
 	driver.OnClearChanged = function(_, stage) ShowClearStage(stage) end
 	driver.OnSoftChanged = function(_, unit) ns.ShowSoftTarget(unit) end
 	driver.OnYieldChanged = function(_, yielded)
@@ -1414,6 +1509,7 @@ function ns.CreateInput()
 	SetupDriverData()
 	SetupBaseBindings()
 	CreateHelperButtons()
+	ns.CreateSpellActions()
 	CreateZoomWatcher()
 	EnableChatLinks()
 	FixEquipmentSetList()
@@ -1472,6 +1568,34 @@ function ns.CreateInput()
 		end
 	end
 
+	-- L1 + R3 and R1 + L3 click Forever's two class buttons, which open its pet menus for hunters and
+	-- warlocks, and its form, aura or stance menus for druids, paladins and warriors. Those buttons
+	-- hide when the class has no menu, and the binding then keeps L3's own action.
+	for side, key in pairs({ L = "LeftClassAction", R = "RightClassAction" }) do
+		local button = pageUnit and pageUnit[key]
+		if button and button:GetName() then
+			SecureHandlerSetFrameRef(driver, "classMenu" .. side, button)
+			driver:SetAttribute("classMenu-" .. side, button:GetName())
+		end
+	end
+	-- The open menu is watched through the secure wrapper, which leaves Forever's frames untainted.
+	local popupCount = 0
+	for _, popup in ipairs({ GamepadPetActionFlyout, GamepadPetSpellFlyout, GamepadSpellFlyout }) do
+		if popup and popup:IsProtected() then
+			popupCount = popupCount + 1
+			SecureHandlerSetFrameRef(driver, "classPopup" .. popupCount, popup)
+			SecureHandlerWrapScript(popup, "OnShow", driver, S.ClassPopupShown)
+			SecureHandlerWrapScript(popup, "OnHide", driver, S.ClassPopupShown)
+			popup:HookScript("OnShow", function() SetStickButtons(false) end)
+			popup:HookScript("OnHide", function() SetStickButtons(true) end)
+		end
+	end
+	driver:SetAttribute("classPopup-count", popupCount)
+	-- Only hunters and warlocks see the two buttons; the others are on the bar this addon hides.
+	if driver:GetAttribute("fc-petChords") == 1 then
+		ns.CreateClassMenuHints(pageUnit)
+	end
+
 	for n = 1, #FLYOUT_KEYS do
 		local pick = CreateSecureButton("GamepadXIVFlyoutPick" .. n)
 		pick:SetAttribute("type", "spell")
@@ -1479,6 +1603,27 @@ function ns.CreateInput()
 		SecureHandlerWrapScript(pick, "OnClick", pick, S.FlyoutPickPre, S.FlyoutPickPost)
 	end
 	CreateSecureButton("GamepadXIVFlyoutCancel", S.FlyoutCancelClick)
+	-- The addon's ring: a toggle, and the keys it takes while open. A uses the highlighted entry:
+	-- Ring.lua sets this button's click on Forever's own button for the built-in entries.
+	CreateSecureButton("GamepadXIVRingToggle", S.RingToggleClick)
+	local ringPick = CreateSecureButton("GamepadXIVRingpick")
+	SecureHandlerWrapScript(ringPick, "OnClick", ringPick, S.RingPickPre, S.RingPickPost)
+	driver:SetAttribute("ringKey-PAD1", "GamepadXIVRingpick")
+	ns.ringPickButton = ringPick
+	local ringKeys = {
+		PAD2 = "close", PADRSTICK = "close", PADDLEFT = "prev", PADDRIGHT = "next", PADLSHOULDER = "prev", PADRSHOULDER = "next", PADDUP = "emotes",
+	}
+	for key, action in pairs(ringKeys) do
+		local name = "GamepadXIVRing" .. action
+		if not _G[name] then
+			local button = CreateSecureButton(name, S.RingKeyClick)
+			button:SetAttribute("fc-ringAction", action)
+		end
+		driver:SetAttribute("ringKey-" .. key, name)
+	end
+	-- D-pad down sits or stands, like Forever's ring; the ring stays open.
+	driver:SetAttribute("ringBind-PADDDOWN", "SITORSTAND")
+	driver:SetAttribute("fc-ring", 0)
 	CreateSecureButton("GamepadXIVClearStart", S.ClearStartClick)
 	CreateSecureButton("GamepadXIVClearCancel", S.ClearCancelClick)
 	CreatePlainButton("GamepadXIVClearConfirm", ConfirmClear)
@@ -1494,7 +1639,7 @@ function ns.CreateInput()
 	RegisterStateDriver(driver, "fcmounted", "[mounted] 1; 0")
 	RegisterStateDriver(driver, "fccombat", "[combat] 1; 0")
 	RegisterStateDriver(driver, "fcmove", "[flying][swimming] 1; 0")
-	RegisterStateDriver(driver, "fcform", "[bonusbar:1] 1; [bonusbar:2] 2; [bonusbar:3] 3; [bonusbar:4] 4; 0")
+	RegisterStateDriver(driver, "fcform", ns.FormConditions())
 	RegisterStateDriver(driver, "fcvehicle", "[overridebar][vehicleui][possessbar] 1; 0")
 	RegisterStateDriver(driver, "fcraid", "[group:raid] 1; 0")
 
@@ -1568,7 +1713,15 @@ function ns.CreateInput()
 	events:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
 	events:RegisterEvent("SPELLS_CHANGED")
 	events:RegisterEvent("GROUP_ROSTER_UPDATE")
+	events:RegisterEvent("UPDATE_BONUS_ACTIONBAR")
 	events:SetScript("OnEvent", function(_, event, cvar)
+		if event == "UPDATE_BONUS_ACTIONBAR" then
+			ns.LearnStanceStorage()
+			return
+		end
+		if event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_REGEN_ENABLED" then
+			ns.LearnStanceStorage()
+		end
 		if event == "ACTIONBAR_SLOT_CHANGED" or event == "SPELLS_CHANGED" then
 			UpdateFlyouts()
 			return
@@ -1685,15 +1838,168 @@ ns.STICK_ACTIONS = {
 	{ "target", "Target nearest enemy", "TARGETNEARESTENEMY" },
 	{ "assist", "Assist target", "ASSISTTARGET" },
 	{ "follow", "Follow target", "FOLLOWTARGET" },
-	{ "map", "World map", "TOGGLEWORLDMAP" },
-	{ "bags", "Bags", "OPENALLBAGS" },
+	{ "map", "World map", "TOGGLEWORLDMAP", nil, "Interface\\Icons\\INV_Misc_Map_01" },
+	{ "bags", "Bags", "OPENALLBAGS", nil, "Interface\\Icons\\INV_Misc_Bag_08" },
 	{ "screenshot", "Screenshot", "SCREENSHOT" },
+	-- Forever's two class buttons: pet commands and pet spells for hunters and warlocks, forms or
+	-- auras for druids and paladins, stances for warriors.
+	{ "classLeft", "Pet commands / forms menu", "LeftClassAction" },
+	{ "classRight", "Pet spells / stances menu", "RightClassAction" },
+	{ "ring", "Gamepad XIV ring", "CLICK GamepadXIVRingToggle:LeftButton" },
 	{ "none", "Nothing", "NONE" },
 }
+
+-- Groups for the settings list, which draws a line between them. Spells are their own group.
+ns.STICK_ACTION_GROUPS = {
+	sheatheSmart = "character", sheathe = "character", view = "character", autorun = "character",
+	walk = "character", sit = "character",
+	target = "targeting", assist = "targeting", follow = "targeting",
+	map = "windows", bags = "windows", screenshot = "windows", ring = "windows",
+	classLeft = "class", classRight = "class",
+	none = "none",
+}
+
+-- Spells that change the player's stance, form or bar, by class. Each is cast by name, which casts
+-- the highest rank the player knows. Settings show only the player's class and spells the game
+-- has; the names here are fallbacks, the game's own (localized) name is shown when it has one.
+ns.STANCE_SPELLS = {
+	{ "ROGUE", 1784, "Stealth" },
+	{ "ROGUE", 51713, "Shadow Dance" },
+	{ "DRUID", 768, "Cat Form" },
+	{ "DRUID", 5215, "Prowl" },
+	{ "DRUID", 5487, "Bear Form" },
+	{ "DRUID", 9634, "Dire Bear Form" },
+	{ "DRUID", 783, "Travel Form" },
+	{ "DRUID", 1066, "Aquatic Form" },
+	{ "DRUID", 24858, "Moonkin Form" },
+	{ "DRUID", 33891, "Tree of Life" },
+	{ "DRUID", 33943, "Flight Form" },
+	{ "DRUID", 40120, "Swift Flight Form" },
+	{ "WARRIOR", 2457, "Battle Stance" },
+	{ "WARRIOR", 71, "Defensive Stance" },
+	{ "WARRIOR", 2458, "Berserker Stance" },
+	{ "PRIEST", 15473, "Shadowform" },
+	{ "SHAMAN", 2645, "Ghost Wolf" },
+	{ "PALADIN", 465, "Devotion Aura" },
+	{ "PALADIN", 7294, "Retribution Aura" },
+	{ "PALADIN", 19746, "Concentration Aura" },
+	{ "PALADIN", 19876, "Shadow Resistance Aura" },
+	{ "PALADIN", 19888, "Frost Resistance Aura" },
+	{ "PALADIN", 19891, "Fire Resistance Aura" },
+	{ "PALADIN", 20218, "Sanctity Aura" },
+	{ "PALADIN", 32223, "Crusader Aura" },
+	{ "HUNTER", 13165, "Aspect of the Hawk" },
+	{ "HUNTER", 13163, "Aspect of the Monkey" },
+	{ "HUNTER", 5118, "Aspect of the Cheetah" },
+	{ "HUNTER", 13159, "Aspect of the Pack" },
+	{ "HUNTER", 13161, "Aspect of the Beast" },
+	{ "HUNTER", 20043, "Aspect of the Wild" },
+	{ "HUNTER", 34074, "Aspect of the Viper" },
+	{ "HUNTER", 61846, "Aspect of the Dragonhawk" },
+	{ "DEATHKNIGHT", 48266, "Blood Presence" },
+	{ "DEATHKNIGHT", 48263, "Frost Presence" },
+	{ "DEATHKNIGHT", 48265, "Unholy Presence" },
+	{ "WARLOCK", 47241, "Metamorphosis" },
+}
+
+-- A spell's name and icon, or nil when the game does not have it.
+function ns.SpellNameAndIcon(spellID)
+	if C_Spell and C_Spell.GetSpellInfo then
+		local info = C_Spell.GetSpellInfo(spellID)
+		if info then
+			return info.name, info.iconID
+		end
+		return
+	end
+	if GetSpellInfo then
+		local name, _, icon = GetSpellInfo(spellID)
+		return name, icon
+	end
+end
+
+-- Each stance spell of the player's class becomes an action like the others: key "spell-<id>",
+-- before "Nothing", with a button that casts it. Runs once at login, out of combat, before the
+-- settings window is made.
+function ns.CreateSpellActions()
+	local playerClass = UnitClassBase("player")
+	for _, spell in ipairs(ns.STANCE_SPELLS) do
+		local name, icon = ns.SpellNameAndIcon(spell[2])
+		if spell[1] == playerClass and name then
+			local buttonName = "GamepadXIVSpell" .. spell[2]
+			tinsert(ns.STICK_ACTIONS, #ns.STICK_ACTIONS, { "spell-" .. spell[2], name, "CLICK " .. buttonName .. ":LeftButton", spell[2], icon })
+			local button = CreateFrame("Button", buttonName, UIParent, "SecureActionButtonTemplate")
+			button:RegisterForClicks("AnyDown", "AnyUp")
+			button:SetAttribute("useOnKeyDown", true)
+			button:SetAttribute("type", "spell")
+			button:SetAttribute("spell", name) -- by name: the highest rank the player knows
+			button:Hide()
+		end
+	end
+end
+
+-- The labels under Forever's two class buttons. Forever's own always read L1 + L2 and R1 + R2, so
+-- they are faded out and these show the buttons the settings give each menu instead.
+local classMenuHints = {}
+
+-- The keys that open a class menu, from the settings: a single stick press first, then the L1 / R1
+-- combinations, and Forever's own trigger chord when nothing else is set.
+local function ClassMenuKeys(menu)
+	local db = ns.db
+	if db.l3Action == menu then
+		return { "PADLSTICK" }
+	elseif db.r3Action == menu then
+		return { "PADRSTICK" }
+	elseif db.l1R3Action == menu then
+		return { "PADLSHOULDER", "PADRSTICK" }
+	elseif db.r1L3Action == menu then
+		return { "PADRSHOULDER", "PADLSTICK" }
+	elseif db.l1StickUpAction == menu then
+		return { "PADLSHOULDER", "PADLSTICKUP" }
+	elseif menu == "classLeft" then
+		return { "PADLSHOULDER", "PADLTRIGGER" }
+	end
+	return { "PADRSHOULDER", "PADRTRIGGER" }
+end
+
+function ns.UpdateClassMenuHints()
+	for menu, hint in pairs(classMenuHints) do
+		local parts = {}
+		for _, key in ipairs(ClassMenuKeys(menu)) do
+			tinsert(parts, ns.ButtonText("{" .. key .. "}", 24))
+		end
+		hint.text:SetText(table.concat(parts, "  |cffffffff+|r  "))
+	end
+end
+
+function ns.CreateClassMenuHints(pageUnit)
+	for key, menu in pairs({ LeftInputPrompt = "classLeft", RightInputPrompt = "classRight" }) do
+		local prompt = pageUnit and pageUnit[key]
+		if prompt then
+			-- A child of Forever's prompt shows and hides with it; only Forever's own icons are faded.
+			prompt:SetAlpha(0)
+			local hint = CreateFrame("Frame", nil, prompt)
+			hint:SetIgnoreParentAlpha(true)
+			hint:SetSize(1, 1)
+			hint:SetPoint("CENTER")
+			hint.text = hint:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+			hint.text:SetPoint("CENTER")
+			classMenuHints[menu] = hint
+		end
+	end
+	ns.UpdateClassMenuHints()
+	if InputDeviceIconSetManager then
+		InputDeviceIconSetManager:RegisterActiveInputDeviceIconSetUpdatedCallback(ns.UpdateClassMenuHints, classMenuHints)
+	end
+end
 
 local function StickBinding(key, fallback)
 	for _, action in ipairs(ns.STICK_ACTIONS) do
 		if action[1] == key then
+			if action[1] == "classLeft" or action[1] == "classRight" then
+				local pageUnit = GamepadMainActionBarFrame and GamepadMainActionBarFrame.PageUnit
+				local button = pageUnit and pageUnit[action[3]]
+				return button and button:GetName() and ("CLICK " .. button:GetName() .. ":LeftButton") or "NONE"
+			end
 			return action[3]
 		end
 	end
@@ -1722,7 +2028,6 @@ function ns.Sync()
 	local on = db.enabled and ns.IsGamepadUI() and not ns.foreverEditorOpen
 
 	driver:SetAttribute("fc-priority", db.priorityBindings and 1 or 0)
-	driver:SetAttribute("fc-w4", db.wxhbFourSlots and 1 or 0)
 	driver:SetAttribute("fc-hide-WL", db.showTopLeft == "selected" and 1 or 0)
 	driver:SetAttribute("fc-hide-WR", db.showTopRight == "selected" and 1 or 0)
 	driver:SetAttribute("fc-dpadParty", db.dpadParty)
@@ -1731,6 +2036,17 @@ function ns.Sync()
 	driver:SetAttribute("ctx-PADLSTICK-target", l3)
 	driver:SetAttribute("ctx-PADLSTICK-notarget", l3)
 	driver:SetAttribute("fc-r3", StickBinding(db.r3Action, "CLICK GamepadXIVView:LeftButton"))
+	driver:SetAttribute("fc-l1StickUp", StickBinding(db.l1StickUpAction, "TOGGLEAUTORUN"))
+	-- The default is left to the snippet, which picks sheathe, dismount or descend.
+	driver:SetAttribute("fc-l1r1", db.l1R1Action ~= "sheatheSmart" and StickBinding(db.l1R1Action, "NONE") or nil)
+	-- A class menu is named too, so the snippet can fall back when the class has no such menu.
+	local CLASS_MENU = { classLeft = "L", classRight = "R" }
+	driver:SetAttribute("fc-l1r3", StickBinding(db.l1R3Action, "NONE"))
+	driver:SetAttribute("fc-l1r3-menu", CLASS_MENU[db.l1R3Action])
+	driver:SetAttribute("fc-r1l3", StickBinding(db.r1L3Action, "NONE"))
+	driver:SetAttribute("fc-r1l3-menu", CLASS_MENU[db.r1L3Action])
+	driver:SetAttribute("fc-r1r3", StickBinding(db.r1R3Action, "CLICK GamepadXIVRingToggle:LeftButton"))
+	ns.UpdateClassMenuHints()
 	local answeredPopup, answeredPopupIndex = GetAnsweredPopup()
 	driver:SetAttribute("fc-answeredPopup", answeredPopupIndex or 0)
 	for _, key in ipairs(POPUP_KEY_ORDER) do
@@ -1742,6 +2058,7 @@ function ns.Sync()
 	if partyTargeting and partyTargeting ~= db.partyTargeting then
 		driver:SetAttribute("fc-cycle-party", nil)
 		driver:SetAttribute("fc-cycle-raid", nil)
+		driver:SetAttribute("fc-cycleFrame", nil)
 		SecureHandlerExecute(driver, [[ self:RunAttribute("SetSoft", "") ]])
 	end
 	if driver:GetAttribute("fc-triggerMode") ~= db.triggerMode then

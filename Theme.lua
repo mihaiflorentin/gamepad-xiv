@@ -254,18 +254,15 @@ local function UseMask(button, mask)
 			tinsert(masks, button[shape.maskKey])
 		end
 	end
+	local regions = { icon, button.rangeTint }
 	for _, existing in ipairs(masks) do
-		if existing then
-			icon:RemoveMaskTexture(existing)
-			if button.rangeTint then
-				button.rangeTint:RemoveMaskTexture(existing)
-			end
+		for _, region in pairs(regions) do
+			region:RemoveMaskTexture(existing)
 		end
 	end
 	if mask then
-		icon:AddMaskTexture(mask)
-		if button.rangeTint then
-			button.rangeTint:AddMaskTexture(mask)
+		for _, region in pairs(regions) do
+			region:AddMaskTexture(mask)
 		end
 	end
 end
@@ -596,10 +593,51 @@ local function ApplySlotBorder(button, outline, inset)
 	border:Show()
 end
 
--- The cast and channel fill drawn inside a slot is square art; on round slots it uses Forever's round
--- art and a round mask instead. The game picks the art at each cast, so this runs after it does.
+-- The cast and channel fill drawn inside a slot is square art; on other slot shapes it gets a mask and
+-- glow in that shape instead. The game picks the art at each cast, so this runs after it does.
 local SQUARE_FILL_MASK = "UI-HUD-ActionBar-IconFrame-Mask"
 local SQUARE_END_MASK = "UI-HUD-ActionBar-CastingChannel-Complete-Mask"
+
+-- The cast fill's mask and inner glow for each slot shape. Square slots keep the game's own art; round
+-- slots use Forever's round glow; the other shapes use the theme's own mask and glow in cast colors.
+local CAST_SHAPES = {
+	round = { mask = "circle_mask" },
+	rsquare = { mask = "rsquare_mask", glow = "rsquare_glow" },
+	hex = { mask = "hex_mask", glow = "hex_glow" },
+}
+
+-- The attack flash: Blizzard blinks a square frame while auto-attack or a pet attack is on. Shaped
+-- slots blink a red glow in their own shape instead; Blizzard only shows and hides the texture.
+local FLASH_GLOWS = { round = "ring_glow", rsquare = "rsquare_glow", hex = "hex_glow" }
+
+local function ShapeFlash(button)
+	local flash = button.Flash
+	if not flash then
+		return
+	end
+	if not flash.themeOriginal then
+		flash.themeOriginal = { atlas = flash:GetAtlas(), width = flash:GetWidth(), height = flash:GetHeight() }
+	end
+	local glow = FLASH_GLOWS[button.themeOutline]
+	flash:ClearAllPoints()
+	if glow then
+		local size = button:GetWidth() * (1 - 2 * (button.themeInset or 0))
+		flash:SetTexture(MEDIA .. glow)
+		flash:SetBlendMode("ADD")
+		flash:SetVertexColor(1, 0.15, 0.1, 1)
+		flash:SetPoint("CENTER", button.icon, "CENTER")
+		flash:SetSize(size, size)
+	else
+		local original = flash.themeOriginal
+		if original.atlas then
+			flash:SetAtlas(original.atlas)
+		end
+		flash:SetBlendMode("BLEND")
+		flash:SetVertexColor(1, 1, 1, 1)
+		flash:SetPoint("TOPLEFT")
+		flash:SetSize(original.width, original.height)
+	end
+end
 
 local function ShapeCastAnim(button)
 	local anim = button.SpellCastAnimFrame
@@ -608,24 +646,39 @@ local function ShapeCastAnim(button)
 		return
 	end
 	local endMask = anim.EndBurst.EndMask
+	local glow = fill.InnerGlowTexture
 	if not anim.themeSizes then
 		anim.themeSizes = { fill = { fill.FillMask:GetSize() }, finish = { endMask:GetSize() } }
 	end
-	if button.themeOutline == "round" then
-		local size = button:GetWidth() * (1 - 2 * (button.themeInset or 0))
-		local channel = fill.InnerGlowTexture:GetAtlas() == "UI-HUD-ActionBar-Channel-InnerGlow"
-		fill.InnerGlowTexture:SetAtlas(channel and "gamepad-actionbar-circleslot-channel" or "gamepad-actionbar-circleslot-casting")
-		fill.InnerGlowTexture:SetSize(size, size)
-		fill.FillMask:SetTexture(MEDIA .. "circle_mask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-		fill.FillMask:SetSize(size, size)
-		endMask:SetTexture(MEDIA .. "circle_mask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-		endMask:SetSize(size * 1.3, size * 1.3)
-	else
+	-- Read before changing the art: the game has just set the cast or channel glow.
+	local channel = glow:GetAtlas() == "UI-HUD-ActionBar-Channel-InnerGlow"
+	glow:SetVertexColor(1, 1, 1, 1)
+	glow:SetBlendMode("BLEND")
+	local shape = CAST_SHAPES[button.themeOutline]
+	if not shape then
 		fill.FillMask:SetAtlas(SQUARE_FILL_MASK)
 		fill.FillMask:SetSize(unpack(anim.themeSizes.fill))
 		endMask:SetAtlas(SQUARE_END_MASK)
 		endMask:SetSize(unpack(anim.themeSizes.finish))
+		return
 	end
+	local size = button:GetWidth() * (1 - 2 * (button.themeInset or 0))
+	if shape.glow then
+		glow:SetTexture(MEDIA .. shape.glow)
+		glow:SetBlendMode("ADD")
+		if channel then
+			glow:SetVertexColor(0.55, 0.85, 1, 1)
+		else
+			glow:SetVertexColor(1, 0.85, 0.45, 1)
+		end
+	else
+		glow:SetAtlas(channel and "gamepad-actionbar-circleslot-channel" or "gamepad-actionbar-circleslot-casting")
+	end
+	glow:SetSize(size, size)
+	fill.FillMask:SetTexture(MEDIA .. shape.mask, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+	fill.FillMask:SetSize(size, size)
+	endMask:SetTexture(MEDIA .. shape.mask, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+	endMask:SetSize(size * 1.3, size * 1.3)
 end
 
 local function HookCastAnim(button)
@@ -703,6 +756,7 @@ local function ApplyToButton(button, index, theme)
 	button.themeOutline, button.themeInset = outline, inset
 	HookCastAnim(button)
 	ShapeCastAnim(button)
+	ShapeFlash(button)
 	button.appliedTheme = theme
 end
 

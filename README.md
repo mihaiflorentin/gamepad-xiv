@@ -74,7 +74,7 @@ Two rows are always visible, as in FFXIV: the current set at the bottom and the 
 - **Toggle:** a selected bar stays selected without holding the trigger, including after a double tap. The next press of the same trigger deselects it, and the other trigger replaces it.
 - **Mixed:** a quick tap keeps the bar selected until the next press, and holding works like Hold. A double tap is held, as in Hold.
 
-**Forms and stances** change the bottom row, and each one remembers its own set. By default, forms 1-4 start on sets 5-8, which begin empty, so drag abilities onto the bar while in that form. The top row does not change. This can be turned off in the settings.
+**Forms and stances** change the bottom row, and each one remembers its own set. By default a form shows the game's stance bar (set 0 in `formSet1-4`): bonus bar N is action slots 73 + (N - 1) × 12 onwards, 12 slots that fill the left side and the right side's first four (`ns.sideSlots` 17-24, `fc-stanceSides`); the right side's last four stay the player's own set. R1 + a button in a form picks one of the 8 sets for it instead. Installs from before this keep their sets 5-8. The top row does not change. This can be turned off in the settings. The form number comes from the game's bonus bar (`[bonusbar:1-4]`: cat, prowl, bear and moonkin for druids, stealth for rogues); stealth also counts as form 1 on its own, and warrior stances use their stance number, for when the game gives them no bonus bar. `/gxiv debug` prints what the game reports for the current form.
 
 The keys are the same on every bar. By default, the top row shows set 2 and Expanded Hold shows set 3. Change them in the settings or with `/gxiv wxhb R 4 L` and `/gxiv exhb LR 5 R`.
 
@@ -124,7 +124,7 @@ In the bind window from the spellbook, the bars do not react to your presses and
 
 ## Settings
 
-The addon has its own settings window, with the settings on six tabs in a column on the left: General, Targeting, Appearance, Crossbar, Layers and forms, and Input. The search box above the tabs finds settings on every tab by name or description. Open it with `/gxiv config`, L2/R2 + Start, the minimap icon, or the button under Options > AddOns > Gamepad XIV. With the controller, D-pad up / down picks a setting, left / right changes it, A toggles or presses, L1 / R1 change tab, and B or Start closes the window. With the mouse, click the arrows (Shift for bigger steps) or use the mouse wheel. `Reset shown` restores the defaults of the settings shown: the tab, or the search results. The window closes when combat starts.
+The addon has its own settings window, with the settings on six tabs in a column on the left: General, Targeting, Appearance, Crossbar, Layers and forms, and Input. The search box above the tabs finds settings on every tab by name or description. Open it with `/gxiv config`, L2/R2 + Start, the minimap icon, or the button under Options > AddOns > Gamepad XIV. With the controller, D-pad up / down picks a setting, left / right changes it, A toggles or presses, L1 / R1 change tab, and B or Start closes the window. With the mouse, click the arrows (Shift for bigger steps) or use the mouse wheel. `Reset to defaults`, under the tabs, restores the defaults of the open tab, or of the search results while searching. The window closes when combat starts.
 
 | Setting | What it does | Default |
 |---|---|---|
@@ -146,7 +146,7 @@ The addon has its own settings window, with the settings on six tabs in a column
 | Double tap L2 / R2 shows | which set and side each top bar shows | set 2 left / right |
 | L2 then R2 / R2 then L2 shows | which set and side Expanded Hold shows | set 3 left / right |
 | Forms change the bottom row | gives each form or stance its own set | on |
-| Form 1-4 uses | the set each form or stance uses | sets 5-8 |
+| Form 1-4 uses | the game's stance bar or one of the 8 sets, for each form or stance | the game's stance bar |
 | L2 / R2 activation | Hold, Toggle or Mixed | Hold |
 | D-pad arrow selection | Enemies only, Friendly only or Both: what D-pad left / right select | Both |
 | D-pad party selection | Off, In a raid or Always: when the whole D-pad moves over the party and raid frames | Off |
@@ -154,9 +154,9 @@ The addon has its own settings window, with the settings on six tabs in a column
 | Party highlight | Outline, Thick outline, Fill or Pulse: how the selected party member's frame is marked | Fill |
 | Party marker | Left, Right or Off: a gold arrow outside the selected party frame, pointing at it | Left |
 | Raid highlight | the same choices as Party highlight, for raid frames | Thick outline |
-| Theme | Classic, Forever, Round, Hex, Sigil, Holo, Ink, Orb or Minimal: how the slots look (their places stay the same). Each theme also picks the four settings below while they follow the theme | Orb |
-| Background | the theme's, None, Dark circle, Soft shadow, Vignette, Glass, Highlight glow, Hexagon, Holo glass or Ink wash: what is drawn behind each group of four slots | the theme's |
-| Background border | the theme's, None, Thin, Double, Glow, Highlight color, Hexagon, Runes or Holo ring: a border around each group of four slots | the theme's |
+| Theme | Classic, Forever, Round, Hex, Sigil, Holo, Ink, Orb or Minimal: how the slots look (their places stay the same). Each theme also picks the four settings below while they follow the theme | Hex |
+| Background | the theme's, None, Dark circle, Soft shadow, Vignette, Glass, Highlight glow, Hexagon, Holo glass or Ink wash: what is drawn behind each group of four slots | Vignette |
+| Background border | the theme's, None, Thin, Double, Glow, Highlight color, Hexagon, Runes or Holo ring: a border around each group of four slots | None |
 | Slot background | the theme's, None, Dark, Smoke, Gradient, Glass, Highlight color, Deep, Frost or Scanlines: the fill inside each slot, under the ability | the theme's |
 | Slot border | the theme's, None, Thin, Thick, Double, Glow or Highlight color: a border around each slot, in its shape | the theme's |
 | Background opacity | how solid that background is | 0.7 |
@@ -169,11 +169,21 @@ The addon has its own settings window, with the settings on six tabs in a column
 | Marks in the middle of the selected bar | the small cross and dots between its slots | on |
 | Top left bar / Top right bar | Always shown, or Only when selected: the double tap bars on top stay hidden until you double tap L2 or R2 | Always shown |
 | Highlight color | Gold, White, Green, Cyan, Blue, Purple, Pink, Red or Orange, for the highlight and the marker | Gold |
-| L3 (press left stick) / R3 (press right stick) | Draw / sheathe weapon, First / third person, Auto-run, Walk / run, Sit / stand, Target nearest enemy, Assist target, Follow target, World map, Bags, Screenshot or Nothing | Draw / sheathe weapon / First / third person |
-| WXHB swaps face buttons only | keeps the D-pad on the bottom row during a double tap (4 slots) | off |
+| L3 (press left stick) / R3 (press right stick) | dropdowns: Draw / sheathe weapon, First / third person, Auto-run, Walk / run, Sit / stand, Target nearest enemy, Assist target, Follow target, World map, Bags, Screenshot, Pet commands / forms menu, Pet spells / stances menu, your class's stance and form spells (highest rank known) or Nothing. Long lists have a search box | Draw / sheathe weapon / First / third person |
+| L1 + R3 / R1 + L3 | the same choices as L3 / R3. A class menu the class does not have falls back to the stick's own action | Pet commands / forms menu / Pet spells / stances menu |
+| L1 + left stick forward | the same choices as L3 / R3. Pressing L1 while already moving forward also starts auto-run, but only while this is Auto-run | Auto-run |
+| L1 + right stick | Zoom (up zooms in), Zoom (up zooms out) or Turn the camera as usual | Zoom (up zooms in) |
 | Double tap window | window in 0.2 s steps (2-4) | 2 |
 | Hold B / Circle to walk | walks while the button is held | on |
 | Priority bindings | use only if R2 does not change the bar | off |
+
+## Gamepad XIV ring
+
+R1 + R3 opens the addon's own ring (`Ring.lua`), drawn with the art of Forever's main menu ring. Forever's ring cannot take addon entries: an addon entry taints it, and closing it then blocks Forever's interact button, so the addon keeps to a frame of its own. The highlight follows the right stick over every segment, empty ones greyed out, and stays when the stick is let go; nothing runs until A is pressed. A uses the highlighted entry, B closes, L1 / R1 and D-pad left / right change page, D-pad up shows the emotes and D-pad down sits or stands (`SITORSTAND`). Those keys are bound through the secure driver (`fc-ring`, `ringKey-*`, `ringBind-*`), so they work in combat. Opening the ring from R1 + R3 puts the layer back to the base, so R1 can page.
+
+The first three pages are Forever's main menu pages with its entries in the same places. They open through a secure click on Forever's own buttons (micro menu buttons, the backpack button, the clock and calendar buttons): while the highlight moves, `Ring.lua` sets `type = "click"` and `clickbutton` on `GamepadXIVRingpick`, the button A presses, so the window opens from the hardware press and nothing is tainted. Player entries with a slash command run as a macro the same way. Those attributes can't change in combat, so there `S.RingPickPre` drops the click and the addon runs what it can itself (emotes, PvP, tracking, addon slash commands); Forever's windows show greyed out. Chat and Buffs are left out: they focus a frame for the controller, which taints Forever's focus manager from addon code.
+
+The settings entry sits on the third page and cannot be changed or removed. In the `Ring` tab the player fills free segments with Forever's entries or slash commands and adds, renames and removes pages of their own, without limit. They are saved per character in `ringPages`; the older `ringEntries` move into it on first use. R1 + R3 has its own setting, and any other button setting can open the ring too (`Gamepad XIV ring` in their lists). Start cannot: Forever's `OPENRADIAL` binding is in its `GamepadModeInGameCore` binding context, which takes Start (and Back) before any addon binding.
 
 ## Minimap icon
 
@@ -212,8 +222,10 @@ The menu closes on a click elsewhere and when you enter combat. The same entry a
 
 Forever gives hunters and warlocks two round buttons near the bottom of the screen instead of a pet bar, and they stay visible with this addon:
 
-- **L1 + L2** opens the pet commands, and **R1 + R2** opens the pet spells.
-- Press both buttons together to open a menu, then aim with the right stick. Any other button press closes it, as in Forever.
+- **L1 + R3** opens the pet commands, and **R1 + L3** opens the pet spells. Forever's own L1 + L2 and R1 + R2 still work too.
+- The menu stays open after letting go. Tilt the right stick toward a slot and let it go back to the middle to use it. Circle closes the menu without doing anything else; any other button closes it and does its own action, as in Forever.
+- Druids, paladins and warriors open their forms, auras or stances menu with the same buttons. Classes without such a menu keep the stick's own action. Either menu can also go on L3 or R3 alone, and L1 + R3 / R1 + L3 can be given other actions, in the Input tab. The label under each button shows the buttons that open it now: L3 or R3 alone first, then L1 + R3 / R1 + L3, then L1 + left stick forward, and Forever's L1 + L2 / R1 + R2 when nothing else opens it.
+- The right stick only picks inside the menu: while one is open, the stick axis buttons are turned off, because Forever closes the menu on any button press.
 - For these two classes, L2 + L1 and R2 + R1 no longer change target. L2 + R1 and R2 + L1 still do.
 
 ## Face target
@@ -240,12 +252,12 @@ The client asks you to confirm experimental camera features the first time. The 
 | D-pad left / right | previous / next target (real target); see `D-pad arrow selection` and `D-pad party selection` |
 | D-pad up / down | temporary target through the party, starting with yourself; see `D-pad party selection` |
 | L2 or R2 + R1 / L1 | next / previous enemy |
-| L1 + L2 | hunters and warlocks: Forever's pet commands (attack, follow and so on) |
-| R1 + R2 | hunters and warlocks: Forever's pet spells |
-| L1 + left stick forward | auto-run, whichever you press first |
+| L1 + R3 | hunters and warlocks: Forever's pet commands (attack, follow and so on); druids, paladins: forms or auras |
+| R1 + L3 | hunters and warlocks: Forever's pet spells; warriors: stances |
+| L1 + left stick forward | auto-run, whichever you press first; set under `L1 + left stick forward` |
 | Double tap L1 | party selection: starts with yourself, and the next double tap moves to the next member |
-| L1 + right stick up / down | zoom in / zoom out |
-| L1 + R1 | draw / sheathe weapon; on a mount, dismount; while flying, descend |
+| L1 + right stick up / down | zoom in / zoom out; set under `L1 + right stick` |
+| L1 + R1 | draw / sheathe weapon; on a mount, dismount; while flying, descend. Set under `L1 + R1` |
 | L1 + D-pad up / down | tab target: previous / next enemy |
 | L1 + D-pad left / right | temporary target through the raid (alliance); in a party, through the party |
 | L3 | draw / sheathe weapon; set under `L3 (press left stick)` |
@@ -258,7 +270,7 @@ The client asks you to confirm experimental camera features the first time. The 
 
 FFXIV reference: [Controls](https://ffxiv.consolegameswiki.com/wiki/Controls) and [W Cross Hotbar](https://ffxiv.consolegameswiki.com/wiki/W_Cross_Hotbar). The exact FFXIV double tap timing is not documented there.
 
-**Party selection:** with no L2/R2 held, a double tap on L1 (or D-pad up/down) starts with yourself and steps through the party members, each followed by their pet. The name appears above the crossbar, and the member's frame is highlighted in the style chosen under Party highlight and Raid highlight, with the Party marker arrow beside party frames.
+**Party selection:** with no L2/R2 held, a double tap on L1 (or D-pad up/down) starts at the top and steps through the party and raid frames in the order they are drawn on screen, column by column, pets included. Without raid-style frames on screen, it steps through the party list, each member followed by their pet. The name appears above the crossbar, and the member's frame is highlighted in the style chosen under Party highlight and Raid highlight, with the Party marker arrow beside party frames.
 
 **D-pad party selection:** this setting gives the whole D-pad to the party and raid frames on screen, and each direction moves to the frame that way, wrapping at the end of a row or column. The selection is a temporary target. Pressing a direction with no temporary target selects the frame you were last on. `Always` applies everywhere; `In a raid` applies only in a raid, and elsewhere the D-pad works as normal. With no compact frames on screen, it steps through the party list instead. Frames that appear during combat can only be reached after combat. Enemy tab target stays on L1 + D-pad up/down, R1 + L2 and L1 + R2.
 
@@ -270,7 +282,7 @@ FFXIV reference: [Controls](https://ffxiv.consolegameswiki.com/wiki/Controls) an
 
 **Loot rolls:** Forever does not focus the roll window by itself, so press Back with no L2/R2 held, as the prompt below the window shows, then use the buttons it shows, such as A / Cross for Need and B / Circle for Pass. This also works in combat.
 
-L1 on its own does nothing: holding it is a layer, like the triggers. While it is held, the right stick only zooms: camera turning drops to 0.1, the lowest the client accepts, and your own speeds come back on release.
+L1 on its own does nothing: holding it is a layer, like the triggers. While it is held, the right stick only zooms (unless `L1 + right stick` is set to turn the camera): camera turning drops to 0.1, the lowest the client accepts, and your own speeds come back on release.
 
 **Item links:** left-clicking an item, spell, quest or achievement link in chat opens it (player names are left to Forever); Forever does not pass link clicks to chat, so the addon reads the link from the line you clicked. Shift-click an item with chat open to add its link, even with nothing typed yet. With chat closed, the link is held for 30 seconds and goes into the box when you open chat; the addon does not open chat itself, because that leads to the "blocked from an action" message. In the bags, Y / Triangle then Share in Chat also works.
 

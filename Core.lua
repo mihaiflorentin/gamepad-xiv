@@ -30,9 +30,10 @@ ns.DEFAULTS = {
 	minimapShown = true,
 	minimapAngle = 220,
 	savedCVars = {},
+	ringEntries = {}, -- old ring entries, moved into ringPages on first use
+	ringPages = {}, -- the ring pages: the player's entries in each, and the pages they added
 	holdToWalk = true,
 	triggerMode = "hold", -- hold, toggle or mixed, like FFXIV's cross hotbar activation
-	wxhbFourSlots = false, -- WXHB swaps only the face buttons, like FFXIV's 4 slot option
 	dimAlpha = 0.55,
 	showKeyLabels = false,
 	rangeIndicator = true,
@@ -43,12 +44,18 @@ ns.DEFAULTS = {
 	lootMoved = false, lootX = 0, lootY = 0, -- the loot roll window: Forever's place, or moved here from the middle
 	keyIconSize = 32, -- the art has wide empty margins, so this is larger than it looks
 	showSetLabels = true,
-	theme = "orb", -- a key of ns.THEMES: how the crossbar slots look
+	theme = "hex", -- a key of ns.THEMES: how the crossbar slots look
 	-- The next four are "theme" to use the theme's choice, or a key of their list in Theme.lua.
-	background = "theme", -- ns.BACKGROUNDS: what is drawn behind each group of four slots
+	background = "vignette", -- ns.BACKGROUNDS: what is drawn behind each group of four slots
 	slotFill = "theme", -- ns.SLOT_FILLS: the fill inside each slot, under the icon
 	l3Action = "sheathe", -- a key of ns.STICK_ACTIONS: what L3 does
 	r3Action = "view", -- a key of ns.STICK_ACTIONS: what R3 does
+	l1R3Action = "classLeft", -- a key of ns.STICK_ACTIONS: L1 + R3, the pet commands or forms menu
+	r1L3Action = "classRight",
+	r1R3Action = "ring", -- a key of ns.STICK_ACTIONS: R1 + R3, the addon's ring by default -- a key of ns.STICK_ACTIONS: R1 + L3, the pet spells or stances menu
+	l1R1Action = "sheatheSmart", -- "sheatheSmart" or a key of ns.STICK_ACTIONS: L1 + R1
+	l1StickUpAction = "autorun", -- a key of ns.STICK_ACTIONS: L1 + left stick forward
+	l1RightStick = "zoom", -- a key of ns.L1_RIGHT_STICK: what the right stick does while L1 is held
 	activeHighlight = "glow", -- a key of ns.ACTIVE_STYLES: how the selected bar is highlighted
 	-- Keys of ns.HIGHLIGHT_COLORS: the highlight color of each bar while it is selected.
 	activeColorBottom = "cyan", -- the bottom bars (L2, R2)
@@ -58,7 +65,7 @@ ns.DEFAULTS = {
 	activeStrength = 0.7, -- how bright that highlight is
 	activeMarks = true, -- the cross and dots in the middle of the selected bar's groups
 	backgroundAlpha = 0.7, -- opacity of that background
-	backgroundBorder = "theme", -- ns.BACKGROUND_BORDERS: a ring around each group of four slots
+	backgroundBorder = "none", -- ns.BACKGROUND_BORDERS: a ring around each group of four slots
 	slotBorder = "theme", -- ns.SLOT_BORDERS: a border around each slot
 	showTopLeft = "always", -- "always" or "selected": the double tap L2 bar (top left) shows always or only while selected
 	showTopRight = "always", -- the same for the double tap R2 bar (top right)
@@ -74,7 +81,7 @@ ns.DEFAULTS = {
 	partyMarker = "left", -- "off", "left" or "right": an arrow outside the selected party frame
 	highlightColor = "gold", -- a key of ns.HIGHLIGHT_COLORS: the color of the highlight and the marker
 	formsChangeBar = true,
-	formSet1 = 5, -- set each form or stance starts on; R1 + button changes it while in that form
+	formSet1 = 5, -- each form or stance has its own set, so both bottom sides change; R1 + button picks another
 	formSet2 = 6,
 	formSet3 = 7,
 	formSet4 = 8,
@@ -92,6 +99,18 @@ end
 function ns.DescribeSide(side)
 	local set = math.ceil(side / 2)
 	return set, (side % 2 == 0) and "R" or "L"
+end
+
+-- The 8 gamepad storage slots of a form's stance bar. Forever only tells where they are while the
+-- form is active, so the first slot is learned then and saved (ns.LearnStanceStorage); until then
+-- the slots are empty (0).
+function ns.StanceSlots(form)
+	local first = ns.db and ns.db.stanceStorage and ns.db.stanceStorage[form]
+	local slots = {}
+	for i = 1, ns.NUM_SLOTS do
+		slots[i] = first and (first + i - 1) or 0
+	end
+	return slots
 end
 
 -- Regular action slots backing the sides Forever's own storage cannot hold.
@@ -127,6 +146,18 @@ local function BuildSideSlots()
 		sides[side] = slots
 	end
 
+	-- The game's stance bars (bonus bars 1-4: stealth, cat, prowl, bear, moonkin, battle stance and
+	-- so on). Forever keeps their 8 slots in its own gamepad storage, on the left side; the right side
+	-- stays the player's own set (ApplyLayer), so it is 0 here.
+	for form = 1, ns.NUM_FORMS do
+		sides[ns.NUM_SETS * 2 + form * 2 - 1] = ns.StanceSlots(form)
+		local right = {}
+		for i = 1, ns.NUM_SLOTS do
+			right[i] = 0
+		end
+		sides[ns.NUM_SETS * 2 + form * 2] = right
+	end
+
 	for side = 1, ns.NUM_SETS * 2 do
 		for i = 1, ns.NUM_SLOTS do
 			local slot = sides[side][i]
@@ -148,6 +179,28 @@ function ns.ButtonMarkup(key, fallback, size)
 		return CreateAtlasMarkup(utility.GetNormalActiveInputIconButtonTexture(key), size or 18, size or 18)
 	end
 	return fallback
+end
+
+-- Plain names for when a controller has no icon for a button. Text names buttons as {PAD1},
+-- {PADLSHOULDER} and so on, never by one controller's labels; see AGENTS.md.
+ns.BUTTON_NAMES = {
+	PADLSHOULDER = "L1", PADRSHOULDER = "R1", PADLTRIGGER = "L2", PADRTRIGGER = "R2",
+	PADLSTICK = "L3", PADRSTICK = "R3", PAD1 = "A", PAD2 = "B", PAD3 = "X", PAD4 = "Y",
+	PADDUP = "Up", PADDDOWN = "Down", PADDLEFT = "Left", PADDRIGHT = "Right",
+	PADBACK = "Back", PADFORWARD = "Start", PADLSTICKUP = "Left stick forward",
+}
+
+-- The button art fills only about half of its square, so icons in text are drawn this much larger
+-- than the size asked for, which is the size the visible button should have.
+local BUTTON_ART_SCALE = 1.8
+
+-- Fills in the {KEY} buttons in a text: as icons of the controller in use, with the button about the
+-- given size, or as plain names when size is nil (for search and chat).
+function ns.ButtonText(text, size)
+	return (text:gsub("{(%u[%u%d]*)}", function(key)
+		local name = ns.BUTTON_NAMES[key] or key
+		return size and ns.ButtonMarkup(key, name, math.floor(size * BUTTON_ART_SCALE + 0.5)) or name
+	end))
 end
 
 -- Keeps the latest errors in the saved variables, so a report does not depend on copying them by hand.
@@ -248,6 +301,24 @@ local MIGRATIONS = {
 			db[key] = ns.DEFAULTS[key]
 		end
 	end,
+	-- 2 (0.1.9): a form on the same set as the normal bar never changed it. It goes to the game's
+	-- stance bar instead.
+	function(db)
+		for form = 1, ns.NUM_FORMS do
+			if db["formSet" .. form] == (db.set or 1) then
+				db["formSet" .. form] = 0
+			end
+		end
+	end,
+	-- 3 (0.1.9): a form changes both bottom sides, so forms on the game's stance bar (8 slots, left
+	-- side only) go back to their own set, 5-8.
+	function(db)
+		for form = 1, ns.NUM_FORMS do
+			if db["formSet" .. form] == 0 then
+				db["formSet" .. form] = 4 + form
+			end
+		end
+	end,
 }
 
 local function RunMigrations(db)
@@ -265,7 +336,9 @@ local function InitDB()
 	GamepadXIVDB.targetTrace = nil -- left by an earlier temporary debug session
 	GamepadXIVDB.holdLog = nil -- left by the Press and Hold Casting test
 	GamepadXIVDB.pressHoldCasting = nil -- a setting that was tried and removed
+	GamepadXIVDB.wxhbFourSlots = nil -- removed: a double tap always uses all 8 slots of the top bar
 	GamepadXIVDB.themeLooks = nil -- an earlier, unreleased form of migration 1
+	GamepadXIVDB.formLog = nil -- left by a temporary debug session
 	-- Themes that were removed fall back to Round.
 	local removed = { sleek = true, rounded = true, slate = true, halo = true, neon = true, glass = true }
 	if removed[GamepadXIVDB.theme] then

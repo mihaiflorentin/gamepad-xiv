@@ -10,3 +10,4 @@ ignore:
   - tools
   - docs
   - CURSEFORGE.md
+  - AGENTS.md

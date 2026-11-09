@@ -17,7 +17,6 @@ local ACTIVE_COLOR_KEYS = {
 	LR = "activeColorCombo", RL = "activeColorCombo",
 }
 local LAYER_ROW = { L = "L", R = "R", WL = "WL", WR = "WR", LR = "L", RL = "R" }
-local TRIGGER_LABELS = { L = "L2", R = "R2" }
 
 local MEDIA = "Interface\\AddOns\\GamepadXIV\\Media\\"
 
@@ -125,11 +124,13 @@ local function CreateSide(root, row)
 		keyIcon:SetPoint("CENTER", button, "BOTTOMRIGHT", -9, 9)
 		button.keyIcon = keyIcon
 
-		-- A separate multiply layer, because Blizzard's own usable state owns the icon's vertex color.
+		-- A separate red layer, because Blizzard's own usable state owns the icon's vertex color.
 		local rangeTint = button:CreateTexture(nil, "BACKGROUND", nil, 7)
 		rangeTint:SetAllPoints(button.icon)
-		rangeTint:SetColorTexture(1, 0.2, 0.2)
-		rangeTint:SetBlendMode("MOD")
+		-- A see-through red rather than a multiply: masks do not apply to multiply textures, so that one
+		-- stayed square around round and hexagon slots.
+		rangeTint:SetColorTexture(0.85, 0.08, 0.08, 0.55)
+		rangeTint:SetBlendMode("BLEND")
 		rangeTint:AddMaskTexture(button.IconMask)
 		rangeTint:Hide()
 		button.rangeTint = rangeTint
@@ -302,7 +303,20 @@ function ns.ApplyLayout()
 	end
 end
 
+-- The labels outside edit mode name buttons, so they are redrawn when another controller is plugged in.
+local function SetPlayLabels()
+	local root = ns.root
+	if not root or ns.editing or not root.shownSet then
+		return
+	end
+	root.sides.L.label:SetText(ns.ButtonText("{PADLTRIGGER}", 22))
+	root.sides.R.label:SetText(ns.ButtonText("{PADRTRIGGER}", 22))
+	local name = root.shownSet == 0 and "STANCE" or ("SET " .. root.shownSet)
+	root.setText:SetText(name .. "  " .. ns.ButtonText("{PADRSHOULDER}", 20))
+end
+
 local function RefreshKeyIcons()
+	SetPlayLabels()
 	local root = ns.root
 	for _, row in ipairs(ns.ROWS) do
 		for i, button in ipairs(root.sides[row].buttons) do
@@ -382,15 +396,6 @@ function ns.CreateBar()
 		C_Timer.After(0.1, ns.UpdateTargetHighlight)
 	end)
 
-	root.editHint = CreateFrame("Frame", nil, root)
-	root.editHint:SetFrameStrata("HIGH")
-	root.editHint:SetSize(60, 30)
-	root.editHint:SetPoint("CENTER", root, "CENTER", 0, 42)
-	root.editHint:Hide()
-	local hintText = root.editHint:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	hintText:SetPoint("CENTER")
-	hintText:SetText("BACK\nEdit")
-
 	-- Plugging in another controller changes the art.
 	if InputDeviceIconSetManager then
 		InputDeviceIconSetManager:RegisterActiveInputDeviceIconSetUpdatedCallback(RefreshKeyIcons, ns)
@@ -414,7 +419,7 @@ function ns.ShowLayer(layer, leftSide, rightSide, set, form)
 		return
 	end
 	ns.lastShown = { layer, leftSide, rightSide, set, form }
-	ns.currentSet = set
+	ns.currentSet = set > 0 and set or nil -- 0 is the game's stance bar, which the editor doesn't show
 	ns.l1Held = layer == "L1"
 
 	local activeRow = not ns.editing and LAYER_ROW[layer]
@@ -439,21 +444,19 @@ function ns.ShowLayer(layer, leftSide, rightSide, set, form)
 		end
 		side.marks:SetShown(row == activeRow and ns.db.activeMarks ~= false)
 	end
-	root.editHint:SetShown(activeRow and true or false)
 
 	local sides = root.sides
 	if ns.editing then
 		sides.L.label:SetText(DescribeLabel(leftSide))
 		sides.R.label:SetText(DescribeLabel(rightSide))
-		sides.WL.label:SetText("Double tap L2: " .. DescribeLabel(ns.db.sideWL))
-		sides.WR.label:SetText("Double tap R2: " .. DescribeLabel(ns.db.sideWR))
+		sides.WL.label:SetText(ns.ButtonText("Double tap {PADLTRIGGER}: ", 18) .. DescribeLabel(ns.db.sideWL))
+		sides.WR.label:SetText(ns.ButtonText("Double tap {PADRTRIGGER}: ", 18) .. DescribeLabel(ns.db.sideWR))
 		root.setText:SetText("EDIT")
 	else
-		sides.L.label:SetText(TRIGGER_LABELS.L)
-		sides.R.label:SetText(TRIGGER_LABELS.R)
 		sides.WL.label:SetText("")
 		sides.WR.label:SetText("")
-		root.setText:SetText("SET " .. set .. "  [R1]")
+		root.shownSet = set
+		SetPlayLabels()
 	end
 
 	root.setPicker:SetShown(layer == "SET")
@@ -656,7 +659,7 @@ function ns.ShowSoftTarget(unit)
 	root.softBorder.marker.bob:Stop()
 	root.softHint:SetShown(unit ~= "")
 	root.softHint:SetText(format("Next ability goes here. %s make target. %s cancel.",
-		ns.ButtonMarkup("PAD1", "A / Cross:"), ns.ButtonMarkup("PAD2", "B / Circle:")))
+		ns.ButtonText("{PAD1}", 18), ns.ButtonText("{PAD2}", 18)))
 	if unit == "" then
 		root.softText:SetText("")
 		return
@@ -786,7 +789,10 @@ end
 
 local function CreateMovers()
 	local db = ns.db
-	local NAMES = { L = "L2", R = "R2", WL = "L2 L2", WR = "R2 R2" }
+	local NAMES = {
+		L = ns.ButtonText("{PADLTRIGGER}", 20), R = ns.ButtonText("{PADRTRIGGER}", 20),
+		WL = ns.ButtonText("{PADLTRIGGER} {PADLTRIGGER}", 20), WR = ns.ButtonText("{PADRTRIGGER} {PADRTRIGGER}", 20),
+	}
 	for _, row in ipairs(ns.ROWS) do
 		local keyX, keyY = "pos" .. row .. "x", "pos" .. row .. "y"
 		local side = ns.root.sides[row]

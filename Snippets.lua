@@ -16,12 +16,32 @@ S.ApplyLayer = [[
 	local form = self:GetAttribute("fc-form")
 	local set = self:GetAttribute("fc-formset-" .. form)
 	local left, right = set * 2 - 1, set * 2
+	-- Set 0: the game's stance bar for this form. Its 8 slots fill the left side; the right side
+	-- stays that of the player's own set.
+	if set == 0 then
+		left = self:GetAttribute("fc-stanceSides") + form * 2 - 1
+		right = self:GetAttribute("fc-formset-0") * 2
+		-- Not seen yet, or the form has no stance bar at all: the normal set stays.
+		if self:GetAttribute("slot-" .. left .. "-1") == 0 then
+			left = right - 1
+		end
+	end
 	local topLeft, topRight = self:GetAttribute("fc-side-WL"), self:GetAttribute("fc-side-WR")
 	local active
 	local priority = self:GetAttribute("fc-priority") == 1
 	local editing = self:GetAttribute("fc-editing") == 1
 	local flyout = self:GetAttribute("fc-flyout")
 	local clearStage = self:GetAttribute("fc-clear")
+	-- The addon's own ring is open: it takes A, B, the D-pad, L1 and R1.
+	local ringOpen = self:GetAttribute("fc-ring") == 1
+	-- One of Forever's class menus is open: pet commands, pet spells or forms. It closes on any
+	-- button, so Circle is left with nothing else to do.
+	local classMenuOpen = false
+	for n = 1, self:GetAttribute("classPopup-count") or 0 do
+		if self:GetFrameRef("classPopup" .. n):IsShown() then
+			classMenuOpen = true
+		end
+	end
 
 	if layer == "L" or layer == "R" or layer == "WL" or layer == "WR" then
 		active = layer
@@ -36,7 +56,6 @@ S.ApplyLayer = [[
 	end
 
 	local soft = self:GetAttribute("fc-soft")
-	local faceOnly = self:GetAttribute("fc-w4") == 1
 
 	for i = 1, 8 do
 		local slotL = self:GetAttribute("slot-" .. left .. "-" .. i)
@@ -54,7 +73,15 @@ S.ApplyLayer = [[
 
 		local key = self:GetAttribute("key" .. i)
 		local flyoutPick = flyout ~= "" and self:GetAttribute("flyKey-" .. key)
-		if clearStage == 2 then
+		local ringKey = ringOpen and self:GetAttribute("ringKey-" .. key)
+		local ringBind = ringOpen and self:GetAttribute("ringBind-" .. key)
+		if ringKey then
+			self:SetBindingClick(priority, key, ringKey, "LeftButton")
+		elseif ringBind then
+			self:SetBinding(priority, key, ringBind)
+		elseif classMenuOpen and key == "PAD2" then
+			self:SetBinding(priority, key, "NONE")
+		elseif clearStage == 2 then
 			-- Only the choice answers now: move, remove or cancel.
 			if key == "PAD1" then
 				self:SetBindingClick(priority, key, "GamepadXIVSlotMove", "LeftButton")
@@ -77,15 +104,7 @@ S.ApplyLayer = [[
 				self:ClearBinding(key)
 			end
 		elseif active then
-			local row = active
-			if faceOnly and i <= 4 then
-				if active == "WL" then
-					row = "L"
-				elseif active == "WR" then
-					row = "R"
-				end
-			end
-			self:SetBindingClick(priority, key, "GamepadXIVCast" .. row .. i, "LeftButton")
+			self:SetBindingClick(priority, key, "GamepadXIVCast" .. active .. i, "LeftButton")
 		elseif layer == "SET" then
 			self:SetBindingClick(priority, key, "GamepadXIVSet" .. i, "LeftButton")
 		elseif layer == "L1" then
@@ -159,14 +178,15 @@ S.ApplyLayer = [[
 		elseif IsMounted() then
 			sheathe = "DISMOUNT"
 		end
-		self:SetBinding(priority, "PADRSHOULDER", sheathe)
+		-- L1 + R1 does what is picked in the settings; by default the sheathe above.
+		self:SetBinding(priority, "PADRSHOULDER", self:GetAttribute("fc-l1r1") or sheathe)
 		self:SetBindingClick(priority, "PADLSHOULDER", "GamepadXIVL1", "LeftButton")
 		self:SetBinding(priority, "PADBACK", "TOGGLEUI")
 		self:SetBinding(priority, "PADFORWARD", "SCREENSHOT")
 	else
 		self:SetBindingClick(priority, "PADRSHOULDER", "GamepadXIVR1", "LeftButton")
-		-- Already moving forward, L1 starts auto-run instead of its layer.
-		if self:GetAttribute("fc-stickUp") == 1 then
+		-- Already moving forward, L1 starts auto-run instead of its layer, while L1 + forward is auto-run.
+		if self:GetAttribute("fc-stickUp") == 1 and self:GetAttribute("fc-l1StickUp") == "TOGGLEAUTORUN" then
 			self:SetBinding(priority, "PADLSHOULDER", "TOGGLEAUTORUN")
 		else
 			self:SetBindingClick(priority, "PADLSHOULDER", "GamepadXIVL1", "LeftButton")
@@ -180,17 +200,57 @@ S.ApplyLayer = [[
 		end
 		self:SetBinding(priority, "PADFORWARD", "OPENRADIAL")
 	end
+	-- The open ring pages with L1 / R1, like Forever's.
+	if ringOpen then
+		local ringLeft = self:GetAttribute("ringKey-PADLSHOULDER")
+		local ringRight = self:GetAttribute("ringKey-PADRSHOULDER")
+		if ringLeft then
+			self:SetBindingClick(priority, "PADLSHOULDER", ringLeft, "LeftButton")
+		end
+		if ringRight then
+			self:SetBindingClick(priority, "PADRSHOULDER", ringRight, "LeftButton")
+		end
+	end
 
-	self:SetBinding(priority, "PADLSTICK", self:GetAttribute("base-PADLSTICK"))
+	-- L1 + R3 and R1 + L3 do what is picked in the settings; Forever's class menus by default. A class
+	-- menu the class does not have falls back to the stick's own action.
+	local leftMenu = layer == "L1" and self:GetAttribute("fc-l1r3")
+	local leftKind = self:GetAttribute("fc-l1r3-menu")
+	if leftMenu and leftKind and not (self:GetAttribute("classMenu-" .. leftKind) and self:GetFrameRef("classMenu" .. leftKind):IsShown()) then
+		leftMenu = nil
+	end
+	local rightMenu = layer == "SET" and self:GetAttribute("fc-r1l3")
+	local rightKind = self:GetAttribute("fc-r1l3-menu")
+	if rightMenu and rightKind and not (self:GetAttribute("classMenu-" .. rightKind) and self:GetFrameRef("classMenu" .. rightKind):IsShown()) then
+		rightMenu = nil
+	end
+	if rightMenu then
+		self:SetBinding(priority, "PADLSTICK", rightMenu)
+	else
+		self:SetBinding(priority, "PADLSTICK", self:GetAttribute("base-PADLSTICK"))
+	end
 	if active then
 		-- Trigger + R3 moves or removes an ability, standing in for FFXIV's trigger + touchpad.
 		self:SetBindingClick(priority, "PADRSTICK", "GamepadXIVClearStart", "LeftButton")
 		self:SetBindingClick(priority, "PADLSTICKUP", "GamepadXIVStickUp", "LeftButton")
 	else
-		-- R3 does what is picked in the settings; first or third person by default. L1 does not change it.
-		self:SetBinding(priority, "PADRSTICK", self:GetAttribute("fc-r3") or "CLICK GamepadXIVView:LeftButton")
+		-- R3 does what is picked in the settings; first or third person by default. R1 + R3 has its
+		-- own setting, the addon's ring by default.
+		local r1r3 = layer == "SET" and self:GetAttribute("fc-r1r3")
+		if leftMenu then
+			self:SetBinding(priority, "PADRSTICK", leftMenu)
+		elseif r1r3 then
+			self:SetBinding(priority, "PADRSTICK", r1r3)
+		else
+			self:SetBinding(priority, "PADRSTICK", self:GetAttribute("fc-r3") or "CLICK GamepadXIVView:LeftButton")
+		end
+		-- Clicking the right stick in while aiming at the ring closes it, rather than doing R3's action.
+		local ringStick = ringOpen and self:GetAttribute("ringKey-PADRSTICK")
+		if ringStick then
+			self:SetBindingClick(priority, "PADRSTICK", ringStick, "LeftButton")
+		end
 		if layer == "L1" then
-			self:SetBinding(priority, "PADLSTICKUP", "TOGGLEAUTORUN")
+			self:SetBinding(priority, "PADLSTICKUP", self:GetAttribute("fc-l1StickUp") or "TOGGLEAUTORUN")
 		else
 			self:SetBindingClick(priority, "PADLSTICKUP", "GamepadXIVStickUp", "LeftButton")
 		end
@@ -587,7 +647,14 @@ S.SetClick = [[
 	end
 	local driver = self:GetFrameRef("driver")
 	local set = self:GetAttribute("fc-setIndex")
-	driver:SetAttribute("fc-formset-" .. driver:GetAttribute("fc-form"), set)
+	local form = driver:GetAttribute("fc-form")
+	-- In a form, picking the normal bar's own set gives the form its own set back, 4 + its number.
+	-- Otherwise that form would show the same set as the normal bar and never change it.
+	if form > 0 and set == driver:GetAttribute("fc-formset-0") then
+		driver:SetAttribute("fc-formset-" .. form, 4 + form)
+	else
+		driver:SetAttribute("fc-formset-" .. form, set)
+	end
 	driver:RunAttribute("ApplyLayer")
 
 	-- Sets 1-3 are Forever's pages. Keeping its page on the same number sends the spellbook's bind
@@ -634,6 +701,70 @@ S.FlyoutPickPre = [[
 
 S.FlyoutPickPost = [[
 	self:GetFrameRef("driver"):RunAttribute("CloseFlyout")
+]]
+
+-- Wrapped on Forever's class menus: their Circle binding follows whether one is open.
+S.ClassPopupShown = [[
+	control:RunAttribute("ApplyLayer")
+]]
+
+-- R1 + R3, or another button set to it: opens or closes the addon's ring.
+S.RingToggleClick = [[
+	if not down then
+		return
+	end
+	local driver = self:GetFrameRef("driver")
+	local open = 1
+	if driver:GetAttribute("fc-ring") == 1 then
+		open = 0
+	end
+	driver:SetAttribute("fc-ring", open)
+	-- Opened with R1 or L1 held, that shoulder is still down. The ring takes L1 and R1
+	-- for its pages, so the layer goes back to the base now rather than on the release.
+	local layer = driver:GetAttribute("fc-layer")
+	if open == 1 and (layer == "SET" or layer == "L1") then
+		driver:SetAttribute("fc-layer", "BASE")
+	end
+	driver:RunAttribute("ApplyLayer")
+	if open == 1 then
+		driver:CallMethod("OnRing", "open")
+	else
+		driver:CallMethod("OnRing", "close")
+	end
+]]
+
+-- A uses the highlighted entry. Built-in entries are a secure click on Forever's own button, which
+-- the addon sets on this button while the highlight moves. That can't change in combat, so there
+-- the click is dropped and the addon handles the entry (or says it can't).
+S.RingPickPre = [[
+	if not down then
+		return false
+	end
+	if PlayerInCombat() then
+		self:SetAttribute("type", nil)
+	end
+	local driver = self:GetFrameRef("driver")
+	driver:SetAttribute("fc-ring", 0)
+	driver:RunAttribute("ApplyLayer")
+	return nil, "pick"
+]]
+
+S.RingPickPost = [[
+	self:GetFrameRef("driver"):CallMethod("OnRing", message)
+]]
+
+-- A key the open ring took: close, change page or show the emotes. Closing hands the keys back.
+S.RingKeyClick = [[
+	if not down then
+		return
+	end
+	local driver = self:GetFrameRef("driver")
+	local action = self:GetAttribute("fc-ringAction")
+	if action == "pick" or action == "close" then
+		driver:SetAttribute("fc-ring", 0)
+		driver:RunAttribute("ApplyLayer")
+	end
+	driver:CallMethod("OnRing", action)
 ]]
 
 S.FlyoutCancelClick = [[
@@ -789,6 +920,7 @@ S.MoveFrameCursor = [[
 
 	if bestUnit then
 		self:SetAttribute("fc-ufCursor", bestIndex)
+		self:SetAttribute("fc-cycleFrame", bestIndex)
 		self:RunAttribute("SelectGroupUnit", bestUnit)
 	elseif not currentX then
 		self:RunAttribute("CycleGroup", dx - dy, dx ~= 0 and 1 or 0)
@@ -810,9 +942,70 @@ S.PartyCycleUnit = [[
 -- Driver: moves the soft target. The first step in a party starts on the player, like FFXIV.
 S.CycleGroup = [[
 	local step, raidOnly = ...
-	local useRaid = raidOnly == 1 and UnitExists("raid1")
+	local inRaid = UnitExists("raid1")
+	local useRaid = raidOnly == 1 and inRaid
+
+	-- With party or raid frames on screen, the list follows them as drawn: column by column, top to
+	-- bottom. Pets shown below the members then come after them, and frames sorted by role keep their order.
+	if useRaid or not inRaid then
+		local current = self:GetAttribute("fc-cycleFrame")
+		local fresh = self:GetAttribute("fc-soft") == ""
+		if self:GetAttribute("fc-partyTargeting") == "hard" then
+			fresh = not current
+		end
+		local currentKey
+		if current and not fresh then
+			local frame = self:GetFrameRef("uf" .. current)
+			local unit = frame and frame:IsVisible() and frame:GetAttribute("unit")
+			if unit and UnitExists(unit) then
+				local left, bottom, width, height = frame:GetRect()
+				if left then
+					local x = left + width / 2
+					currentKey = (x - x % 1) * 10000 - (bottom + height / 2)
+				end
+			end
+		end
+		local firstIndex, firstKey, lastIndex, lastKey, nextIndex, nextKey
+		for index = 1, self:GetAttribute("fc-ufCount") or 0 do
+			local frame = self:GetFrameRef("uf" .. index)
+			local unit = frame and frame:IsVisible() and frame:GetAttribute("unit")
+			local left, bottom, width, height
+			if unit and UnitExists(unit) then
+				left, bottom, width, height = frame:GetRect()
+			end
+			if left then
+				local x = left + width / 2
+				local key = (x - x % 1) * 10000 - (bottom + height / 2)
+				if not firstKey or key < firstKey then
+					firstIndex, firstKey = index, key
+				end
+				if not lastKey or key > lastKey then
+					lastIndex, lastKey = index, key
+				end
+				if currentKey and step > 0 and key > currentKey and (not nextKey or key < nextKey) then
+					nextIndex, nextKey = index, key
+				elseif currentKey and step < 0 and key < currentKey and (not nextKey or key > nextKey) then
+					nextIndex, nextKey = index, key
+				end
+			end
+		end
+		if firstIndex then
+			local pick = firstIndex
+			if nextIndex then
+				pick = nextIndex
+			elseif currentKey and step < 0 then
+				pick = lastIndex
+			end
+			self:SetAttribute("fc-cycleFrame", pick)
+			self:SetAttribute("fc-ufCursor", pick)
+			self:RunAttribute("SelectGroupUnit", self:GetFrameRef("uf" .. pick):GetAttribute("unit"))
+			return
+		end
+	end
+
+	-- Without frames on screen: the unit list, in a party with each member followed by their pet.
 	local prefix = useRaid and "raid" or "party"
-	-- In a party each member is followed by their pet: 0 player, 1 pet, 2 party1, 3 partypet1, and so on.
+	-- 0 player, 1 pet, 2 party1, 3 partypet1, and so on.
 	local count = useRaid and 40 or 9
 	local stored = self:GetAttribute("fc-cycle-" .. prefix)
 	local index = stored or 0

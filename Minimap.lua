@@ -37,7 +37,7 @@ local menu
 local function GetMenuRows()
 	local function ModeRow(mode, label)
 		return {
-			text = "L2 / R2: " .. label,
+			text = ns.ButtonText("{PADLTRIGGER} / {PADRTRIGGER}: ", 16) .. label,
 			isChecked = function() return ns.db.triggerMode == mode end,
 			onClick = function() SetSetting("triggerMode", mode) end,
 		}

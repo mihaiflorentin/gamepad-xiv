@@ -70,6 +70,7 @@ local function NewFrame(name)
 	function frame:GetName() return self.name end
 	function frame:GetAttribute(key) return self.attrs[key] end
 	function frame:IsVisible() return not self.hidden end
+	function frame:IsShown() return not self.hidden end
 	function frame:GetRect() return unpack(self.rect) end
 	function frame:GetFrameRef(key) return assert(self.refs[key], "missing frame ref " .. key) end
 	function frame:SetBinding(_, key, action)
@@ -135,6 +136,7 @@ for side = 1, 16 do
 	end
 end
 driver.attrs["static-count"] = 1
+driver.attrs["fc-l1StickUp"] = "TOGGLEAUTORUN"
 driver.attrs["static-key1"] = "PADFORWARD"
 driver.attrs["static-action1"] = "OPENRADIAL"
 driver.attrs["ctx-PAD3-target"] = "INSPECT"
@@ -369,6 +371,48 @@ driver:RunAttribute("UpdateForm")
 Check("link on: form set again", SlotL(1), 701)
 formFn(driver, "fcform", 0)
 Check("no form: normal set back", SlotL(1), 101)
+driver.attrs["fc-formset-1"] = 5
+
+-- Set 0: the form uses the game's stance bar. Sides 17 / 18 are form 1's stance bar here.
+driver.attrs["fc-stanceSides"] = 16
+for i = 1, 8 do
+	driver.attrs["slot-17-" .. i] = 500 + i
+	driver.attrs["slot-18-" .. i] = 0
+end
+driver.attrs["fc-formset-1"] = 0
+formFn(driver, "fcform", 1)
+Check("stance bar: left side is the gamepad stance storage", SlotL(1), 501)
+Check("stance bar: left side end", SlotL(8), 508)
+Check("stance bar: right side is the own set", SlotR(1), 201)
+Check("stance bar: right side end", SlotR(8), 208)
+formFn(driver, "fcform", 0)
+Check("stance bar: leaving the form restores the set", SlotL(1), 101)
+-- A stance bar not seen yet keeps the normal set.
+for i = 1, 8 do
+	driver.attrs["slot-17-" .. i] = 0
+end
+formFn(driver, "fcform", 1)
+Check("stance bar not seen yet: normal left side", SlotL(1), 101)
+Check("stance bar not seen yet: normal right side", SlotR(1), 201)
+formFn(driver, "fcform", 0)
+for i = 1, 8 do
+	driver.attrs["slot-17-" .. i] = 500 + i
+end
+-- In a form, R1 + the normal bar's own set gives the form its own set; any other set is kept.
+do
+	formFn(driver, "fcform", 1)
+	local function PickInForm(set)
+		local button, fn = RunButton(S.SetClick, { ["fc-setIndex"] = set })
+		fn(button, "LeftButton", true)
+	end
+	PickInForm(1)
+	Check("form: the normal set gives the form its own set", driver.attrs["fc-formset-1"], 5)
+	PickInForm(4)
+	Check("form: another set is kept", driver.attrs["fc-formset-1"], 4)
+	Check("form: normal set unchanged", driver.attrs["fc-formset-0"], 1)
+	formFn(driver, "fcform", 0)
+	Check("form: normal bar back", SlotL(1), 101)
+end
 driver.attrs["fc-formset-1"] = 5
 
 -- Target-dependent bindings.
@@ -763,13 +807,11 @@ unitsThatExist.swimming = nil
 driver:RunAttribute("UpdateTargetBindings")
 driver:RunAttribute("ApplyLayer")
 
--- WXHB with face buttons only.
-driver.attrs["fc-w4"] = 1
+-- WXHB: the D-pad and the face buttons both use the top row.
 R2.press(); R2.release(); R2.press()
-Check("w4: D-pad stays on the bottom row", driver.bindings.PADDLEFT, "CLICK GamepadXIVCastR1:LeftButton")
-Check("w4: face buttons use the top row", driver.bindings.PAD1, "CLICK GamepadXIVCastWR8:LeftButton")
+Check("wxhb: D-pad uses the top row", driver.bindings.PADDLEFT, "CLICK GamepadXIVCastWR1:LeftButton")
+Check("wxhb: face buttons use the top row", driver.bindings.PAD1, "CLICK GamepadXIVCastWR8:LeftButton")
 R2.release()
-driver.attrs["fc-w4"] = 0
 Wait(R2, 3)
 
 -- Toggle mode.
@@ -954,6 +996,51 @@ do
 	ClearSoft()
 end
 
+-- D-pad up/down with party frames on screen: the list follows the frames, pets after the members.
+do
+	local function AddFrame(index, unit, y)
+		local frame = NewFrame("uf" .. index)
+		frame.attrs.unit = unit
+		frame.rect = { 0, y, 90, 40 }
+		driver.refs["uf" .. index] = frame
+		unitsThatExist[unit] = true
+	end
+	-- Sorted by role: party3 is drawn second. Two members have pets, drawn below everyone.
+	AddFrame(1, "player", 300)
+	AddFrame(2, "party3", 250)
+	AddFrame(3, "party1", 200)
+	AddFrame(4, "party2", 150)
+	AddFrame(5, "partypet1", 100)
+	AddFrame(6, "partypet3", 50)
+	driver.attrs["fc-ufCount"] = 6
+	driver.attrs["fc-ufCursor"] = nil
+	driver.attrs["fc-cycleFrame"] = nil
+	ClearSoft()
+	local function Step(step)
+		driver:RunAttribute("CycleGroup", step, 0)
+		return driver.attrs["fc-soft"]
+	end
+	Check("party frames: starts at the top", Step(1), "player")
+	Check("party frames: second drawn", Step(1), "party3")
+	Check("party frames: third drawn", Step(1), "party1")
+	Check("party frames: fourth drawn", Step(1), "party2")
+	Check("party frames: then the pets", Step(1), "partypet1")
+	Check("party frames: second pet", Step(1), "partypet3")
+	Check("party frames: wraps to the top", Step(1), "player")
+	Check("party frames: up wraps to the bottom", Step(-1), "partypet3")
+	Check("party frames: up", Step(-1), "partypet1")
+	ClearSoft()
+	Check("party frames: no soft target starts at the top again", Step(1), "player")
+	for index = 1, 6 do
+		unitsThatExist[driver.refs["uf" .. index].attrs.unit] = nil
+		driver.refs["uf" .. index] = nil
+	end
+	driver.attrs["fc-ufCount"] = 0
+	driver.attrs["fc-ufCursor"] = nil
+	driver.attrs["fc-cycleFrame"] = nil
+	ClearSoft()
+end
+
 -- Party targeting on Hard: party selection goes to the pressed button's real target.
 do
 	driver.attrs["fc-partyTargeting"] = "hard"
@@ -985,6 +1072,7 @@ do
 	driver.refs.uf1, driver.refs.uf2 = nil, nil
 	driver.attrs["fc-ufCount"] = 0
 	driver.attrs["fc-ufCursor"] = nil
+	driver.attrs["fc-cycleFrame"] = nil -- cleared with the frame list, as in the addon
 
 	driver.attrs["fc-cycle-party"] = nil
 	unitsThatExist.party1 = true
@@ -1053,6 +1141,149 @@ do
 	L2.release()
 	Wait(L2, 3)
 	Check("after L2: L1 is its layer", driver.bindings.PADLSHOULDER, "CLICK GamepadXIVL1:LeftButton")
+end
+
+-- L1 + R3 and R1 + L3 open Forever's class menus; Circle only closes an open one.
+do
+	local baseL3, baseR3 = driver.bindings.PADLSTICK, driver.bindings.PADRSTICK
+	local leftClass, rightClass = NewFrame("LeftClassAction"), NewFrame("RightClassAction")
+	local popup = NewFrame("GamepadPetActionFlyout")
+	popup.hidden = true
+	driver.refs.classMenuL, driver.refs.classMenuR, driver.refs.classPopup1 = leftClass, rightClass, popup
+	driver.attrs["classMenu-L"], driver.attrs["classMenu-R"] = "LeftClassAction", "RightClassAction"
+	driver.attrs["classPopup-count"] = 1
+	driver.attrs["fc-l1r3"], driver.attrs["fc-l1r3-menu"] = "CLICK LeftClassAction:LeftButton", "L"
+	driver.attrs["fc-r1l3"], driver.attrs["fc-r1l3-menu"] = "CLICK RightClassAction:LeftButton", "R"
+	local function InLayer(layer)
+		driver.attrs["fc-layer"] = layer
+		driver:RunAttribute("ApplyLayer")
+	end
+	InLayer("L1")
+	Check("class menu: L1 + R3 opens the left menu", driver.bindings.PADRSTICK, "CLICK LeftClassAction:LeftButton")
+	Check("class menu: L1 + L3 keeps L3's action", driver.bindings.PADLSTICK, baseL3)
+	InLayer("SET")
+	Check("class menu: R1 + L3 opens the right menu", driver.bindings.PADLSTICK, "CLICK RightClassAction:LeftButton")
+	InLayer("BASE")
+	Check("class menu: L3 alone keeps its action", driver.bindings.PADLSTICK, baseL3)
+	Check("class menu: R3 alone keeps its action", driver.bindings.PADRSTICK, baseR3)
+	rightClass.hidden = true
+	leftClass.hidden = true
+	InLayer("SET")
+	Check("class menu: no right menu, R1 + L3 keeps L3's action", driver.bindings.PADLSTICK, baseL3)
+	InLayer("L1")
+	Check("class menu: no left menu, L1 + R3 keeps R3's action", driver.bindings.PADRSTICK, baseR3)
+	rightClass.hidden, leftClass.hidden = nil, nil
+	driver.attrs["fc-l1r3"], driver.attrs["fc-l1r3-menu"] = "SCREENSHOT", nil
+	InLayer("L1")
+	Check("L1 + R3 set to another action", driver.bindings.PADRSTICK, "SCREENSHOT")
+	driver.attrs["fc-r1l3"], driver.attrs["fc-r1l3-menu"] = "CLICK LeftClassAction:LeftButton", "L"
+	InLayer("SET")
+	Check("R1 + L3 set to the left menu", driver.bindings.PADLSTICK, "CLICK LeftClassAction:LeftButton")
+	InLayer("BASE")
+	local circle = driver.bindings.PAD2
+	popup.hidden = nil
+	InLayer("BASE")
+	Check("class menu open: Circle only closes it", driver.bindings.PAD2, "NONE")
+	popup.hidden = true
+	InLayer("BASE")
+	Check("class menu closed: Circle back", driver.bindings.PAD2, circle)
+	driver.refs.classMenuL, driver.refs.classMenuR, driver.refs.classPopup1 = nil, nil, nil
+	driver.attrs["classMenu-L"], driver.attrs["classMenu-R"], driver.attrs["classPopup-count"] = nil, nil, nil
+	driver.attrs["fc-l1r3"], driver.attrs["fc-l1r3-menu"], driver.attrs["fc-r1l3"], driver.attrs["fc-r1l3-menu"] = nil, nil, nil, nil
+	InLayer("BASE")
+end
+
+-- L1 + left stick forward does what is picked; the moving-forward shortcut is only for auto-run.
+do
+	driver.attrs["fc-layer"] = "L1"
+	driver.attrs["fc-l1StickUp"] = "SCREENSHOT"
+	driver:RunAttribute("ApplyLayer")
+	Check("L1 + stick forward: picked action", driver.bindings.PADLSTICKUP, "SCREENSHOT")
+	driver.attrs["fc-layer"] = "BASE"
+	driver.attrs["fc-stickUp"] = 1
+	driver:RunAttribute("ApplyLayer")
+	Check("moving forward, other action: L1 is its layer", driver.bindings.PADLSHOULDER, "CLICK GamepadXIVL1:LeftButton")
+	driver.attrs["fc-l1StickUp"] = "TOGGLEAUTORUN"
+	driver:RunAttribute("ApplyLayer")
+	Check("moving forward, auto-run: L1 starts auto-run", driver.bindings.PADLSHOULDER, "TOGGLEAUTORUN")
+	driver.attrs["fc-stickUp"] = 0
+	driver:RunAttribute("ApplyLayer")
+end
+
+-- L1 + R1 does what is picked; unset, it is the sheathe that dismounts or descends.
+do
+	driver.attrs["fc-layer"] = "L1"
+	driver:RunAttribute("ApplyLayer")
+	Check("L1 + R1 default: sheathe", driver.bindings.PADRSHOULDER, "TOGGLESHEATH")
+	driver.attrs["fc-l1r1"] = "TOGGLEWORLDMAP"
+	driver:RunAttribute("ApplyLayer")
+	Check("L1 + R1 picked: world map", driver.bindings.PADRSHOULDER, "TOGGLEWORLDMAP")
+	driver.attrs["fc-l1r1"] = nil
+	driver.attrs["fc-layer"] = "BASE"
+	driver:RunAttribute("ApplyLayer")
+end
+
+-- The addon's ring: R1 + R3 opens it, and while open it takes A, B, the D-pad, L1 and R1.
+do
+	local ringKeys = {
+		PAD1 = "GamepadXIVRingpick", PAD2 = "GamepadXIVRingclose", PADDLEFT = "GamepadXIVRingprev",
+		PADDRIGHT = "GamepadXIVRingnext", PADLSHOULDER = "GamepadXIVRingprev", PADRSHOULDER = "GamepadXIVRingnext",
+		PADDUP = "GamepadXIVRingemotes", PADRSTICK = "GamepadXIVRingclose",
+	}
+	for key, name in pairs(ringKeys) do
+		driver.attrs["ringKey-" .. key] = name
+	end
+	driver.attrs["ringBind-PADDDOWN"] = "SITORSTAND"
+	driver.attrs["fc-ring"] = 0
+	driver.attrs["fc-r1r3"] = "CLICK GamepadXIVRingToggle:LeftButton"
+	driver.attrs["fc-layer"] = "SET"
+	driver:RunAttribute("ApplyLayer")
+	Check("ring: R1 + R3 opens it", driver.bindings.PADRSTICK, "CLICK GamepadXIVRingToggle:LeftButton")
+	local toggle, toggleFn = RunButton(S.RingToggleClick)
+	toggleFn(toggle, "LeftButton", true)
+	Check("ring open: state", driver.attrs["fc-ring"], 1)
+	Check("ring open: told", driver.calls.OnRing[1], "open")
+	Check("ring open from R1: back to the base layer", driver.attrs["fc-layer"], "BASE")
+	Check("ring open: A uses", driver.bindings.PAD1, "CLICK GamepadXIVRingpick:LeftButton")
+	Check("ring open: B closes", driver.bindings.PAD2, "CLICK GamepadXIVRingclose:LeftButton")
+	Check("ring open: D-pad right pages", driver.bindings.PADDRIGHT, "CLICK GamepadXIVRingnext:LeftButton")
+	Check("ring open: L1 pages back", driver.bindings.PADLSHOULDER, "CLICK GamepadXIVRingprev:LeftButton")
+	Check("ring open: R1 pages on", driver.bindings.PADRSHOULDER, "CLICK GamepadXIVRingnext:LeftButton")
+	Check("ring open: D-pad up shows emotes", driver.bindings.PADDUP, "CLICK GamepadXIVRingemotes:LeftButton")
+	Check("ring open: D-pad down sits", driver.bindings.PADDDOWN, "SITORSTAND")
+	Check("ring open: R3 closes", driver.bindings.PADRSTICK, "CLICK GamepadXIVRingclose:LeftButton")
+	-- The R1 release after opening must not leave the ring.
+	local r1, r1Fn = RunButton(S.R1Click)
+	r1Fn(r1, "LeftButton", false)
+	Check("ring open: R1 release keeps the base layer", driver.attrs["fc-layer"], "BASE")
+	Check("ring open: R1 release keeps the ring", driver.bindings.PADRSHOULDER, "CLICK GamepadXIVRingnext:LeftButton")
+
+	local pick, pickFn = RunButton(S.RingPickPre)
+	pick.attrs.type = "click"
+	Check("ring pick: key up does nothing", pickFn(pick, "LeftButton", false), false)
+	Check("ring pick: still open", driver.attrs["fc-ring"], 1)
+	unitsThatExist.combat = true
+	local newButton, message = pickFn(pick, "LeftButton", true)
+	unitsThatExist.combat = nil
+	Check("ring pick in combat: no secure click", pick.attrs.type, nil)
+	Check("ring pick: message", message, "pick")
+	Check("ring pick: same button", newButton, nil)
+	Check("ring pick: closed", driver.attrs["fc-ring"], 0)
+	Check("ring pick: A is back", driver.bindings.PAD1 ~= "CLICK GamepadXIVRingpick:LeftButton", true)
+	Check("ring closed: R1 is the set layer again", driver.bindings.PADRSHOULDER, "CLICK GamepadXIVR1:LeftButton")
+	Check("ring closed: D-pad down is back", driver.bindings.PADDDOWN ~= "SITORSTAND", true)
+	Check("ring closed: R3 is back", driver.bindings.PADRSTICK ~= "CLICK GamepadXIVRingclose:LeftButton", true)
+	local post = assert(loadstring("local self, message, button, down = ...\n" .. S.RingPickPost))
+	setfenv(post, setmetatable({}, { __index = ALLOWED }))
+	driver.calls.OnRing = nil
+	post(pick, "pick", "LeftButton", true)
+	Check("ring pick: told", driver.calls.OnRing[1], "pick")
+	for key in pairs(ringKeys) do
+		driver.attrs["ringKey-" .. key] = nil
+	end
+	driver.attrs["ringBind-PADDDOWN"] = nil
+	driver.attrs["fc-ring"], driver.attrs["fc-r1r3"] = nil, nil
+	driver:RunAttribute("ApplyLayer")
 end
 
 print(failures == 0 and "ALL PASSED" or (failures .. " FAILED"))

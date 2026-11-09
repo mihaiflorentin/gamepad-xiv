@@ -100,7 +100,7 @@ The set changes the bottom row. By default, the top row shows set 2 and Expanded
 
 ### Forms and stances
 
-Each form or stance (Bear, Cat, Battle Stance and so on) keeps **its own set on the bottom row**, even in combat. Forms 1-4 start on sets 5-8, which begin empty, so drag abilities onto the bar while you are in that form. You can turn this off in the settings.
+Each form or stance (Stealth, Bear, Cat, Battle Stance and so on) changes **the bottom row**, even in combat. Both bottom sides swap to the form's own set: form 1 uses set 5, form 2 set 6 and so on. To pick another set, press R1 + a button while in the form, or choose it under **Form 1-4 uses**; R1 + the button of your normal set gives the form its own set back. **Form 1-4 uses** can also show the game's stance bar, Forever's 8 abilities for that form, on the left side. Rogue stealth is form 1. You can turn this off in the settings.
 
 ---
 
@@ -110,14 +110,11 @@ Out of combat:
 
 - **Drag** a spell, item or macro from your spellbook or bags onto any visible slot, on either row.
 - **Drag a slot off the bar** to move or remove it.
-- **Edit mode** (**L2 + Back** or `/gxiv edit`) shows any set, including ones not on screen, so you can fill them all. Click to pick up or place, right click to clear. Leave with the **Done** button.
 - **Move or remove with the controller:** **L2 + R3** (or `/gxiv clear`). Choose the ability by holding L2 or R2 and pressing its button, then:
   - **✕** Move: choose the new slot the same way (abilities swap if the slot is taken)
   - **□** Remove
   - **○** Cancel
 - The spellbook's **Bind to Action Bar** button also works with the crossbar.
-
-**Tip:** buttons from other addons can go on the crossbar with a macro. In Forever, `/click` needs `1` at the end, for example `/click PallyPowerAuto LeftButton 1`.
 
 ---
 
@@ -152,11 +149,12 @@ FFXIV turns your character toward the enemy when you attack. Turn on **Face targ
 - **Left stick / right stick**: move / camera
 - **L1 + right stick up / down**: zoom in / out. It starts from a light push, and the camera holds still while you zoom.
 - **L1 + left stick forward**: auto-run (press them in either order)
+- Both can be changed in the **Input** tab of the settings: the right stick can zoom the other way or turn the camera as usual, and the left stick can do any of the L3 / R3 actions.
 - **Hold ○**: walk
 - **△ / ○ while flying or swimming**: go up / down
 - **L3**: draw / sheathe weapon (you can change it in the settings)
 - **R3**: first / third person (you can change it in the settings)
-- **L1 + R1**: draw / sheathe weapon; on a mount, dismount
+- **L1 + R1**: draw / sheathe weapon; on a mount, dismount (can be changed in the **Input** tab)
 
 ---
 
@@ -178,6 +176,18 @@ Spells that open a list, such as Aspects, show a controller panel. Each choice g
 - **L1 + △**: inventory
 - **Start**: Forever's main menu
 
+### Gamepad XIV ring
+
+**R1 + R3** opens the addon's own ring, built like Forever's main menu ring. Forever's ring stays as it is.
+
+- It has Forever's three main menu pages with the same entries: Character, Bags, Spellbook, Talents, Professions, Quest & Maps, Game Menu, Group Finder, Guild, Social, Collections, Shop, Legacy, Tracking, Clock, Calendar and PvP, plus the Gamepad XIV settings. Chat and Buffs stay on Forever's own ring (Start).
+- Point the right stick at an entry to highlight it, then press ✕ to use it. Letting go of the stick keeps the highlight. ○ closes the ring.
+- L1 / R1 (or D-pad ← / →) turn the pages. D-pad ↑ shows the emotes, D-pad ↓ sits or stands.
+- In combat, the game windows can't be opened from the ring and show greyed out; emotes and addon entries still work.
+- The Gamepad XIV settings entry is always there, on the third page.
+- Customize it in the **Ring** tab of the settings: fill the free segments with game windows or anything with a slash command (an addon's `/details`, `/dbm`, or the game's own commands), and add as many pages of your own as you like. Forever's entries stay where Forever puts them.
+- Start stays Forever's own menu; the game doesn't let addons take it over. You can move the ring to another button in the **Input** tab: pick **Gamepad XIV ring** for it.
+
 ### Back button
 
 - **Back** moves between open windows.
@@ -195,8 +205,11 @@ Spells that open a list, such as Aspects, show a controller panel. Each choice g
 
 ### Pets (Hunters and Warlocks)
 
-- **L1 + L2**: pet commands
-- **R1 + R2**: pet spells
+- **L1 + R3**: pet commands
+- **R1 + L3**: pet spells
+- The menu stays open. Tilt the right stick toward a slot and let it go back to the middle to use it. Press ○ to close the menu.
+- Druids, Paladins and Warriors open their forms, auras or stances menu the same way.
+- In the **Input** tab of the settings you can put either menu on L3 or R3 alone, or give L1 + R3 and R1 + L3 other actions.
 
 ---
 
@@ -208,8 +221,8 @@ Open the **Appearance** tab in the settings.
 
 The theme changes how the slots look. Your bars stay where they are.
 
-- **Orb** (default): round icons in a metal bezel
-- **Hex**: hexagon icons on dark hexagons
+- **Orb**: round icons in a metal bezel
+- **Hex** (default): hexagon icons on dark hexagons
 - **Sigil**: round icons in gold rings, inside a ring of runes
 - **Holo**: sci-fi corner brackets with a dashed ring
 - **Ink**: brushed ink rings on an ink wash
@@ -232,7 +245,7 @@ Choose how the selected party or raid member's frame is marked (outline, thick o
 
 ### L3 and R3
 
-On the **Input** tab, choose what pressing each stick does: draw / sheathe weapon, first / third person, auto-run, walk / run, sit / stand, target nearest enemy, assist, follow, world map, bags, screenshot, or nothing.
+On the **Input** tab, choose what pressing each stick does: draw / sheathe weapon, first / third person, auto-run, walk / run, sit / stand, target nearest enemy, assist, follow, world map, bags, screenshot, or nothing. Your class's stance and form spells are there too: Stealth, Prowl, cat, bear, travel and the other druid forms, warrior stances, paladin auras, hunter aspects, Shadowform and Ghost Wolf, always at the highest rank you know. Long lists have a search box, and choices with an in-game icon show it.
 
 ### Layout
 
@@ -251,7 +264,7 @@ Open it with **L2 + Start**, `/gxiv config`, the minimap icon, or **Options > Ad
 - Settings are grouped on tabs: **General, Targeting, Appearance, Crossbar, Layers and forms, Input**.
 - Use the **search box** to find any setting by name.
 - With the controller: **↑ / ↓** pick a setting, **← / →** change it, **✕** presses, **L1 / R1** change tab, **○** closes.
-- **Reset shown** puts the settings you are looking at back to their defaults.
+- **Reset to defaults** (under the tabs) puts every setting on the open tab, or every setting the search found, back to its default.
 - Settings are saved **per character**.
 
 ---

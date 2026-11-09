@@ -19,7 +19,7 @@ end
 
 local function DescribeTab()
 	if shownTab == TAB_EXPANDED then
-		return "Bottom row: Expanded Hold, L2 then R2 (left), R2 then L2 (right)"
+		return ns.ButtonText("Bottom row: Expanded Hold, {PADLTRIGGER} then {PADRTRIGGER} (left), {PADRTRIGGER} then {PADLTRIGGER} (right)", 18)
 	end
 	return "Bottom row: set " .. shownSet .. ". Top row: double tap"
 end
