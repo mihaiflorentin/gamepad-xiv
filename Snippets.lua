@@ -75,7 +75,11 @@ S.ApplyLayer = [[
 		local flyoutPick = flyout ~= "" and self:GetAttribute("flyKey-" .. key)
 		local ringKey = ringOpen and self:GetAttribute("ringKey-" .. key)
 		local ringBind = ringOpen and self:GetAttribute("ringBind-" .. key)
-		if ringKey then
+		-- A highlighted entry that is a key binding, such as the Game Menu, puts that binding on A itself.
+		local ringPickBinding = ringOpen and key == "PAD1" and not PlayerInCombat() and self:GetAttribute("fc-ringPickBinding")
+		if ringPickBinding then
+			self:SetBinding(priority, key, ringPickBinding)
+		elseif ringKey then
 			self:SetBindingClick(priority, key, ringKey, "LeftButton")
 		elseif ringBind then
 			self:SetBinding(priority, key, ringBind)
@@ -253,6 +257,21 @@ S.ApplyLayer = [[
 			self:SetBinding(priority, "PADLSTICKUP", self:GetAttribute("fc-l1StickUp") or "TOGGLEAUTORUN")
 		else
 			self:SetBindingClick(priority, "PADLSTICKUP", "GamepadXIVStickUp", "LeftButton")
+		end
+	end
+
+	-- With "use on letting go" on, the open ring takes the right stick's four directions, which the
+	-- game makes buttons with the GamePadStickAxisButtons setting: letting the stick go is then a key press.
+	local release = ringOpen and self:GetAttribute("fc-ringRelease") == 1
+	-- Each direction has a release button of its own: two releases of one button at the same moment
+	-- (letting go from a diagonal) reach it only once.
+	for n = 1, 4 do
+		local dir = (n == 1 and "Up") or (n == 2 and "Down") or (n == 3 and "Left") or "Right"
+		local key = "PADRSTICK" .. dir:upper()
+		if release then
+			self:SetBindingClick(priority, key, "GamepadXIVRingrelease" .. dir, "LeftButton")
+		else
+			self:ClearBinding(key)
 		end
 	end
 
@@ -719,6 +738,10 @@ S.RingToggleClick = [[
 		open = 0
 	end
 	driver:SetAttribute("fc-ring", open)
+	driver:SetAttribute("fc-held-Up", 0)
+	driver:SetAttribute("fc-held-Down", 0)
+	driver:SetAttribute("fc-held-Left", 0)
+	driver:SetAttribute("fc-held-Right", 0)
 	-- Opened with R1 or L1 held, that shoulder is still down. The ring takes L1 and R1
 	-- for its pages, so the layer goes back to the base now rather than on the release.
 	local layer = driver:GetAttribute("fc-layer")
@@ -742,8 +765,40 @@ S.RingPickPre = [[
 	end
 	if PlayerInCombat() then
 		self:SetAttribute("type", nil)
+	elseif self:GetAttribute("fc-keep") == 1 then
+		return nil, "pick"
 	end
 	local driver = self:GetFrameRef("driver")
+	driver:SetAttribute("fc-ring", 0)
+	driver:RunAttribute("ApplyLayer")
+	return nil, "pick"
+]]
+
+-- The same as A, when the right stick is let go. Each direction the stick passes presses and
+-- releases one of the four stick buttons, each bound to its own release button (fc-dir); which ones
+-- are held is kept on the driver. The entry is used when a direction that was pressed comes up and
+-- none is held any more. Moving round from one entry to the next always keeps one held. A release
+-- without its press (the stick was already pushed when the ring opened) is ignored.
+S.RingReleasePre = [[
+	local driver = self:GetFrameRef("driver")
+	local key = "fc-held-" .. self:GetAttribute("fc-dir")
+	if down then
+		driver:SetAttribute(key, 1)
+		return false
+	end
+	if driver:GetAttribute(key) ~= 1 then
+		return false
+	end
+	driver:SetAttribute(key, 0)
+	if driver:GetAttribute("fc-held-Up") == 1 or driver:GetAttribute("fc-held-Down") == 1
+		or driver:GetAttribute("fc-held-Left") == 1 or driver:GetAttribute("fc-held-Right") == 1 then
+		return false
+	end
+	if PlayerInCombat() then
+		self:SetAttribute("type", nil)
+	elseif self:GetAttribute("fc-keep") == 1 then
+		return nil, "pick"
+	end
 	driver:SetAttribute("fc-ring", 0)
 	driver:RunAttribute("ApplyLayer")
 	return nil, "pick"

@@ -1262,6 +1262,11 @@ do
 	pick.attrs.type = "click"
 	Check("ring pick: key up does nothing", pickFn(pick, "LeftButton", false), false)
 	Check("ring pick: still open", driver.attrs["fc-ring"], 1)
+	-- The Toy Box keeps the ring open out of combat, and not in combat.
+	pick.attrs["fc-keep"] = 1
+	local _, keepMessage = pickFn(pick, "LeftButton", true)
+	Check("ring pick: toy box message", keepMessage, "pick")
+	Check("ring pick: toy box keeps the ring open", driver.attrs["fc-ring"], 1)
 	unitsThatExist.combat = true
 	local newButton, message = pickFn(pick, "LeftButton", true)
 	unitsThatExist.combat = nil
@@ -1273,6 +1278,49 @@ do
 	Check("ring closed: R1 is the set layer again", driver.bindings.PADRSHOULDER, "CLICK GamepadXIVR1:LeftButton")
 	Check("ring closed: D-pad down is back", driver.bindings.PADDDOWN ~= "SITORSTAND", true)
 	Check("ring closed: R3 is back", driver.bindings.PADRSTICK ~= "CLICK GamepadXIVRingclose:LeftButton", true)
+
+	-- Letting go of the right stick uses the entry, when that setting is on. Each direction has its
+	-- own release button; what is held is kept on the driver.
+	local releases = {}
+	for _, dir in ipairs({ "Up", "Down", "Left", "Right" }) do
+		local button, fn = RunButton(S.RingReleasePre, { ["fc-dir"] = dir })
+		releases[dir] = function(down) return fn(button, "LeftButton", down) end
+	end
+	driver.attrs["fc-ringRelease"] = 0
+	local toggle2, toggle2Fn = RunButton(S.RingToggleClick)
+	toggle2Fn(toggle2, "LeftButton", true)
+	Check("release off: stick directions not taken", driver.bindings.PADRSTICKUP, nil)
+	toggle2Fn(toggle2, "LeftButton", true)
+	driver.attrs["fc-ringRelease"] = 1
+	driver.attrs["fc-held-Up"] = 1 -- left from an earlier ring
+	toggle2Fn(toggle2, "LeftButton", true)
+	Check("release on: ring open", driver.attrs["fc-ring"], 1)
+	Check("release on: directions reset on open", driver.attrs["fc-held-Up"], 0)
+	Check("release on: stick up has its own button", driver.bindings.PADRSTICKUP, "CLICK GamepadXIVRingreleaseUp:LeftButton")
+	Check("release on: stick left has its own button", driver.bindings.PADRSTICKLEFT, "CLICK GamepadXIVRingreleaseLeft:LeftButton")
+	-- The Game Menu highlighted: A is the game's own key binding, but not in combat.
+	driver.attrs["fc-ringPickBinding"] = "TOGGLEGAMEMENU"
+	driver:RunAttribute("ApplyLayer")
+	Check("game menu: A is its key binding", driver.bindings.PAD1, "TOGGLEGAMEMENU")
+	unitsThatExist.combat = true
+	driver:RunAttribute("ApplyLayer")
+	Check("game menu in combat: A picks as usual", driver.bindings.PAD1, "CLICK GamepadXIVRingpick:LeftButton")
+	unitsThatExist.combat = nil
+	driver.attrs["fc-ringPickBinding"] = nil
+	driver:RunAttribute("ApplyLayer")
+	Check("game menu gone: A picks again", driver.bindings.PAD1, "CLICK GamepadXIVRingpick:LeftButton")
+	Check("release: a lone release is ignored", releases.Up(false), false)
+	Check("release: still open", driver.attrs["fc-ring"], 1)
+	Check("release: up pressed", releases.Up(true), false)
+	Check("release: up pressed twice (doubled event)", releases.Up(true), false)
+	Check("release: right pressed (moving round)", releases.Right(true), false)
+	Check("release: up let go, right still held", releases.Up(false), false)
+	Check("release: still open while held", driver.attrs["fc-ring"], 1)
+	local _, releaseMessage = releases.Right(false)
+	Check("release: stick back in the middle uses the entry", releaseMessage, "pick")
+	Check("release: ring closed", driver.attrs["fc-ring"], 0)
+	Check("release: stick directions handed back", driver.bindings.PADRSTICKUP, nil)
+	driver.attrs["fc-ringRelease"] = 0
 	local post = assert(loadstring("local self, message, button, down = ...\n" .. S.RingPickPost))
 	setfenv(post, setmetatable({}, { __index = ALLOWED }))
 	driver.calls.OnRing = nil

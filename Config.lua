@@ -388,7 +388,9 @@ local UpdateRows
 
 -- Changes a row by one step: delta is -1 or 1. Checkboxes flip either way.
 local function StepRow(row, delta, big)
-	if row.type == "check" then
+	if row.type == "buttons" then
+		row.sub = math.max(1, math.min(#row.buttons, (row.sub or 1) + delta))
+	elseif row.type == "check" then
 		SetValue(row, not ns.db[row.key])
 	elseif row.type == "choice" then
 		local index, choices = ChoiceIndex(row)
@@ -537,7 +539,11 @@ local function ToggleList(row, anchor)
 end
 
 local function ActivateRow(row)
-	if row.type == "action" then
+	if row.type == "header" then
+		return
+	elseif row.type == "buttons" then
+		row.buttons[row.sub or 1].run()
+	elseif row.type == "action" then
 		row.run()
 	elseif row.dropdown then
 		ToggleList(row, rowFrames[cursor].dropdown)
@@ -668,7 +674,23 @@ local function CreateRowFrame(index)
 	frame.action = CreateFlatButton(frame, 226, 24)
 	frame.action:SetPoint("RIGHT", -4, 0)
 
+	-- A row of up to three buttons (type "buttons"); D-pad left / right picks one, A presses it.
+	frame.multi = {}
+	for i = 1, 3 do
+		local button = CreateFlatButton(frame, 112, 24)
+		if i == 1 then
+			button:SetPoint("RIGHT", -4, 0)
+		else
+			button:SetPoint("RIGHT", frame.multi[i - 1], "LEFT", -6, 0)
+		end
+		frame.multi[i] = button
+	end
+
 	local function Focus()
+		-- Section titles can't be selected.
+		if frame.row and frame.row.type == "header" then
+			return
+		end
 		cursor = index
 		UpdateRows()
 	end
@@ -711,6 +733,23 @@ local function CreateRowFrame(index)
 	for _, child in ipairs({ frame.check, frame.prev, frame.next, frame.action, frame.dropdown }) do
 		child:HookScript("OnEnter", Focus)
 	end
+	-- The buttons are laid out right to left; row.buttons is left to right.
+	for i, button in ipairs(frame.multi) do
+		button:SetScript("OnClick", function()
+			local row = frame.row
+			local n = #row.buttons - i + 1
+			cursor = index
+			row.sub = n
+			row.buttons[n].run()
+			UpdateRows()
+		end)
+		button:HookScript("OnEnter", function()
+			if frame.row and frame.row.buttons then
+				frame.row.sub = #frame.row.buttons - i + 1
+			end
+			Focus()
+		end)
+	end
 	return frame
 end
 
@@ -720,6 +759,13 @@ function UpdateRows()
 	end
 	local rows = CurrentRows()
 	cursor = math.max(1, math.min(cursor, #rows))
+	-- Never rest on a section title: the next row down, or up at the end.
+	while rows[cursor] and rows[cursor].type == "header" and cursor < #rows do
+		cursor = cursor + 1
+	end
+	while rows[cursor] and rows[cursor].type == "header" and cursor > 1 do
+		cursor = cursor - 1
+	end
 	for index, frame in ipairs(rowFrames) do
 		local row = rows[index]
 		frame.row = row
@@ -730,7 +776,28 @@ function UpdateRows()
 			else
 				frame.label:SetText(ButtonText(row.label, 20))
 			end
-			local isFocused = index == cursor
+			-- A section title: gold, smaller, with a stronger line under it and no controls.
+			local header = row.type == "header"
+			frame.label:SetFontObject(header and "GameFontNormalSmall" or "GameFontHighlight")
+			frame.line:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], header and 0.35 or 0)
+			if not header then
+				frame.line:SetColorTexture(1, 1, 1, 0.05)
+			end
+			local buttons = row.type == "buttons" and row.buttons or {}
+			row.sub = buttons[1] and math.max(1, math.min(row.sub or 1, #buttons)) or nil
+			for i, button in ipairs(frame.multi) do
+				local data = buttons[#buttons - i + 1]
+				button:SetShown(data ~= nil)
+				if data then
+					button:SetText(data.danger and ("|cffff7070" .. data.text .. "|r") or data.text)
+					local picked = index == cursor and row.sub == #buttons - i + 1
+					button:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3], picked and 0.9 or 0)
+					if not picked then
+						button:SetBackdropBorderColor(unpack(EDGE))
+					end
+				end
+			end
+			local isFocused = index == cursor and not header
 			frame.focus:SetShown(isFocused)
 			frame.focusBar:SetShown(isFocused)
 			frame.check:SetShown(row.type == "check")
@@ -801,7 +868,7 @@ local function Search(text)
 						break
 					end
 				end
-				if matches then
+				if matches and row.type ~= "header" then
 					row.tabName = tab.name
 					if #searchRows < #rowFrames then
 						tinsert(searchRows, row)
@@ -859,7 +926,9 @@ local function CreateNavButtons()
 				end
 				return
 			end
-			local count = #CurrentRows() if count == 0 then return end cursor = cursor - 1 if cursor < 1 then cursor = count end UpdateRows()
+			local rows = CurrentRows() local count = #rows if count == 0 then return end
+			repeat cursor = cursor - 1 if cursor < 1 then cursor = count end until rows[cursor].type ~= "header"
+			UpdateRows()
 		end,
 		Down = function()
 			if listRow then
@@ -869,7 +938,9 @@ local function CreateNavButtons()
 				end
 				return
 			end
-			local count = #CurrentRows() if count == 0 then return end cursor = cursor % count + 1 UpdateRows()
+			local rows = CurrentRows() local count = #rows if count == 0 then return end
+			repeat cursor = cursor % count + 1 until rows[cursor].type ~= "header"
+			UpdateRows()
 		end,
 		Left = function() local row = CurrentRows()[cursor] if not listRow and row and row.type ~= "action" then StepRow(row, -1) end end,
 		Right = function() local row = CurrentRows()[cursor] if not listRow and row and row.type ~= "action" then StepRow(row, 1) end end,
@@ -930,10 +1001,13 @@ local function IconMarkup(entry)
 	return "|T" .. texture .. ":20:20:0:0:64:64:5:59:5:59|t"
 end
 
--- Where each segment sits, counter-clockwise from the right, as the ring draws them.
+-- Where each segment sits, counter-clockwise from the right, as the ring draws them. The settings
+-- list them clockwise from the top, the way the ring reads.
 local SEGMENT_NAMES = { "Right", "Upper right", "Top", "Upper left", "Left", "Lower left", "Bottom", "Lower right" }
+local SEGMENT_ORDER = { 3, 2, 1, 8, 7, 6, 5, 4 }
 
 local ringEditPage = 2
+local ringResetArmed = false
 local RebuildRingRows
 local function RefreshRing()
 	ns.UpdateRing()
@@ -956,10 +1030,17 @@ function RebuildRingRows()
 	local pages = ns.RingPages()
 	ringEditPage = math.max(1, math.min(ringEditPage, #pages))
 	local pageIndex = ringEditPage
-	local custom = pageIndex > ns.RING_DEFAULT_PAGES
+	local pageName = ns.RingPageName(pageIndex)
 	local rows = {
+		{ type = "header", label = "RING SETTINGS" },
 		{
-			type = "choice", dropdown = true, label = "Page",
+			type = "check", key = "ringReleaseToUse", label = "Use an entry by letting go of the stick",
+			tip = "On: point the right stick at an entry and let go to use it, like Forever's own ring. Off: pointing only highlights the entry and {PAD1} uses it, so nothing opens by accident. {PAD1} works either way.",
+		},
+		{ type = "header", label = "RING PAGES" },
+		{
+			-- Arrows rather than a list, so the page being edited and how many there are always show.
+			type = "choice", dropdown = false, label = format("Editing page  |cffffd100%d|r of %d", pageIndex, #pages),
 			choices = function()
 				local list = {}
 				for index = 1, #ns.db.ringPages do
@@ -972,72 +1053,89 @@ function RebuildRingRows()
 				ringEditPage = value
 				RebuildRingRows()
 			end,
-			tip = "The ring page to change. In the ring ({PADRSHOULDER} + {PADRSTICK} by default), {PADLSHOULDER} / {PADRSHOULDER} turn the pages. The first three are Forever's main menu pages.",
+			tip = "{PADDLEFT} / {PADDRIGHT} switch the page you are editing. In the ring itself ({PADRSHOULDER} + {PADRSTICK} by default), {PADLSHOULDER} / {PADRSHOULDER} turn the pages.",
 		},
 	}
-	for segment = 1, 8 do
-		local locked = ns.RingLockedEntry(pageIndex, segment)
-		local data = locked or pages[pageIndex].slots[segment]
+	local pageButtons = {
+		{ text = "+ New page", run = function() OpenPageDialog(nil) end },
+		{ text = "Rename", run = function() OpenPageDialog(pageIndex) end },
+	}
+	if #pages > 1 then
+		tinsert(pageButtons, { text = "Delete", danger = true, run = function()
+			tremove(pages, pageIndex)
+			ringEditPage = math.max(1, pageIndex - 1)
+			RefreshRing()
+		end })
+	end
+	tinsert(rows, {
+		type = "buttons", label = "This page", buttons = pageButtons,
+		tip = "New page adds an empty page after the others. Rename names the one you are editing; Delete removes it and everything on it. {PADDLEFT} / {PADDRIGHT} pick a button, {PAD1} presses it.",
+	})
+	tinsert(rows, { type = "header", label = "ON " .. pageName:upper() .. "  |cff8c8c8c(clockwise from the top)|r" })
+	for _, segment in ipairs(SEGMENT_ORDER) do
+		local data = pages[pageIndex].slots[segment]
 		local entry = data and ns.RingResolve(data)
-		local where = SEGMENT_NAMES[segment] .. ":  "
-		if locked == "gxiv" then
-			tinsert(rows, { type = "info", label = where .. IconMarkup(entry) .. "  " .. entry.label .. " settings",
-				value = "|cff8c8c8cAlways on the ring|r",
-				tip = "Opens this window. It is part of the addon and cannot be changed or removed." })
-		elseif locked then
-			tinsert(rows, { type = "info", label = where .. (entry and (IconMarkup(entry) .. "  " .. entry.label) or locked),
-				value = "|cff8c8c8cForever's|r",
-				tip = "One of Forever's main menu entries. They stay where Forever puts them; add your own to the free segments or to a page of your own." })
-		elseif data then
-			local detail = data.command and ("  |cff8c8c8c" .. data.command .. "|r") or ""
+		local where = "|cffb0b0b0" .. SEGMENT_NAMES[segment] .. "|r   "
+		local shown = entry and (IconMarkup(entry) .. "  " .. entry.label .. (data.builtin == "gxiv" and " settings" or "")) or "?"
+		if data then
+			local detail = ""
+			if entry and entry.missing then
+				detail = "  |cffff6060(not loaded)|r"
+			elseif data.command and not data.addon then
+				detail = "  |cff8c8c8c" .. data.command .. "|r"
+			end
 			tinsert(rows, {
 				type = "action",
-				label = where .. (entry and (IconMarkup(entry) .. "  " .. entry.label) or "?") .. detail,
-				button = "Remove",
-				tip = "Remove takes it off the ring.",
+				label = where .. shown .. detail,
+				button = "Change...",
+				tip = "Pick something else for this segment, or empty it.",
 				run = function()
-					pages[pageIndex].slots[segment] = nil
-					RefreshRing()
+					OpenEntryDialog(pageIndex, segment, entry and entry.label or "this", (data.command and not data.addon) and data or nil)
 				end,
 			})
 		else
 			tinsert(rows, {
 				type = "action",
-				label = where .. "|cff8c8c8cEmpty|r",
-				button = "Add...",
-				tip = "Puts one of the game's windows, or an addon or anything else with a slash command, in this segment.",
+				label = where .. "|cff6f6f6fEmpty|r",
+				button = "+ Add",
+				tip = "Puts one of the game's windows, an installed addon, a toy or this addon's settings in this segment.",
 				run = function() OpenEntryDialog(pageIndex, segment) end,
 			})
 		end
 	end
+	tinsert(rows, { type = "header", label = "START OVER" })
 	tinsert(rows, {
-		type = "action", label = "Add a page", button = "Add...",
-		tip = "Adds an empty page of your own after the others.",
-		run = function() OpenPageDialog(nil) end,
-	})
-	if custom then
-		tinsert(rows, {
-			type = "action", label = "Rename this page", button = "Rename...",
-			run = function() OpenPageDialog(pageIndex) end,
-		})
-		tinsert(rows, {
-			type = "action", label = "Remove this page", button = "Remove",
-			tip = "Removes this page and everything on it.",
-			run = function()
-				tremove(pages, pageIndex)
-				ringEditPage = pageIndex - 1
+		type = "action", label = "Reset the ring", button = "|cffff7070Reset|r",
+		tip = "Puts back Forever's three main menu pages and removes everything you added. Press twice to confirm.",
+		run = function()
+			if ringResetArmed then
+				ringResetArmed = false
+				ns.RingReset()
+				ringEditPage = 2
 				RefreshRing()
-			end,
-		})
-	end
+			else
+				ringResetArmed = true
+				ns.Print("Press Reset again to put the ring back to Forever's pages.")
+				C_Timer.After(5, function() ringResetArmed = false end)
+			end
+		end,
+	})
 	ringTab.rows = rows
 end
 
--- A small window over the settings. For an entry: one of the game's windows, or a name, a slash
--- command and an optional icon. For a page: its name.
+-- A window over the settings.
+--   pick:    what goes in a ring segment, from a list with a search box: the game's windows, the
+--            installed addons, this addon's settings and, last, Advanced: a slash command.
+--   command: the Advanced form, a name, a slash command and an optional icon.
+--   page:    a page's name.
+local PICK_ROW_HEIGHT = 36
+local PICK_ROWS = 9
+local GEAR_ICON = "Interface\\Icons\\INV_Misc_Gear_01"
+local EMPTY_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up"
+
 local function CreateDialog()
 	dialog = CreateFrame("Frame", nil, window, "BackdropTemplate")
-	dialog:SetSize(440, 290)
+	dialog:SetSize(540, 120 + PICK_ROWS * PICK_ROW_HEIGHT)
 	dialog:SetPoint("CENTER")
 	dialog:SetFrameStrata("FULLSCREEN_DIALOG")
 	dialog:EnableMouse(true)
@@ -1046,38 +1144,186 @@ local function CreateDialog()
 
 	dialog.title = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	dialog.title:SetPoint("TOPLEFT", 16, -14)
+	dialog.title:SetPoint("RIGHT", -16, 0)
+	dialog.title:SetJustifyH("LEFT")
+	dialog.title:SetWordWrap(false)
 
-	-- What the entry is: a slash command, or one of the game's windows.
-	local kinds = { "command" }
-	for _, key in ipairs(ns.RING_BUILTIN_ORDER) do
-		if ns.RingResolve(key) then
-			tinsert(kinds, key)
+	-- Pick mode: the search box and the list.
+	local picker = CreateFrame("Frame", nil, dialog)
+	picker:SetPoint("TOPLEFT", 0, -40)
+	picker:SetPoint("BOTTOMRIGHT", 0, 46)
+
+	-- "Select a toy" and the other choices open a window of their own over this one, with its own
+	-- search; the list and its search box move into it while it is open.
+	local subWindow = CreateFrame("Frame", nil, window, "BackdropTemplate")
+	subWindow:SetSize(560, 120 + PICK_ROWS * PICK_ROW_HEIGHT)
+	subWindow:SetPoint("CENTER", dialog, "CENTER", 18, -18)
+	subWindow:SetFrameStrata("FULLSCREEN_DIALOG")
+	subWindow:SetFrameLevel(dialog:GetFrameLevel() + 40)
+	subWindow:EnableMouse(true)
+	Flat(subWindow, { 0.09, 0.09, 0.11, 1 }, { GOLD[1], GOLD[2], GOLD[3], 0.8 })
+	subWindow:Hide()
+	subWindow.title = subWindow:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	subWindow.title:SetPoint("TOPLEFT", 16, -14)
+	subWindow.title:SetPoint("RIGHT", -16, 0)
+	subWindow.title:SetJustifyH("LEFT")
+	subWindow.title:SetWordWrap(false)
+	subWindow.hint = subWindow:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	subWindow.hint:SetPoint("BOTTOMLEFT", 16, 16)
+	subWindow.back = CreateFlatButton(subWindow, 90, 24)
+	subWindow.back:SetPoint("BOTTOMRIGHT", -16, 12)
+	subWindow.back:SetText("Back")
+	subWindow.back:SetScript("OnClick", function() dialog.Nav("Back") end)
+	local search = CreateFrame("EditBox", "GamepadXIVRingPickSearch", picker, "SearchBoxTemplate")
+	search:SetHeight(22)
+	search:SetPoint("TOPLEFT", 22, -4)
+	search:SetPoint("TOPRIGHT", -16, -4)
+	search:SetAutoFocus(false)
+	dialog.search = search
+	local items, shown, pickCursor, pickOffset = {}, {}, 1, 0
+	local folder -- the open section (abilities, bag items, macros, toys), or nil for the main list
+	local rows = {}
+	local empty = picker:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+	empty:SetPoint("TOP", 0, -48)
+	empty:SetText("Nothing matches. Advanced: slash command lets you add anything.")
+	local more = picker:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	more:SetPoint("BOTTOMRIGHT", -18, -2)
+
+	local function UpdatePicker()
+		local count = #shown
+		pickCursor = math.max(1, math.min(pickCursor, count))
+		local visible = math.min(count, PICK_ROWS)
+		if pickCursor <= pickOffset then
+			pickOffset = pickCursor - 1
+		elseif pickCursor > pickOffset + visible then
+			pickOffset = pickCursor - visible
 		end
+		pickOffset = math.max(0, math.min(pickOffset, count - visible))
+		for i = 1, PICK_ROWS do
+			local row = rows[i]
+			local index = pickOffset + i
+			local item = shown[index]
+			if item then
+				row.icon:SetText(item.markup)
+				row.name:SetText(item.label)
+				row.name:SetFontObject(item.remove and "GameFontRed" or "GameFontHighlight")
+				row.detail:SetText(item.detail or "")
+				row.focus:SetShown(index == pickCursor)
+				local previous = shown[index - 1]
+				row.separator:SetShown(i > 1 and previous ~= nil and previous.group ~= item.group)
+				row:Show()
+			else
+				row:Hide()
+			end
+		end
+		empty:SetShown(count == 0)
+		more:SetText((pickOffset > 0 and "|TInterface\\Buttons\\Arrow-Up-Up:14:14|t" or "")
+			.. (pickOffset + visible < count and "|TInterface\\Buttons\\Arrow-Down-Up:14:14|t" or ""))
 	end
-	local kindRow = CreateFrame("Frame", nil, dialog)
-	kindRow:SetSize(408, 26)
-	kindRow:SetPoint("TOPLEFT", 16, -46)
-	local kindLabel = kindRow:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	kindLabel:SetPoint("LEFT")
-	kindLabel:SetText("Type")
-	local kindNext = CreateArrow(kindRow, 1)
-	kindNext:SetPoint("RIGHT")
-	local kindText = kindRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	kindText:SetPoint("RIGHT", kindNext, "LEFT", -8, 0)
-	kindText:SetWidth(260)
-	local kindPrev = CreateArrow(kindRow, -1)
-	kindPrev:SetPoint("RIGHT", kindText, "LEFT", -8, 0)
 
+	local function Matches(item, text)
+		return text == "" or item.label:lower():find(text, 1, true) or (item.detail and item.detail:lower():find(text, 1, true))
+	end
+
+	-- In a section: its entries. In the main list: the entries matching the search, and while
+	-- searching, the matching entries inside every section too. Advanced and "empty" always stay,
+	-- so there is a way on with any search.
+	local function Filter()
+		local text = strtrim(search:GetText() or ""):lower()
+		wipe(shown)
+		if folder then
+			for _, item in ipairs(folder.children) do
+				if Matches(item, text) then
+					tinsert(shown, item)
+				end
+			end
+		else
+			local advanced
+			for _, item in ipairs(items) do
+				if item.advanced then
+					advanced = item
+				elseif item.remove or Matches(item, text) then
+					tinsert(shown, item)
+				end
+			end
+			if text ~= "" then
+				for _, item in ipairs(items) do
+					for _, child in ipairs(item.children or {}) do
+						if Matches(child, text) then
+							tinsert(shown, child)
+						end
+					end
+				end
+			end
+			tinsert(shown, advanced)
+		end
+		pickCursor, pickOffset = 1, 0
+		UpdatePicker()
+	end
+	search:HookScript("OnTextChanged", Filter)
+	search:SetScript("OnEnterPressed", function(self)
+		self:ClearFocus()
+	end)
+	search:SetScript("OnEscapePressed", function(self)
+		self:ClearFocus()
+	end)
+
+	local Choose
+	for i = 1, PICK_ROWS do
+		local row = CreateFrame("Button", nil, picker)
+		row:SetHeight(PICK_ROW_HEIGHT)
+		row:SetPoint("TOPLEFT", 12, -32 - (i - 1) * PICK_ROW_HEIGHT)
+		row:SetPoint("TOPRIGHT", -12, -32 - (i - 1) * PICK_ROW_HEIGHT)
+		row.focus = row:CreateTexture(nil, "BACKGROUND")
+		row.focus:SetAllPoints()
+		row.focus:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.18)
+		row.separator = row:CreateTexture(nil, "ARTWORK")
+		row.separator:SetHeight(1)
+		row.separator:SetPoint("TOPLEFT", 4, 0)
+		row.separator:SetPoint("TOPRIGHT", -4, 0)
+		row.separator:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.35)
+		row.icon = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		row.icon:SetPoint("LEFT", 8, 0)
+		row.icon:SetWidth(32)
+		row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		row.name:SetPoint("TOPLEFT", 48, -4)
+		row.name:SetPoint("RIGHT", -8, 0)
+		row.name:SetJustifyH("LEFT")
+		row.name:SetWordWrap(false)
+		row.detail = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+		row.detail:SetPoint("BOTTOMLEFT", 48, 5)
+		row.detail:SetPoint("RIGHT", -8, 0)
+		row.detail:SetJustifyH("LEFT")
+		row.detail:SetWordWrap(false)
+		row:SetScript("OnEnter", function()
+			pickCursor = pickOffset + i
+			UpdatePicker()
+		end)
+		row:SetScript("OnClick", function()
+			Choose(shown[pickOffset + i])
+		end)
+		rows[i] = row
+	end
+	picker:EnableMouseWheel(true)
+	picker:SetScript("OnMouseWheel", function(_, delta)
+		pickCursor = math.max(1, math.min(#shown, pickCursor - delta * 3))
+		UpdatePicker()
+	end)
+
+	-- Command mode (Advanced) and page mode: text fields.
+	local form = CreateFrame("Frame", nil, dialog)
+	form:SetPoint("TOPLEFT", 0, -40)
+	form:SetPoint("BOTTOMRIGHT", 0, 46)
 	local fields, shownFields = {}, {}
 	local function Field(key, label, y)
-		local holder = CreateFrame("Frame", nil, dialog)
-		holder:SetSize(408, 44)
+		local holder = CreateFrame("Frame", nil, form)
+		holder:SetSize(508, 44)
 		holder:SetPoint("TOPLEFT", 16, y)
 		local text = holder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 		text:SetPoint("TOPLEFT")
 		text:SetText(label)
 		local box = CreateFrame("EditBox", nil, holder, "BackdropTemplate")
-		box:SetSize(408, 26)
+		box:SetSize(508, 26)
 		box:SetPoint("TOPLEFT", 0, -16)
 		Flat(box, CONTROL)
 		box:SetFontObject(ChatFontNormal)
@@ -1085,70 +1331,83 @@ local function CreateDialog()
 		box:SetAutoFocus(false)
 		box:SetScript("OnEditFocusGained", function(self) self:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3], 0.9) end)
 		box:SetScript("OnEditFocusLost", function(self) self:SetBackdropBorderColor(unpack(EDGE)) end)
-		box:SetScript("OnEscapePressed", function() dialog:Hide() end)
+		box:SetScript("OnEscapePressed", function() dialog.Nav("Back") end)
 		box.holder = holder
 		dialog[key] = box
 		tinsert(fields, box)
 		return box
 	end
-	Field("name", "Name on the ring", -82)
-	Field("command", "Slash command, for example /details or /dbm", -132)
-	Field("icon", "Icon (optional): a texture path such as Interface\\Icons\\INV_Misc_Gear_01, or a file ID", -182)
-
-	-- A game window needs nothing else: show what it is.
-	dialog.preview = dialog:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	dialog.preview:SetPoint("TOPLEFT", 16, -96)
-	dialog.preview:SetPoint("RIGHT", -16, 0)
-	dialog.preview:SetJustifyH("LEFT")
+	Field("name", "Name on the ring", -8)
+	Field("command", "Slash command, for example /details or /dbm", -58)
+	Field("icon", "Icon (optional): a texture path such as Interface\\Icons\\INV_Misc_Gear_01, or a file ID", -108)
+	local formHelp = form:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	formHelp:SetPoint("TOPLEFT", 16, -164)
+	formHelp:SetPoint("RIGHT", -16, 0)
+	formHelp:SetJustifyH("LEFT")
+	formHelp:SetText("Runs the command as if you typed it in chat. Most addons list theirs in their description or with /help.")
 
 	dialog.error = dialog:CreateFontString(nil, "OVERLAY", "GameFontRedSmall")
-	dialog.error:SetPoint("BOTTOMLEFT", 16, 18)
-	dialog.error:SetPoint("RIGHT", -190, 0)
+	dialog.error:SetPoint("BOTTOMLEFT", 16, 52)
+	dialog.error:SetPoint("RIGHT", -16, 0)
 	dialog.error:SetJustifyH("LEFT")
 
+	-- Footer: the controller hint on the left, the buttons on the right.
+	local hint = dialog:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	hint:SetPoint("BOTTOMLEFT", 16, 16)
+	local add = CreateFlatButton(dialog, 90, 24)
+	add:SetPoint("BOTTOMRIGHT", -16, 12)
+	dialog.add = add
+	local cancel = CreateFlatButton(dialog, 90, 24)
+	cancel:SetPoint("RIGHT", add, "LEFT", -8, 0)
+	cancel:SetScript("OnClick", function() dialog.Nav("Back") end)
+
+	local function Place(data)
+		local pages = ns.RingPages()
+		pages[dialog.pageIndex].slots[dialog.segment] = data
+		dialog:Hide()
+		RefreshRing()
+	end
+
 	local function Layout()
+		local mode = dialog.mode
+		picker:SetShown(mode == "pick")
+		form:SetShown(mode ~= "pick")
+		add:SetShown(mode ~= "pick")
+		cancel:SetText((mode == "command" or folder) and "Back" or "Cancel")
+		cancel:ClearAllPoints()
+		if mode == "pick" then
+			cancel:SetPoint("BOTTOMRIGHT", -16, 12)
+		else
+			cancel:SetPoint("RIGHT", add, "LEFT", -8, 0)
+		end
 		wipe(shownFields)
-		local kind = kinds[dialog.kind]
-		local entryMode = dialog.mode == "entry"
-		kindRow:SetShown(entryMode)
 		for _, box in ipairs(fields) do
-			local shown = (box == dialog.name and (not entryMode or kind == "command")) or (entryMode and kind == "command")
-			box.holder:SetShown(shown)
-			if shown then
+			local show = mode == "command" or (mode == "page" and box == dialog.name)
+			box.holder:SetShown(show)
+			if show then
 				tinsert(shownFields, box)
 			end
 		end
-		dialog.name.holder:SetPoint("TOPLEFT", 16, entryMode and -82 or -46)
-		if entryMode and kind ~= "command" then
-			local entry = ns.RingResolve(kind)
-			kindText:SetText(entry.label)
-			local icon = entry.atlas and CreateAtlasMarkup(entry.atlas, 36, 36) or ("|T" .. tostring(entry.icon) .. ":32:32|t")
-			dialog.preview:SetText(icon .. "  Opens " .. entry.label .. ".")
-			dialog.preview:Show()
-		else
-			kindText:SetText("Slash command")
-			dialog.preview:Hide()
-		end
-		if not shownFields[1] then
+		formHelp:SetShown(mode == "command")
+		if mode == "pick" then
+			hint:SetText(ButtonText("{PADDUP}{PADDDOWN} choose   {PAD1} select   {PAD2} " .. (folder and "back" or "cancel"), 18))
 			for _, box in ipairs(fields) do
 				box:ClearFocus()
 			end
-		elseif not (shownFields[1]:HasFocus() or (shownFields[2] and shownFields[2]:HasFocus()) or (shownFields[3] and shownFields[3]:HasFocus())) then
-			shownFields[1]:SetFocus()
+		else
+			hint:SetText(ButtonText("{PAD1} " .. (mode == "page" and "save" or "add") .. "   {PAD2} " .. (mode == "command" and "back" or "cancel"), 18))
+			search:ClearFocus()
+			if shownFields[1] and not (shownFields[1]:HasFocus() or (shownFields[2] and shownFields[2]:HasFocus()) or (shownFields[3] and shownFields[3]:HasFocus())) then
+				shownFields[1]:SetFocus()
+			end
 		end
-	end
-	local function StepKind(delta)
-		dialog.kind = (dialog.kind - 1 + delta) % #kinds + 1
 		dialog.error:SetText("")
-		Layout()
 	end
-	kindPrev:SetScript("OnClick", function() StepKind(-1) end)
-	kindNext:SetScript("OnClick", function() StepKind(1) end)
 
 	local function Submit()
 		local name = strtrim(dialog.name:GetText()):gsub("|", "")
-		local pages = ns.RingPages()
 		if dialog.mode == "page" then
+			local pages = ns.RingPages()
 			if name == "" then
 				dialog.error:SetText("Give the page a name.")
 				return
@@ -1163,37 +1422,37 @@ local function CreateDialog()
 			RefreshRing()
 			return
 		end
-		local kind = kinds[dialog.kind]
-		local data
-		if kind == "command" then
-			local command = strtrim(dialog.command:GetText())
-			local icon = strtrim(dialog.icon:GetText()):gsub("|", "")
-			if name == "" then
-				dialog.error:SetText("Give the entry a name.")
-				return
-			end
-			if not command:match("^/%S") then
-				dialog.error:SetText("The command starts with /, like /details.")
-				return
-			end
-			data = { label = name, command = command, icon = icon ~= "" and icon or nil }
-		else
-			data = { builtin = kind }
+		local command = strtrim(dialog.command:GetText())
+		local icon = strtrim(dialog.icon:GetText()):gsub("|", "")
+		if name == "" then
+			dialog.error:SetText("Give the entry a name.")
+			return
 		end
-		pages[dialog.pageIndex].slots[dialog.segment] = data
-		dialog:Hide()
-		RefreshRing()
+		if not command:match("^/%S") then
+			dialog.error:SetText("The command starts with /, like /details.")
+			return
+		end
+		Place({ label = name, command = command, icon = icon ~= "" and icon or nil })
 	end
 	dialog.Submit = Submit
-
-	local add = CreateFlatButton(dialog, 80, 24)
-	add:SetPoint("BOTTOMRIGHT", -16, 12)
 	add:SetScript("OnClick", Submit)
-	dialog.add = add
-	local cancel = CreateFlatButton(dialog, 80, 24)
-	cancel:SetPoint("RIGHT", add, "LEFT", -8, 0)
-	cancel:SetText("Cancel")
-	cancel:SetScript("OnClick", function() dialog:Hide() end)
+
+	function Choose(item)
+		if not item then
+			return
+		end
+		if item.advanced then
+			dialog.mode = "command"
+			Layout()
+			return
+		end
+		if item.children then
+			dialog.OpenFolder(item)
+			return
+		end
+		Place(item.data)
+	end
+	dialog.Choose = function() Choose(shown[pickCursor]) end
 
 	-- Tab and Enter move through the fields; Enter on the last one submits.
 	for _, box in ipairs(fields) do
@@ -1211,9 +1470,28 @@ local function CreateDialog()
 		end)
 	end
 
-	-- The controller: up / down move between the fields, left / right change the type, A submits,
-	-- B cancels.
+	-- The controller. In the list: up / down choose, left / right jump a screen, A adds, B cancels.
+	-- In the fields: up / down move between them, A adds or saves, B goes back to the list or closes.
 	dialog.Nav = function(name)
+		if dialog.mode == "pick" then
+			local count = #shown
+			if (name == "Up" or name == "Down") and count > 0 then
+				pickCursor = (pickCursor - 1 + (name == "Up" and -1 or 1)) % count + 1
+				UpdatePicker()
+			elseif (name == "Left" or name == "Right") and count > 0 then
+				pickCursor = math.max(1, math.min(count, pickCursor + (name == "Left" and -PICK_ROWS or PICK_ROWS)))
+				UpdatePicker()
+			elseif name == "Accept" then
+				dialog.Choose()
+			elseif name == "Back" then
+				if folder then
+					dialog.CloseFolder()
+				else
+					dialog:Hide()
+				end
+			end
+			return
+		end
 		local focused = 1
 		for n, box in ipairs(shownFields) do
 			if box:HasFocus() then
@@ -1223,42 +1501,139 @@ local function CreateDialog()
 		if (name == "Up" or name == "Down") and #shownFields > 0 then
 			local step = name == "Up" and -2 or 0
 			shownFields[(focused + step) % #shownFields + 1]:SetFocus()
-		elseif (name == "Left" or name == "Right") and dialog.mode == "entry" then
-			StepKind(name == "Left" and -1 or 1)
 		elseif name == "Accept" then
 			Submit()
 		elseif name == "Back" then
-			dialog:Hide()
+			if dialog.mode == "command" then
+				dialog.mode = "pick"
+				Layout()
+			else
+				dialog:Hide()
+			end
+		end
+	end
+	local function PlacePicker(parent)
+		picker:SetParent(parent)
+		picker:ClearAllPoints()
+		picker:SetPoint("TOPLEFT", 0, -40)
+		picker:SetPoint("BOTTOMRIGHT", 0, 46)
+	end
+	function dialog.OpenFolder(item)
+		folder = item
+		PlacePicker(subWindow)
+		subWindow.title:SetText(item.name .. "  |cff8c8c8c·  " .. SEGMENT_NAMES[dialog.segment] .. "|r")
+		subWindow.hint:SetText(ButtonText("{PADDUP}{PADDDOWN} choose   {PAD1} add   {PAD2} back", 18))
+		dialog:SetAlpha(0.45)
+		subWindow:Show()
+		search:SetText("")
+		Filter()
+	end
+	-- Back to the main list; quiet when the add window itself closes.
+	function dialog.CloseFolder(quiet)
+		folder = nil
+		PlacePicker(dialog)
+		subWindow:Hide()
+		dialog:SetAlpha(1)
+		if not quiet then
+			search:SetText("")
+			Filter()
+			Layout()
 		end
 	end
 	dialog:SetScript("OnHide", function()
 		for _, box in ipairs(fields) do
 			box:ClearFocus()
 		end
+		search:ClearFocus()
+		if folder then
+			dialog.CloseFolder(true)
+		end
 	end)
+
+	-- Everything that can go in a segment, in groups: the game's windows, the installed addons, this
+	-- addon's settings, then Advanced. Changing a filled segment offers to empty it first.
+	local function BuildItems(current)
+		wipe(items)
+		if current then
+			tinsert(items, { group = "remove", remove = true, label = "Empty this segment",
+				detail = "Takes " .. current .. " off the ring", markup = "|T" .. EMPTY_ICON .. ":26:26|t", data = nil })
+		end
+		for _, key in ipairs(ns.RING_BUILTIN_ORDER) do
+			local entry = key ~= "gxiv" and ns.RingResolve(key)
+			if entry then
+				tinsert(items, { group = "game", label = entry.label, detail = "Game window", markup = IconMarkup(entry), data = { builtin = key } })
+			end
+		end
+		-- Sections, each opening a list of its own; empty ones are left out.
+		local sections = {
+			{ "Select a toy", "toys", "Interface\\Icons\\INV_Misc_Toy_10", ns.RingToyChoices, "toys, or the whole Toy Box" },
+			{ "Select a macro", "macros", "Interface\\Icons\\INV_Misc_Note_01", ns.RingMacroChoices, "account and character macros" },
+			{ "Select an item", "items", "Interface\\Icons\\INV_Misc_Bag_08", ns.RingItemChoices, "items in your bags" },
+			{ "Select an ability", "abilities", "Interface\\Icons\\INV_Misc_Book_09", ns.RingSpellChoices, "abilities, at the highest rank you know" },
+			{ "Select an emote", "emotes", "Interface\\Icons\\Spell_Shadow_Charm", ns.RingEmoteChoices, "emotes" },
+			{ "Select an equipment", "equipment", "Interface\\Icons\\INV_Chest_Chain", ns.RingEquipmentSetChoices, "sets from the Equipment Manager" },
+		}
+		for _, section in ipairs(sections) do
+			local children = {}
+			for _, choice in ipairs(section[4]()) do
+				tinsert(children, { group = section[2], label = choice.label, detail = choice.detail,
+					markup = IconMarkup({ icon = choice.icon }), data = choice.data })
+			end
+			-- The Toy Box itself comes first: one entry that opens every toy on the ring.
+			if section[2] == "toys" and #children > 0 then
+				tinsert(children, 1, { group = "toybox", label = "Toy Box", detail = "All your toys on the ring, 8 a page",
+					markup = "|TInterface\\Icons\\INV_Misc_Toy_10:26:26:0:0:64:64:5:59:5:59|t", data = { toybox = true } })
+			end
+			if #children > 0 then
+				tinsert(items, { group = "sections", name = section[1], children = children,
+					label = section[1] .. "  |TInterface\\ChatFrame\\ChatFrameExpandArrow:14:14|t",
+					detail = (section[2] == "toys" and (#children - 1) or #children) .. " " .. section[5], markup = "|T" .. section[3] .. ":26:26:0:0:64:64:5:59:5:59|t" })
+			end
+		end
+		for _, addon in ipairs(ns.RingAddOnChoices()) do
+			local markup = IconMarkup({ icon = addon.icon })
+			tinsert(items, { group = "addon", label = addon.label, detail = addon.detail, markup = markup, data = addon.data })
+		end
+		local settings = ns.RingResolve("gxiv")
+		tinsert(items, { group = "gxiv", label = settings.label .. " settings", detail = "This window", markup = IconMarkup(settings), data = { builtin = "gxiv" } })
+		tinsert(items, { group = "advanced", advanced = true, label = "Advanced: slash command",
+			detail = "Type a command yourself, for an addon not listed here", markup = "|T" .. GEAR_ICON .. ":26:26:0:0:64:64:5:59:5:59|t" })
+	end
 
 	local function Open(mode, title, button)
 		CloseList()
 		dialog.mode = mode
 		dialog.title:SetText(title)
-		dialog.add:SetText(button)
+		add:SetText(button)
 		for _, box in ipairs(fields) do
 			box:SetText("")
 			box:ClearFocus()
 		end
-		dialog.error:SetText("")
+		search:SetText("")
 		dialog:Show()
 		Layout()
 	end
 
-	function OpenEntryDialog(pageIndex, segment)
-		dialog.pageIndex, dialog.segment, dialog.kind = pageIndex, segment, 1
-		Open("entry", "Add to " .. ns.RingPageName(pageIndex), "Add")
+	-- current: the label of what the segment holds now, to offer emptying it; custom: a slash
+	-- command entry of the player's, to fill the Advanced form with.
+	function OpenEntryDialog(pageIndex, segment, current, custom)
+		dialog.pageIndex, dialog.segment = pageIndex, segment
+		BuildItems(current)
+		local verb = current and "Change" or "Add to"
+		folder = nil
+		dialog.baseTitle = verb .. " " .. ns.RingPageName(pageIndex) .. "  |cff8c8c8c·  " .. SEGMENT_NAMES[segment] .. "|r"
+		Open("pick", dialog.baseTitle, "Add")
+		Filter()
+		if custom then
+			dialog.name:SetText(custom.label or "")
+			dialog.command:SetText(custom.command or "")
+			dialog.icon:SetText(custom.icon and tostring(custom.icon) or "")
+		end
 	end
 
 	function OpenPageDialog(pageIndex)
 		dialog.pageIndex = pageIndex or false
-		Open("page", pageIndex and "Rename the page" or "Add a page", pageIndex and "Rename" or "Add")
+		Open("page", pageIndex and "Rename the page" or "Add a page", pageIndex and "Save" or "Add")
 		if pageIndex then
 			dialog.name:SetText(ns.RingPageName(pageIndex))
 		end

@@ -941,6 +941,15 @@ function ns.LearnStanceStorage()
 	SecureHandlerExecute(driver, [[ self:RunAttribute("ApplyLayer") ]])
 end
 
+-- Ring.lua: the highlighted entry's key binding for A, or nil. Out of combat only.
+function ns.SetRingPickBinding(binding)
+	if not driver or InCombatLockdown() or driver:GetAttribute("fc-ringPickBinding") == binding then
+		return
+	end
+	driver:SetAttribute("fc-ringPickBinding", binding)
+	SecureHandlerExecute(driver, [[ self:RunAttribute("ApplyLayer") ]])
+end
+
 local function SetupDriverData()
 	for i, key in ipairs(ns.KEYS) do
 		driver:SetAttribute("key" .. i, key)
@@ -1610,6 +1619,27 @@ function ns.CreateInput()
 	SecureHandlerWrapScript(ringPick, "OnClick", ringPick, S.RingPickPre, S.RingPickPost)
 	driver:SetAttribute("ringKey-PAD1", "GamepadXIVRingpick")
 	ns.ringPickButton = ringPick
+	-- Letting go of the right stick, when the setting is on: acts on the release, not the press.
+	ns.ringReleaseButtons = {}
+	for _, dir in ipairs({ "Up", "Down", "Left", "Right" }) do
+		local ringRelease = CreateSecureButton("GamepadXIVRingrelease" .. dir)
+		ringRelease:SetAttribute("useOnKeyDown", false)
+		ringRelease:SetAttribute("fc-dir", dir)
+		SecureHandlerWrapScript(ringRelease, "OnClick", ringRelease, S.RingReleasePre, S.RingPickPost)
+		tinsert(ns.ringReleaseButtons, ringRelease)
+	end
+	-- The Game Menu opened from the ring (A pressed its key binding): the ring closes and gives its
+	-- keys back. Only out of combat, as A only takes the binding then.
+	if GameMenuFrame then
+		GameMenuFrame:HookScript("OnShow", function()
+			if ns.ringOpen and not InCombatLockdown() then
+				driver:SetAttribute("fc-ring", 0)
+				driver:SetAttribute("fc-ringPickBinding", nil)
+				SecureHandlerExecute(driver, [[ self:RunAttribute("ApplyLayer") ]])
+				ns.OnRing("close")
+			end
+		end)
+	end
 	local ringKeys = {
 		PAD2 = "close", PADRSTICK = "close", PADDLEFT = "prev", PADDRIGHT = "next", PADLSHOULDER = "prev", PADRSHOULDER = "next", PADDUP = "emotes",
 	}
@@ -2046,6 +2076,7 @@ function ns.Sync()
 	driver:SetAttribute("fc-r1l3", StickBinding(db.r1L3Action, "NONE"))
 	driver:SetAttribute("fc-r1l3-menu", CLASS_MENU[db.r1L3Action])
 	driver:SetAttribute("fc-r1r3", StickBinding(db.r1R3Action, "CLICK GamepadXIVRingToggle:LeftButton"))
+	driver:SetAttribute("fc-ringRelease", db.ringReleaseToUse and 1 or 0)
 	ns.UpdateClassMenuHints()
 	local answeredPopup, answeredPopupIndex = GetAnsweredPopup()
 	driver:SetAttribute("fc-answeredPopup", answeredPopupIndex or 0)

@@ -180,12 +180,16 @@ Spells that open a list, such as Aspects, show a controller panel. Each choice g
 
 **R1 + R3** opens the addon's own ring, built like Forever's main menu ring. Forever's ring stays as it is.
 
-- It has Forever's three main menu pages with the same entries: Character, Bags, Spellbook, Talents, Professions, Quest & Maps, Game Menu, Group Finder, Guild, Social, Collections, Shop, Legacy, Tracking, Clock, Calendar and PvP, plus the Gamepad XIV settings. Chat and Buffs stay on Forever's own ring (Start).
+- It starts with Forever's three main menu pages and the same entries: Character, Bags, Spellbook, Talents, Professions, Quest & Maps, Game Menu, Group Finder, Guild, Social, Collections, Legacy, Tracking, Clock, Calendar and PvP, plus the Toy Box (in place of the Shop) and the Gamepad XIV settings. Chat and Buffs stay on Forever's own ring (Start).
 - Point the right stick at an entry to highlight it, then press ✕ to use it. Letting go of the stick keeps the highlight. ○ closes the ring.
 - L1 / R1 (or D-pad ← / →) turn the pages. D-pad ↑ shows the emotes, D-pad ↓ sits or stands.
 - In combat, the game windows can't be opened from the ring and show greyed out; emotes and addon entries still work.
 - The Gamepad XIV settings entry is always there, on the third page.
-- Customize it in the **Ring** tab of the settings: fill the free segments with game windows or anything with a slash command (an addon's `/details`, `/dbm`, or the game's own commands), and add as many pages of your own as you like. Forever's entries stay where Forever puts them.
+- Under the wheel, the D-pad shows what up and down do: the emotes and sit / stand. The emotes open on Forever's eight; L1 / R1 page through every other emote in the game, A to Z.
+- The Game Menu entry opens with ✕ (it is the game's own Esc binding, which can't run on letting go of the stick).
+- **Use an entry by letting go of the stick** (Ring tab): point at an entry and let go to use it, like Forever's own ring. On by default; turned off, pointing only highlights and ✕ uses it. ✕ works either way.
+- Customize it in the **Ring** tab of the settings. Every segment of every page can be changed, Forever's entries included. Pick **+ Add** or **Change...** and choose from a list with a search box: the game's windows, your installed addons (found through their minimap button or their slash command), the Gamepad XIV settings, and **Select a toy**, **Select a macro**, **Select an item**, **Select an ability** (always the highest rank), **Select an emote** and **Select an equipment** (your Equipment Manager sets). Each opens a window of its own with a search box. Select a toy also has the **Toy Box**: one entry that opens all your toys on the ring, 8 a page. Searching the main list also finds what's inside them. Something you no longer have (an addon turned off, an item used up) stays on the ring, greyed out. For anything else, **Advanced: slash command** at the bottom takes a command of your own. Add, rename and remove as many pages as you like; **Reset the ring** brings back Forever's pages.
+- Abilities, items, macros, toys and equipment sets can't be used from the ring in combat; they show greyed out.
 - Start stays Forever's own menu; the game doesn't let addons take it over. You can move the ring to another button in the **Input** tab: pick **Gamepad XIV ring** for it.
 
 ### Back button

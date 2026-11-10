@@ -81,6 +81,7 @@ ns.DEFAULTS = {
 	partyMarker = "left", -- "off", "left" or "right": an arrow outside the selected party frame
 	highlightColor = "gold", -- a key of ns.HIGHLIGHT_COLORS: the color of the highlight and the marker
 	formsChangeBar = true,
+	ringReleaseToUse = true, -- the ring uses the highlighted entry when the right stick is let go, not only on A
 	formSet1 = 5, -- each form or stance has its own set, so both bottom sides change; R1 + button picks another
 	formSet2 = 6,
 	formSet3 = 7,
@@ -319,6 +320,20 @@ local MIGRATIONS = {
 			end
 		end
 	end,
+	-- 4 (0.1.9): letting go of the stick uses the ring's entry, now on by default.
+	function(db)
+		db.ringReleaseToUse = true
+	end,
+	-- 5 (0.1.9): the ring's Shop is the Toy Box now.
+	function(db)
+		for _, page in ipairs(db.ringPages or {}) do
+			for segment, entry in pairs(page.slots or {}) do
+				if type(entry) == "table" and entry.builtin == "store" then
+					page.slots[segment] = { toybox = true }
+				end
+			end
+		end
+	end,
 }
 
 local function RunMigrations(db)
@@ -338,6 +353,8 @@ local function InitDB()
 	GamepadXIVDB.pressHoldCasting = nil -- a setting that was tried and removed
 	GamepadXIVDB.wxhbFourSlots = nil -- removed: a double tap always uses all 8 slots of the top bar
 	GamepadXIVDB.themeLooks = nil -- an earlier, unreleased form of migration 1
+	GamepadXIVDB.startKey = nil -- left by the menu button experiment
+	GamepadXIVDB.startKeyLog = nil
 	GamepadXIVDB.formLog = nil -- left by a temporary debug session
 	-- Themes that were removed fall back to Round.
 	local removed = { sleek = true, rounded = true, slate = true, halo = true, neon = true, glass = true }
@@ -407,6 +424,8 @@ local function HandleSlash(message)
 		ns.UpdateMinimapButton()
 	elseif command == "debug" then
 		ns.PrintDebug()
+	elseif command == "ringlog" then
+		ns.ToggleRingLog()
 	elseif command == "wxhb" then
 		HandleSideCommand("W", a, b, c, { L = true, R = true })
 	elseif command == "exhb" then
