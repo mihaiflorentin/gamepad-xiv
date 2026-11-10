@@ -538,8 +538,13 @@ local function ToggleList(row, anchor)
 	end
 end
 
+-- Section titles and notices are read, not selected.
+local function Unselectable(row)
+	return row.type == "header" or row.type == "alert" or row.type == "spacer"
+end
+
 local function ActivateRow(row)
-	if row.type == "header" then
+	if Unselectable(row) then
 		return
 	elseif row.type == "buttons" then
 		row.buttons[row.sub or 1].run()
@@ -639,6 +644,36 @@ local function CreateRowFrame(index)
 	frame.focusBar:SetWidth(3)
 	frame.focusBar:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
 
+	-- A notice (type "alert") fills its row and the spacer row under it: a red bar and a large "!" on
+	-- the left, a title, and a line of text with the button icons.
+	frame.alert = CreateFrame("Frame", nil, frame)
+	frame.alert:SetPoint("TOPLEFT", 0, -3)
+	frame.alert:SetPoint("RIGHT")
+	frame.alert:SetHeight(ROW_HEIGHT * 2 - 8)
+	frame.alert:Hide()
+	local back = frame.alert:CreateTexture(nil, "BACKGROUND")
+	back:SetAllPoints()
+	back:SetColorTexture(0.6, 0.08, 0.06, 0.22)
+	local bar = frame.alert:CreateTexture(nil, "ARTWORK")
+	bar:SetPoint("TOPLEFT")
+	bar:SetPoint("BOTTOMLEFT")
+	bar:SetWidth(3)
+	bar:SetColorTexture(1, 0.25, 0.2, 1)
+	frame.alert.mark = frame.alert:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+	frame.alert.mark:SetPoint("LEFT", 16, 0)
+	frame.alert.mark:SetText("!")
+	frame.alert.mark:SetTextColor(1, 0.3, 0.25)
+	frame.alert.title = frame.alert:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	frame.alert.title:SetPoint("TOPLEFT", 40, -7)
+	frame.alert.title:SetPoint("RIGHT", -12, 0)
+	frame.alert.title:SetJustifyH("LEFT")
+	frame.alert.title:SetTextColor(1, 0.45, 0.4)
+	frame.alert.body = frame.alert:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	frame.alert.body:SetPoint("BOTTOMLEFT", 40, 7)
+	frame.alert.body:SetPoint("RIGHT", -12, 0)
+	frame.alert.body:SetJustifyH("LEFT")
+	frame.alert.body:SetWordWrap(false)
+
 	frame.label = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	frame.label:SetPoint("LEFT", 12, 0)
 	-- Stops before the widest control (the action button), so long search results are cut, not overlapped.
@@ -688,7 +723,7 @@ local function CreateRowFrame(index)
 
 	local function Focus()
 		-- Section titles can't be selected.
-		if frame.row and frame.row.type == "header" then
+		if frame.row and Unselectable(frame.row) then
 			return
 		end
 		cursor = index
@@ -760,10 +795,10 @@ function UpdateRows()
 	local rows = CurrentRows()
 	cursor = math.max(1, math.min(cursor, #rows))
 	-- Never rest on a section title: the next row down, or up at the end.
-	while rows[cursor] and rows[cursor].type == "header" and cursor < #rows do
+	while rows[cursor] and Unselectable(rows[cursor]) and cursor < #rows do
 		cursor = cursor + 1
 	end
-	while rows[cursor] and rows[cursor].type == "header" and cursor > 1 do
+	while rows[cursor] and Unselectable(rows[cursor]) and cursor > 1 do
 		cursor = cursor - 1
 	end
 	for index, frame in ipairs(rowFrames) do
@@ -771,13 +806,23 @@ function UpdateRows()
 		frame.row = row
 		frame:SetShown(row ~= nil)
 		if row then
+			local labelText = row.getLabel and row.getLabel() or row.label
 			if searchRows then
-				frame.label:SetText("|cff8c8c8c" .. row.tabName .. " >|r " .. ButtonText(row.label, 20))
+				frame.label:SetText("|cff8c8c8c" .. row.tabName .. " >|r " .. ButtonText(labelText, 20))
 			else
-				frame.label:SetText(ButtonText(row.label, 20))
+				frame.label:SetText(ButtonText(labelText, 20))
 			end
 			-- A section title: gold, smaller, with a stronger line under it and no controls.
 			local header = row.type == "header"
+			-- A notice draws itself over its row and the spacer under it; the spacer draws nothing.
+			local alert = row.type == "alert"
+			frame.alert:SetShown(alert)
+			frame.label:SetShown(not alert and row.type ~= "spacer")
+			frame.line:SetShown(not alert and row.type ~= "spacer")
+			if alert then
+				frame.alert.title:SetText(row.title)
+				frame.alert.body:SetText(ButtonText(row.getBody(), 20))
+			end
 			frame.label:SetFontObject(header and "GameFontNormalSmall" or "GameFontHighlight")
 			frame.line:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], header and 0.35 or 0)
 			if not header then
@@ -868,7 +913,7 @@ local function Search(text)
 						break
 					end
 				end
-				if matches and row.type ~= "header" then
+				if matches and not Unselectable(row) then
 					row.tabName = tab.name
 					if #searchRows < #rowFrames then
 						tinsert(searchRows, row)
@@ -927,7 +972,7 @@ local function CreateNavButtons()
 				return
 			end
 			local rows = CurrentRows() local count = #rows if count == 0 then return end
-			repeat cursor = cursor - 1 if cursor < 1 then cursor = count end until rows[cursor].type ~= "header"
+			repeat cursor = cursor - 1 if cursor < 1 then cursor = count end until not Unselectable(rows[cursor])
 			UpdateRows()
 		end,
 		Down = function()
@@ -939,7 +984,7 @@ local function CreateNavButtons()
 				return
 			end
 			local rows = CurrentRows() local count = #rows if count == 0 then return end
-			repeat cursor = cursor % count + 1 until rows[cursor].type ~= "header"
+			repeat cursor = cursor % count + 1 until not Unselectable(rows[cursor])
 			UpdateRows()
 		end,
 		Left = function() local row = CurrentRows()[cursor] if not listRow and row and row.type ~= "action" then StepRow(row, -1) end end,
@@ -1032,6 +1077,26 @@ function RebuildRingRows()
 	local pageIndex = ringEditPage
 	local pageName = ns.RingPageName(pageIndex)
 	local rows = {
+		{
+			-- Forever's menu button can't be taken over (it is in the game's own gamepad bindings), so
+			-- this says which buttons open the addon's ring, as the Input tab has them now.
+			type = "alert", label = "", title = "The menu button still opens the game's own menu",
+			getBody = function()
+				local combos = {}
+				for _, keys in ipairs(ns.RingKeys and ns.RingKeys() or {}) do
+					local parts = {}
+					for _, key in ipairs(keys) do
+						tinsert(parts, "{" .. key .. "}")
+					end
+					tinsert(combos, table.concat(parts, " + "))
+				end
+				if #combos == 0 then
+					return "Addons can't change {PADFORWARD}. Set a button for this ring in the Input tab."
+				end
+				return "Addons can't change {PADFORWARD}. Open this ring with " .. table.concat(combos, " or ") .. "."
+			end,
+		},
+		{ type = "spacer", label = "" },
 		{ type = "header", label = "RING SETTINGS" },
 		{
 			type = "check", key = "ringReleaseToUse", label = "Use an entry by letting go of the stick",

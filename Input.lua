@@ -1971,6 +1971,24 @@ end
 -- they are faded out and these show the buttons the settings give each menu instead.
 local classMenuHints = {}
 
+-- The buttons set to open the addon's ring, from the settings: single stick presses first, then the
+-- combinations. Each is a list of keys pressed together; empty when no button opens it.
+function ns.RingKeys()
+	local db = ns.db
+	local list = {}
+	for _, setting in ipairs({
+		{ "l3Action", { "PADLSTICK" } }, { "r3Action", { "PADRSTICK" } },
+		{ "r1R3Action", { "PADRSHOULDER", "PADRSTICK" } }, { "l1R3Action", { "PADLSHOULDER", "PADRSTICK" } },
+		{ "r1L3Action", { "PADRSHOULDER", "PADLSTICK" } }, { "l1R1Action", { "PADLSHOULDER", "PADRSHOULDER" } },
+		{ "l1StickUpAction", { "PADLSHOULDER", "PADLSTICKUP" } },
+	}) do
+		if db[setting[1]] == "ring" then
+			tinsert(list, setting[2])
+		end
+	end
+	return list
+end
+
 -- The keys that open a class menu, from the settings: a single stick press first, then the L1 / R1
 -- combinations, and Forever's own trigger chord when nothing else is set.
 local function ClassMenuKeys(menu)
