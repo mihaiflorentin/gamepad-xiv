@@ -743,12 +743,71 @@ local function OpenToyBox()
 	ring.sub = { pages = toyPages, index = 1 }
 end
 
--- Forever's entries need the secure click, which can't be set up in combat.
-local function Usable(entry)
-	if entry and entry.toybox then
-		return not InCombatLockdown()
+-- What A does with an entry in combat, set up beforehand: a secure action, with Forever's buttons
+-- clicked through a macro. Nil for what can't be used in combat (the Game Menu, the Toy Box).
+local COMBAT_FIELDS = { "type", "macro", "macrotext", "spell", "item", "toy" }
+local function CombatAction(entry)
+	if not entry or entry.missing or entry.toybox or entry.binding then
+		return nil
+	elseif entry.click then
+		local name = entry.click.GetName and entry.click:GetName()
+		return name and { type = "macro", macrotext = "/click " .. name } or nil
+	elseif entry.macro then
+		return { type = "macro", macrotext = entry.macro }
+	elseif entry.macroName then
+		return { type = "macro", macro = entry.macroName }
+	elseif entry.spell then
+		return { type = "spell", spell = entry.spell }
+	elseif entry.item then
+		return { type = "item", item = entry.item }
+	elseif entry.toy then
+		return { type = "toy", toy = entry.toy }
 	end
-	return entry and not entry.missing and (entry.run or not InCombatLockdown()) and true or false
+	return nil
+end
+
+-- In combat A reads which segment from the stick directions the game reports as held, which takes
+-- its stick axis buttons setting.
+local function StickKeysOn()
+	return ns.RingHeldSegment and C_CVar and C_CVar.GetCVarBool and C_CVar.GetCVarBool("GamePadStickAxisButtons") and true or false
+end
+
+-- In combat only the main menu pages were set up, not the emotes or the toy pages.
+local function Usable(entry)
+	if not entry or entry.missing then
+		return false
+	elseif not InCombatLockdown() or entry.run then
+		return true
+	end
+	return not ring.sub and StickKeysOn() and CombatAction(entry) ~= nil
+end
+
+-- A can't be pointed at an entry in combat, so every segment of every page is set up on it before:
+-- "p<page>s<segment>-type" and the rest, which the secure side copies over when A is pressed in combat.
+local armedPages = 0
+function ns.RingArmCombat()
+	local pick = ns.ringPickButton
+	if not pick or InCombatLockdown() then
+		return
+	end
+	if not (ring and ring:IsShown()) then
+		BuildPages()
+	end
+	for pageIndex = 1, math.max(#pages, armedPages) do
+		for segment = 1, SEGMENTS do
+			local action = pages[pageIndex] and CombatAction(pages[pageIndex].entries[segment])
+			local prefix = "p" .. pageIndex .. "s" .. segment .. "-"
+			for _, field in ipairs(COMBAT_FIELDS) do
+				pick:SetAttribute(prefix .. field, action and action[field] or nil)
+			end
+		end
+	end
+	armedPages = #pages
+	if ns.SetRingPages then
+		-- An open ring also hands over the page it is on, which may have changed with the pages.
+		local current = ring and ring:IsShown() and not ring.sub and page or nil
+		ns.SetRingPages(math.max(1, math.min(START_PAGE, #pages)), #pages, current)
+	end
 end
 
 -- Sets one pick button to the entry: a click on Forever's button, a secure action, or nothing (the
@@ -925,6 +984,7 @@ end
 
 local STICK_KEYS = { "PADRSTICKUP", "PADRSTICKDOWN", "PADRSTICKLEFT", "PADRSTICKRIGHT" }
 local stickKeysWork = false
+
 local function StickKeyDown()
 	if not IsKeyDown then
 		return false
@@ -974,6 +1034,7 @@ function ns.ToggleRingLog()
 	ns.Print("Ring log", ns.db.ringLogOn and "on: use the ring, then /reload and send the log." or "off.")
 end
 
+local SetHints
 local function CreateRing()
 	ring = CreateFrame("Frame", "GamepadXIVRing", UIParent)
 	ring:SetSize(400, 640)
@@ -1052,6 +1113,16 @@ local function CreateRing()
 	-- The right stick, read every frame like Forever's ring: past SELECT_SQ it points at a segment.
 	-- Letting it go keeps the highlight; A uses the entry.
 	ring:SetScript("OnUpdate", function()
+		-- In combat the highlight follows the held directions, as A does there: what is highlighted
+		-- is what A uses, and letting go of the stick leaves nothing highlighted.
+		if InCombatLockdown() and StickKeysOn() then
+			local index = ns.RingHeldSegment()
+			if index ~= selected then
+				ns.RingLog("highlight in combat", index)
+				Select(index)
+			end
+			return
+		end
 		local x, y = ns.GetRightStick()
 		local pushed = x * x + y * y > SELECT_SQ
 		-- With "use on letting go", the release only counts once the game takes the stick as a
@@ -1081,21 +1152,33 @@ local function CreateRing()
 	-- Entering or leaving combat greys Forever's entries out or back in.
 	ring:RegisterEvent("PLAYER_REGEN_DISABLED")
 	ring:RegisterEvent("PLAYER_REGEN_ENABLED")
-	ring:SetScript("OnEvent", function()
+	ring:SetScript("OnEvent", function(_, event)
 		if ring:IsShown() then
 			local keep = selected
+			SetHints()
 			ShowPage()
 			Select(keep)
+			-- Combat is starting, and bindings and the pick buttons can still change now. A highlighted
+			-- Game Menu would leave A on its key binding for the whole fight, so A goes back to picking.
+			if event == "PLAYER_REGEN_DISABLED" then
+				if ns.SetRingPickBinding then
+					ns.SetRingPickBinding(nil)
+				end
+				RestoreMenuButton()
+				ns.menuUnderCursor = nil
+				ns.RingArmCombat()
+			end
 		end
 	end)
 end
 
-local function SetHints()
+function SetHints()
 	ring.pageLeft:SetText(ns.ButtonText("{PADLSHOULDER}", 22))
 	ring.pageRight:SetText(ns.ButtonText("{PADRSHOULDER}", 22))
 	-- The whole D-pad, as Forever shows it; the two buttons when the controller has no such icon.
 	ring.contextKeys:SetText(ns.ButtonMarkup(GAMEPAD_DPAD or "DIRPAD", nil, 30) or ns.ButtonText("{PADDUP}{PADDDOWN}", 20))
-	if ns.db.ringReleaseToUse then
+	-- In combat letting go can't tell which segment it was, so A uses the entry there.
+	if ns.db.ringReleaseToUse and not InCombatLockdown() then
 		ring.hint:SetText(ns.ButtonText("Let go of the stick or {PAD1} to use    {PAD2} close", 20))
 	else
 		ring.hint:SetText(ns.ButtonText("{PAD1} use    {PAD2} close", 20))
@@ -1129,13 +1212,19 @@ function ns.OnRing(action)
 		ShowPage()
 		ns.ringOpen = true
 		ring:Show()
+		ns.RingArmCombat()
 		PlaySound(SOUNDKIT.GAMEPAD_RADIAL_MENU_OPEN)
 	elseif not (ring and ring:IsShown()) then
 		ns.ringOpen = false
 	elseif action == "close" then
 		Close()
 	elseif action == "pick" then
-		local entry = selected > 0 and CurrentPage().entries[selected] or nil
+		-- In combat, the segment A used: the held directions, which the highlight may be a frame behind.
+		local index = selected
+		if InCombatLockdown() and StickKeysOn() then
+			index = ns.RingHeldSegment()
+		end
+		local entry = index > 0 and CurrentPage().entries[index] or nil
 		ns.RingLog("use", selected, entry and entry.label or "nothing", InCombatLockdown() and "in combat" or "")
 		-- A key binding entry (the Game Menu) opens with A. Letting go of the stick on it clicked
 		-- Forever's button under the cursor when that could be set up; otherwise it stays highlighted.
@@ -1147,14 +1236,22 @@ function ns.OnRing(action)
 		end
 		-- The Toy Box turns to the toy pages; the secure side left the ring open (fc-keep).
 		if entry and entry.toybox and not InCombatLockdown() then
+			if ns.SetRingSub then
+				ns.SetRingSub(true)
+			end
 			OpenToyBox()
 			ShowPage()
 			PlaySound(SOUNDKIT.GAMEPAD_RADIAL_MENU_TAB_OVER)
 			return
 		end
 		-- Out of combat, A's own click already opened Forever's entries and ran the macros.
-		local done = entry and (entry.click or entry.macro or entry.toy or entry.macroName or entry.spell or entry.item)
-			and not InCombatLockdown()
+		-- In combat, A used what was set up for the segment, on the main menu pages.
+		local done
+		if InCombatLockdown() then
+			done = entry and not ring.sub and StickKeysOn() and CombatAction(entry) ~= nil
+		else
+			done = entry and (entry.click or entry.macro or entry.toy or entry.macroName or entry.spell or entry.item)
+		end
 		Close()
 		if entry and entry.missing then
 			ns.Print(entry.label, "is not loaded. Turn it on in the addon list, or take it off the ring.")
@@ -1190,3 +1287,12 @@ end
 
 -- Kept for compatibility with older calls; the ring reads the entries each time it opens.
 function ns.UpdateRing() end
+
+-- Set up for combat just before it starts (protected buttons can still change then), and after
+-- logging in.
+local armEvents = CreateFrame("Frame")
+armEvents:RegisterEvent("PLAYER_REGEN_DISABLED")
+armEvents:RegisterEvent("PLAYER_ENTERING_WORLD")
+armEvents:SetScript("OnEvent", function()
+	ns.RingArmCombat()
+end)

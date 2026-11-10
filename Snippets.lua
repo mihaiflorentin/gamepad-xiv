@@ -260,9 +260,10 @@ S.ApplyLayer = [[
 		end
 	end
 
-	-- With "use on letting go" on, the open ring takes the right stick's four directions, which the
-	-- game makes buttons with the GamePadStickAxisButtons setting: letting the stick go is then a key press.
-	local release = ringOpen and self:GetAttribute("fc-ringRelease") == 1
+	-- The open ring takes the right stick's four directions, which the game makes buttons with the
+	-- GamePadStickAxisButtons setting. Letting the stick go is then a key press that uses the entry,
+	-- when that setting is on; in combat A reads the held directions to know the segment.
+	local release = ringOpen
 	-- Each direction has a release button of its own: two releases of one button at the same moment
 	-- (letting go from a diagonal) reach it only once.
 	for n = 1, 4 do
@@ -742,6 +743,9 @@ S.RingToggleClick = [[
 	driver:SetAttribute("fc-held-Down", 0)
 	driver:SetAttribute("fc-held-Left", 0)
 	driver:SetAttribute("fc-held-Right", 0)
+	-- The page the ring opens on, and no emotes or toy pages yet: what A uses in combat follows these.
+	driver:SetAttribute("fc-ringPage", driver:GetAttribute("fc-ringStartPage") or 1)
+	driver:SetAttribute("fc-ringSub", 0)
 	-- Opened with R1 or L1 held, that shoulder is still down. The ring takes L1 and R1
 	-- for its pages, so the layer goes back to the base now rather than on the release.
 	local layer = driver:GetAttribute("fc-layer")
@@ -763,12 +767,36 @@ S.RingPickPre = [[
 	if not down then
 		return false
 	end
+	local driver = self:GetFrameRef("driver")
 	if PlayerInCombat() then
-		self:SetAttribute("type", nil)
+		-- The ring can't point A at an entry in combat, so it set up every segment of every page
+		-- beforehand, as p2s3-type and so on. The stick directions the game reports as held say
+		-- which segment: right is 1, then counterclockwise, as the ring draws them.
+		local up = driver:GetAttribute("fc-held-Up") == 1
+		local down = driver:GetAttribute("fc-held-Down") == 1
+		local segment = 0
+		if driver:GetAttribute("fc-held-Right") == 1 then
+			segment = (up and 2) or (down and 8) or 1
+		elseif driver:GetAttribute("fc-held-Left") == 1 then
+			segment = (up and 4) or (down and 6) or 5
+		elseif up then
+			segment = 3
+		elseif down then
+			segment = 7
+		end
+		local prefix = "p" .. (driver:GetAttribute("fc-ringPage") or 0) .. "s" .. segment .. "-"
+		if segment == 0 or driver:GetAttribute("fc-ringSub") == 1 then
+			prefix = "none-"
+		end
+		self:SetAttribute("type", self:GetAttribute(prefix .. "type"))
+		self:SetAttribute("macro", self:GetAttribute(prefix .. "macro"))
+		self:SetAttribute("macrotext", self:GetAttribute(prefix .. "macrotext"))
+		self:SetAttribute("spell", self:GetAttribute(prefix .. "spell"))
+		self:SetAttribute("item", self:GetAttribute(prefix .. "item"))
+		self:SetAttribute("toy", self:GetAttribute(prefix .. "toy"))
 	elseif self:GetAttribute("fc-keep") == 1 then
 		return nil, "pick"
 	end
-	local driver = self:GetFrameRef("driver")
 	driver:SetAttribute("fc-ring", 0)
 	driver:RunAttribute("ApplyLayer")
 	return nil, "pick"
@@ -794,8 +822,14 @@ S.RingReleasePre = [[
 		or driver:GetAttribute("fc-held-Left") == 1 or driver:GetAttribute("fc-held-Right") == 1 then
 		return false
 	end
+	-- With the setting off, the directions are only kept for A in combat. In combat, letting go
+	-- can't tell which segment it was: a diagonal comes back as two releases, one after the other.
+	-- A uses the entry there.
+	if driver:GetAttribute("fc-ringRelease") ~= 1 then
+		return false
+	end
 	if PlayerInCombat() then
-		self:SetAttribute("type", nil)
+		return false
 	elseif self:GetAttribute("fc-keep") == 1 then
 		return nil, "pick"
 	end
@@ -815,6 +849,23 @@ S.RingKeyClick = [[
 	end
 	local driver = self:GetFrameRef("driver")
 	local action = self:GetAttribute("fc-ringAction")
+	-- The page and the emotes are followed here too, for what A uses in combat.
+	if driver:GetAttribute("fc-ringSub") ~= 1 and (action == "prev" or action == "next") then
+		local count = driver:GetAttribute("fc-ringPages") or 0
+		local step = 1
+		if action == "prev" then
+			step = -1
+		end
+		if count > 1 then
+			driver:SetAttribute("fc-ringPage", ((driver:GetAttribute("fc-ringPage") or 1) - 1 + step) % count + 1)
+		end
+	elseif action == "emotes" then
+		if driver:GetAttribute("fc-ringSub") == 1 then
+			driver:SetAttribute("fc-ringSub", 0)
+		else
+			driver:SetAttribute("fc-ringSub", 1)
+		end
+	end
 	if action == "pick" or action == "close" then
 		driver:SetAttribute("fc-ring", 0)
 		driver:RunAttribute("ApplyLayer")

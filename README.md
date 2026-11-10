@@ -134,6 +134,9 @@ The addon has its own settings window, with the settings on six tabs in a column
 | Show loot roll item details | the roll item and what you wear in that slot, beside the loot roll window | on |
 | Always compare items | WoW's `alwaysCompareItems`: item tooltips compare with what you wear, without Shift | on |
 | Face target (turn toward the enemy) | see [Face target](#face-target) | off |
+| Group finder message | what A on a group in Looking For Group whispers to its leader; `<level>`, `<class>`, `<name>`, `<leader>` and `<activity>` are filled in | Hello! Invite me for \<activity\> - \<level\> \<class\>. |
+| Ask before whispering a group | A on a group asks first | on |
+| Open bags when needed (experimental) | opens the bags when a spell or scroll waits for an item to be picked, and at the mailbox, if they are still closed a moment later; closes them after the spell if it opened them | off |
 | Scale | size of the whole crossbar (0.5-1.5) | 1 |
 | Horizontal / Vertical position | position of the whole crossbar | 0 / 90 |
 | Padding between button groups | gap between the D-pad and face button groups (0-80) | 16 |
@@ -148,9 +151,9 @@ The addon has its own settings window, with the settings on six tabs in a column
 | Forms change the bottom row | gives each form or stance its own set | on |
 | Form 1-4 uses | the game's stance bar or one of the 8 sets, for each form or stance | the game's stance bar |
 | L2 / R2 activation | Hold, Toggle or Mixed | Hold |
-| D-pad arrow selection | Enemies only, Friendly only or Both: what D-pad left / right select | Both |
-| D-pad party selection | Off, In a raid or Always: when the whole D-pad moves over the party and raid frames | Off |
-| Party targeting | Soft or Hard: whether party selection sets a temporary target or your real target | Soft |
+| D-pad left / right selection | Enemies only, Friendly only or Both: what D-pad left / right select | Friendly only |
+| D-pad party selection | Off, In a raid or Always: when the whole D-pad moves over the party and raid frames | In a raid |
+| Party targeting | Soft or Hard: whether party selection sets a temporary target or your real target | Hard |
 | Party highlight | Outline, Thick outline, Fill or Pulse: how the selected party member's frame is marked | Fill |
 | Party marker | Left, Right or Off: a gold arrow outside the selected party frame, pointing at it | Left |
 | Raid highlight | the same choices as Party highlight, for raid frames | Thick outline |
@@ -175,15 +178,31 @@ The addon has its own settings window, with the settings on six tabs in a column
 | L1 + right stick | Zoom (up zooms in), Zoom (up zooms out) or Turn the camera as usual | Zoom (up zooms in) |
 | Double tap window | window in 0.2 s steps (2-4) | 2 |
 | Hold B / Circle to walk | walks while the button is held | on |
-| Priority bindings | use only if R2 does not change the bar | off |
+| Force the addon's buttons | a fix for when holding L2 or R2 doesn't show the crossbar: the addon's bindings then win over every other binding (priority override bindings). Menus may stop answering the D-pad and face buttons while it is on | off |
 
 ## Gamepad XIV ring
 
 R1 + R3 opens the addon's own ring (`Ring.lua`), drawn with the art of Forever's main menu ring. Forever's ring cannot take addon entries: an addon entry taints it, and closing it then blocks Forever's interact button, so the addon keeps to a frame of its own. The highlight follows the right stick over every segment, empty ones greyed out, and stays when the stick is let go; nothing runs until A is pressed. A uses the highlighted entry, B closes, L1 / R1 and D-pad left / right change page, D-pad up shows the emotes (Forever's eight, then every `EMOTE<n>_TOKEN` the game has, A to Z, as pages in `ring.sub`; past 12 pages the dots become "3 / 15") and D-pad down sits or stands (`SITORSTAND`). The Game Menu entry puts the game's `TOGGLEGAMEMENU` binding on A while it is highlighted (`fc-ringPickBinding`), since Forever's Game Menu button only opens under the mouse. Those keys are bound through the secure driver (`fc-ring`, `ringKey-*`, `ringBind-*`), so they work in combat. Opening the ring from R1 + R3 puts the layer back to the base, so R1 can page.
 
-The first three pages are Forever's main menu pages with its entries in the same places. They open through a secure click on Forever's own buttons (micro menu buttons, the backpack button, the clock and calendar buttons): while the highlight moves, `Ring.lua` sets `type = "click"` and `clickbutton` on `GamepadXIVRingpick`, the button A presses, so the window opens from the hardware press and nothing is tainted. Player entries with a slash command run as a macro the same way. Those attributes can't change in combat, so there `S.RingPickPre` drops the click and the addon runs what it can itself (emotes, PvP, tracking, addon slash commands); Forever's windows show greyed out. Chat and Buffs are left out: they focus a frame for the controller, which taints Forever's focus manager from addon code.
+The first three pages are Forever's main menu pages with its entries in the same places. They open through a secure click on Forever's own buttons (micro menu buttons, the backpack button, the clock and calendar buttons): while the highlight moves, `Ring.lua` sets `type = "click"` and `clickbutton` on `GamepadXIVRingpick`, the button A presses, so the window opens from the hardware press and nothing is tainted. Player entries with a slash command run as a macro the same way. Those attributes can't change in combat, so `ns.RingArmCombat` sets up every segment of every main menu page on `GamepadXIVRingpick` beforehand (when the ring opens, at login and on `PLAYER_REGEN_DISABLED`): `p<page>s<segment>-type`, `-macrotext`, `-macro`, `-spell`, `-item` and `-toy`, with Forever's buttons clicked through `/click`. The open ring always binds the right stick's four direction buttons, so the driver knows which directions are held (`fc-held-*`), and it follows the page (`fc-ringPage`, from `fc-ringStartPage` and `fc-ringPages`) and whether the emotes or toy pages are showing (`fc-ringSub`). In combat `S.RingPickPre` turns the held directions into a segment (right is 1, then counterclockwise) and copies that segment's attributes onto the button, so A uses it. In combat the highlight follows the same held directions (`ns.RingHeldSegment`), and letting go of the stick uses nothing, since a diagonal comes back as two releases one after the other. Entries without a secure action (emotes, PvP, tracking, addon slash commands) are run by the addon itself; the Game Menu and the Toy Box show greyed out. Combat starting with the Game Menu highlighted takes its binding back off A. Chat and Buffs are left out: they focus a frame for the controller, which taints Forever's focus manager from addon code.
 
 The settings entry starts on the third page. In the `Ring` tab every segment and page can be changed: Forever's three pages are put into `ringPages` the first time (`ringSeeded`), and `Reset the ring` puts them back. Segments are filled from a searchable list, and pages added, renamed and removed without limit. Sections list the spellbook (`ns.RingSpellChoices`, cast by name for the highest rank), the bag items (`ns.RingItemChoices`), the macros (`ns.RingMacroChoices`, saved by name), the Equipment Manager sets (`ns.RingEquipmentSetChoices`, put on with `/equipset`) and the toys, each in a window of its own over the add window; these use the secure `spell`, `item`, `macro` and `toy` actions on `GamepadXIVRingpick`. The Toy Box entry sets `fc-keep` on that button, so `S.RingPickPre` leaves the ring open out of combat and `Ring.lua` shows the toys as pages of 8 (`ring.sub`). The list has Forever's entries, the loaded addons, the player's toys (`ns.RingToyChoices`, read through the Toy Box filters, which are put back afterwards; used with the secure `toy` action) and the settings, then Advanced: a slash command typed in. `ns.RingAddOnChoices` finds each addon once, by its LibDataBroker launcher (opened with `OnClick` on a hidden anchor frame, in `pcall`), the addon compartment when the client has one, or a slash command it registered: `issecurevariable` leaves out the game's own commands and names the addon that added one. Addon entries are saved as `{ addon, launcher }`, `{ addon, compartment }` or `{ addon, command }`; one whose addon is turned off stays, greyed out. With `ringReleaseToUse` on, the open ring also binds the right stick's four direction buttons (`GamePadStickAxisButtons`) to `GamepadXIVRingreleaseUp` / `Down` / `Left` / `Right`, which act on the release. Each direction has its own button because two releases of one button at the same moment (letting go from a diagonal) reach it only once. `S.RingReleasePre` keeps which directions are held on the driver (`fc-held-*`) and uses the entry only when none is, so moving round the wheel never triggers it, and a release without its press is ignored. In that mode the highlight only moves while a stick direction is down (`IsKeyDown`), so the highlighted entry is always the one letting go uses. `/gxiv ringlog` records highlights, stick presses and uses to `ringLog`. Under the wheel the D-pad's actions show on Forever's band (`gamepad-radial-menu-bottomtext`) with the D-pad icon. They are saved per character in `ringPages`; the older `ringEntries` move into it on first use. R1 + R3 has its own setting, and any other button setting can open the ring too (`Gamepad XIV ring` in their lists). Start cannot: Forever's `OPENRADIAL` binding is in its `GamepadModeInGameCore` binding context, which takes Start (and Back) before any addon binding.
+
+## Looking For Group
+
+`Lfg.lua`, out of combat, while Forever's group finder (`LFGParentFrame`, from the load-on-demand `Blizzard_GroupFinder_VanillaStyle`) has the controller cursor: Triangle refreshes the list, A on a group whispers its leader, and Square opens the group's menu. A hint under the window shows the three. Forever's menu navigation keeps A and B, and the bindings it sets for a focused window (priority overrides on `UIParent`) take the other face buttons, so none of its code is called from addon code, which would taint it:
+
+- Triangle and Square get priority override bindings on a frame of the addon's own, taken back when Forever re-binds. They click `GamepadXIVLfgRefresh` and `GamepadXIVLfgMenu`, secure `click` buttons on `LFGBrowseFrameRefreshButton` and on the entry under `SmartNavigation.currentButton` (right button), so the window's own handlers run from the hardware press. They are cleared when the cursor leaves the window, a menu or popup opens over it, and on `PLAYER_REGEN_DISABLED`.
+- A stays Forever's (it selects the entry). The addon reads the controller (`C_GamePad.GetDeviceMappedState`) and, on a group (more than one member, not delisted, not your own), whispers the leader with `SendChatMessage`. With `lfgConfirm` on, a box of the addon's own asks first: A sends, Triangle (bound to `GamepadXIVLfgCancel` meanwhile) cancels, and moving the cursor or closing the window cancels too. The same leader is not whispered twice within 10 seconds.
+- A group's menu (`LFGBrowseFrame:CreateSearchEntryMenu`, from Square or a right click) is moved beside the window, level with the entry, instead of where Forever's navigation anchors it.
+
+## Moving items
+
+`Items.lua`, out of combat: with a bank, guild bank, mail being written, opened mail, auction house or trade window open, Square on an item under the controller cursor does what a right click does there. A bag item goes to the bank, guild bank, mail, auction or trade; a bank, bank bag or guild bank item goes to the bags; a mail attachment comes back (opened mail: Square takes it, a left click). The move is named in a Square prompt beside Forever's button prompts (Select, More, Close), or under the window when it has none. Forever's bags give Square a job only when the item can be sold, equipped, used, opened or read, so most items had none there. With a vendor open, or none of these windows, Square stays Forever's (sell, equip, use). An auction house only takes an item that can be sold there; for any other, Square stays Forever's.
+
+Square gets a priority override binding on a frame of the addon's own, taken back when Forever re-binds, on `GamepadXIVItemMove`, a secure `click` button on `SmartNavigation.currentButton`, so the item's own click handler runs from the hardware press. It is cleared when the cursor leaves an item, a menu or popup opens, an item is on the cursor, and on `PLAYER_REGEN_DISABLED`. `/gxiv lfglog` records these moves too.
+
+The experimental **Open bags when needed** setting (`openBagsWhenNeeded`) is a fallback for Forever, which opens the bags itself at the mailbox and for spells where `SpellCanTargetItem()` is true. A player found them closed for a scroll and at the mailbox. 0.25 s after `CURRENT_SPELL_CAST_CHANGED` (also checking `SpellCanTargetItemID()`) or `MAIL_SHOW`, if the bags are still closed, it calls `OpenAllBags`, and `CloseAllBags` when the spell is over if it opened them and no bank, vendor, mail, auction or trade window is open. It logs what it sees to `/gxiv lfglog`.
 
 ## Minimap icon
 
@@ -192,7 +211,7 @@ Left click opens the settings, and dragging moves the icon around the minimap. R
 - Edit crossbar, Move bars, Move or remove an ability, and Settings
 - Enable layout and Face target
 - L2 / R2 activation (Hold, Toggle, Mixed)
-- D-pad arrow selection: Enemies only, Friendly only or Both
+- D-pad left / right selection: Enemies only, Friendly only or Both
 - D-pad party selection: Off, In a raid or Always
 - Party targeting: Soft or Hard
 - Reset bar positions and Hide minimap icon
@@ -214,9 +233,10 @@ The menu closes on a click elsewhere and when you enter combat. The same entry a
 | `/gxiv exhb <LR\|RL> <set> <L\|R>` | the side Expanded Hold shows, for example `/gxiv exhb LR 5 R` |
 | `/gxiv tap <2-4>` | double tap window, in 0.2 s steps |
 | `/gxiv scale <0.5-1.5>` | crossbar scale |
-| `/gxiv priority on\|off` | priority bindings |
+| `/gxiv priority on\|off` | Force the addon's buttons |
 | `/gxiv minimap` | shows or hides the minimap icon |
 | `/gxiv debug` | reports bindings, CVars and the sticks for 10 seconds |
+| `/gxiv lfglog` | records what the Looking For Group controls and the item moves see to `lfgLog` (the last 80 lines), until run again |
 
 ## Pets
 
@@ -249,7 +269,7 @@ The client asks you to confirm experimental camera features the first time. The 
 | B | Cancel; hold to walk; while flying or swimming, descend |
 | X | Map; with a target, the target menu |
 | Y | Jump; while flying or swimming, ascend |
-| D-pad left / right | previous / next target (real target); see `D-pad arrow selection` and `D-pad party selection` |
+| D-pad left / right | previous / next target (real target); see `D-pad left / right selection` and `D-pad party selection` |
 | D-pad up / down | temporary target through the party, starting with yourself; see `D-pad party selection` |
 | L2 or R2 + R1 / L1 | next / previous enemy |
 | L1 + R3 | hunters and warlocks: Forever's pet commands (attack, follow and so on); druids, paladins: forms or auras |
@@ -276,9 +296,9 @@ FFXIV reference: [Controls](https://ffxiv.consolegameswiki.com/wiki/Controls) an
 
 **The temporary target (soft target)** is used for party and raid, as in FFXIV: the next ability goes to it, your real target stays unchanged, and after the ability you return to your real target. A confirms it and B cancels it.
 
-**Party targeting:** set it to `Hard` and party selection (D-pad and double tap L1) changes your real target instead, with no temporary target. The name above the crossbar does not appear, and the frame highlight follows your real target while it is a party or raid member or their pet, and every press moves on from the last frame or member, even if you have targeted something else since.
+**Party targeting:** `Hard` (the default) means party selection (D-pad and double tap L1) changes your real target instead, with no temporary target. The name above the crossbar does not appear, and the frame highlight follows your real target while it is a party or raid member or their pet, and every press moves on from the last frame or member, even if you have targeted something else since.
 
-**Death, resurrection and party invite popups:** Forever does not focus these by itself, so about a second after one appears, the face buttons press its buttons directly, as shown below the popup in your controller's art. For example, A / Cross releases your spirit and Y / Triangle opens the recap. The wait keeps a button press meant for the fight from answering it. Anything that shows up in combat gets this when combat ends.
+**Death, resurrection and party invite popups:** this includes the group finder's invite (`LFGInvitePopup`, where A accepts and B declines). Forever does not focus these by itself, so about a second after one appears, the face buttons press its buttons directly, as shown below the popup in your controller's art. For example, A / Cross releases your spirit and Y / Triangle opens the recap. The wait keeps a button press meant for the fight from answering it. Anything that shows up in combat gets this when combat ends.
 
 **Loot rolls:** Forever does not focus the roll window by itself, so press Back with no L2/R2 held, as the prompt below the window shows, then use the buttons it shows, such as A / Cross for Need and B / Circle for Pass. This also works in combat.
 

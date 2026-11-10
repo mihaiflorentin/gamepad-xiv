@@ -104,11 +104,14 @@ local function CloseAnd(action)
 	end
 end
 
+-- Defined further down; the rows below call them.
+local UpdateRows, OpenTextDialog
+
 local function BuildTabs()
 	local formRows = {}
 	for form = 1, ns.NUM_FORMS do
 		tinsert(formRows, { type = "choice", key = "formSet" .. form, label = "Form " .. form .. " uses", choices = FormSetChoices,
-			tip = "Each form or stance swaps both bottom sides to its set; by default form 1 uses set 5, form 2 set 6 and so on. The game's stance bar instead shows the 8 abilities Forever's own gamepad bars keep for the form, on the left side only. Form 1 is stealth for rogues and cat form for druids." })
+			tip = "The set the bottom row switches to in this form or stance. Form 1 is stealth for rogues and cat form for druids. By default forms 1-4 use sets 5-8." })
 	end
 
 	local tabs = {
@@ -117,13 +120,13 @@ local function BuildTabs()
 			icon = "Interface\\Icons\\INV_Misc_Gear_01",
 			rows = {
 				{ type = "check", key = "enabled", label = "Enable layout",
-					tip = "Replaces Forever's bar with the cross hotbars. Only takes effect in Gamepad UI." },
+					tip = "Replaces Forever's action bar with the cross hotbars. Turn off to get Forever's bar back. Only works with the game's gamepad UI on." },
 				{ type = "action", label = "Slots", button = "Edit crossbar", run = CloseAnd(function() ns.ToggleEditor() end),
-					tip = "Shows any layer on the crossbar so you can drag spells onto it." },
+					tip = "Opens the slot editor: pick a bar and drag spells, items and macros onto its slots with the mouse." },
 				{ type = "action", label = "Position", button = "Move bars", run = CloseAnd(function() ns.ToggleMove() end),
-					tip = "Drag each bar anywhere on the screen." },
+					tip = "Unlocks the bars so you can drag each one anywhere on the screen with the mouse." },
 				{ type = "check", key = "minimapShown", label = "Show minimap icon", onChange = function() ns.UpdateMinimapButton() end,
-					tip = "Left click: settings. Right click: menu. Drag: move the icon." },
+					tip = "The Gamepad XIV icon on the minimap. Left click opens these settings, right click a quick menu; drag it to move it." },
 				{ type = "check", key = "lootDetails", label = "Show loot roll item details",
 					onChange = function() if ns.RefreshLootDetails then ns.RefreshLootDetails() end end,
 					tip = "While a loot roll window is open, the item and what you wear in that slot are shown beside it." },
@@ -135,22 +138,33 @@ local function BuildTabs()
 						ns.AllowExperimentalCamera()
 						ns.Sync()
 					end,
-					tip = "Experimental. Locks the camera on the enemy target, so the character turns to it when casting. WoW has no way to turn only the character." },
+					tip = "Experimental. Turns you toward your enemy target by locking the camera on it, since WoW can't turn only the character. The camera then follows the target too." },
+				{ type = "action", label = "Group finder message", button = "Edit message",
+					run = function()
+						OpenTextDialog("Group finder message", "The whisper {PAD1} sends to a group's leader in Looking For Group", ns.db.lfgMessage,
+							"Filled in when sent: <level>, <class>, <name> (yours), <leader> and <activity>. A keyboard or the on-screen keyboard is needed to type.",
+							function(text) ns.db.lfgMessage = text; UpdateRows() end)
+					end,
+					tip = function() return "In Looking For Group, {PAD1} on a group whispers this to its leader:\n" .. ns.db.lfgMessage end },
+				{ type = "check", key = "lfgConfirm", label = "Ask before whispering a group",
+					tip = "On: {PAD1} on a group first asks whether to send the message. Off: it is sent straight away." },
+				{ type = "check", key = "openBagsWhenNeeded", label = "Open bags when needed (experimental)",
+					tip = "Experimental. Opens your bags when a spell or scroll asks you to pick an item, and at the mailbox, if the game left them closed." },
 			},
 		},
 		{
 			name = "Targeting",
 			icon = "Interface\\Icons\\Ability_Hunter_SniperShot",
 			rows = {
-				{ type = "choice", key = "dpadTarget", label = "D-pad arrow selection",
+				{ type = "choice", key = "dpadTarget", label = "D-pad left / right selection",
 					choices = function() return { { "enemy", "Enemies only" }, { "friend", "Friendly only" }, { "both", "Both" } } end,
-					tip = "What D-pad left and right select. Both takes turns between enemies and friendlies. Not used while D-pad party selection is active." },
+					tip = "Which targets {PADDLEFT} / {PADDRIGHT} step through: enemies, friendlies, or both in turn. Not used while D-pad party selection is on." },
 				{ type = "choice", key = "dpadParty", label = "D-pad party selection",
 					choices = function() return { { "off", "Off" }, { "raid", "In a raid" }, { "always", "Always" } } end,
-					tip = "Off: D-pad left and right take turns between enemies and friendlies. In a raid or Always: the whole D-pad moves over the party and raid frames on screen." },
+					tip = "When the whole D-pad moves over the party and raid frames, each direction to the frame that way. Off: the D-pad works as usual, {PADDLEFT} / {PADDRIGHT} as set above." },
 				{ type = "choice", key = "partyTargeting", label = "Party targeting",
 					choices = function() return { { "soft", "Soft" }, { "hard", "Hard" } } end,
-					tip = "Soft: selecting a party or raid member sets a temporary target for the next ability, and your real target stays. Hard: it changes your real target." },
+					tip = "Hard: selecting a party or raid member makes them your target. Soft (like FFXIV): they get only your next ability, and your enemy target stays." },
 				{ type = "choice", key = "partyHighlight", label = "Party highlight", choices = HighlightChoices,
 					tip = "How the selected party member's frame is marked. Outline: a thin gold border. Thick outline: a wide one. Fill: a gold tint with a border. Pulse: a border that fades in and out." },
 				{ type = "choice", key = "partyMarker", label = "Party marker",
@@ -167,7 +181,7 @@ local function BuildTabs()
 						return choices
 					end,
 					onChange = function() Sync() Refresh() end,
-					tip = "The color of the party and raid highlight and of the party marker. The Neon theme and the highlight color backgrounds and borders use it too." },
+					tip = "The color of the party and raid highlight and the party marker. The Highlight color and Highlight glow choices under Appearance use it too." },
 			},
 		},
 		{
@@ -183,7 +197,7 @@ local function BuildTabs()
 						return choices
 					end,
 					onChange = Refresh,
-					tip = "How the slots look. Each theme also picks the background, background border, slot background and slot border, for those left on the theme's choice. Classic: the standard action buttons. Forever: like Forever's own bar. Round: Forever's round slots. Hex: hexagon icons on dark hexagons. Sigil: round icons in gold rings inside a ring of runes. Holo: icons in cyan corner brackets with a dashed ring. Ink: icons in brushed ink rings on an ink wash. Orb: round icons in a metal bezel. Minimal: flat icons with a thin dark edge." },
+					tip = "How the slots look. The theme also sets the background, borders and slot background that are left on From theme." },
 				{ type = "choice", key = "background", label = "Background",
 					choices = function()
 						local choices = { { "theme", "From theme" } }
@@ -193,7 +207,7 @@ local function BuildTabs()
 						return choices
 					end,
 					onChange = Refresh,
-					tip = "Drawn behind each group of four slots: a dark circle, a soft shadow, a vignette that fades out, a tinted glass circle, a glow of the highlight color, or nothing." },
+					tip = "What is drawn behind each group of four slots. From theme uses the theme's own." },
 				{ type = "choice", key = "backgroundBorder", label = "Background border",
 					choices = function()
 						local choices = { { "theme", "From theme" } }
@@ -203,7 +217,7 @@ local function BuildTabs()
 						return choices
 					end,
 					onChange = Refresh,
-					tip = "A ring around each group of four slots: thin, double, a soft glow, or a glow of the highlight color." },
+					tip = "A ring around each group of four slots. From theme uses the theme's own." },
 				{ type = "choice", key = "slotFill", label = "Slot background",
 					choices = function()
 						local choices = { { "theme", "From theme" } }
@@ -213,7 +227,7 @@ local function BuildTabs()
 						return choices
 					end,
 					onChange = Refresh,
-					tip = "The fill inside each slot, under the ability: Dark, Smoke, Gradient, Glass, the highlight color, Deep (a dark radial) or Frost (frosted glass lit from the top). None leaves empty slots see-through." },
+					tip = "The fill inside each slot, under the icon. None leaves empty slots see-through. From theme uses the theme's own." },
 				{ type = "choice", key = "slotBorder", label = "Slot border",
 					choices = function()
 						local choices = { { "theme", "From theme" } }
@@ -223,8 +237,9 @@ local function BuildTabs()
 						return choices
 					end,
 					onChange = Refresh,
-					tip = "A border around each slot, in the slot's own shape: thin, thick, double, a soft glow, or the highlight color." },
-				{ type = "number", key = "backgroundAlpha", label = "Background opacity", min = 0.1, max = 1, step = 0.05, onChange = Refresh },
+					tip = "A border around each slot, in the slot's own shape. From theme uses the theme's own." },
+				{ type = "number", key = "backgroundAlpha", label = "Background opacity", min = 0.1, max = 1, step = 0.05, onChange = Refresh,
+					tip = "How solid the background behind each group of four slots is." },
 				{ type = "choice", key = "activeHighlight", label = "Selected bar highlight",
 					choices = function()
 						local choices = {}
@@ -234,7 +249,7 @@ local function BuildTabs()
 						return choices
 					end,
 					onChange = function() ns.RefreshActiveHighlight() end,
-					tip = "How the bar you are using is lit up: one big glow, a soft glow or a ring around each group of four, a glow behind each slot, or nothing." },
+					tip = "How the bar you are using is lit up." },
 				{ type = "choice", key = "activeColorBottom", label = "Bottom bar color", choices = ActiveColorChoices,
 					onChange = function() ns.RefreshActiveHighlight() end,
 					tip = "The highlight color of the bottom bars, while {PADLTRIGGER} or {PADRTRIGGER} is held." },
@@ -248,7 +263,8 @@ local function BuildTabs()
 					onChange = function() ns.RefreshActiveHighlight() end,
 					tip = "The highlight color while {PADLTRIGGER} then {PADRTRIGGER}, or {PADRTRIGGER} then {PADLTRIGGER}, is held." },
 				{ type = "number", key = "activeStrength", label = "Selected bar brightness", min = 0.1, max = 1, step = 0.05,
-					onChange = function() ns.RefreshActiveHighlight() end },
+					onChange = function() ns.RefreshActiveHighlight() end,
+					tip = "How strong the selected bar highlight is." },
 				{ type = "check", key = "activeMarks", label = "Marks in the middle of the selected bar",
 					onChange = function() ns.RefreshActiveHighlight() end,
 					tip = "The small cross and dots between the slots of the bar you are using." },
@@ -258,40 +274,48 @@ local function BuildTabs()
 			name = "Crossbar",
 			icon = "Interface\\Icons\\INV_Misc_Book_09",
 			rows = {
-				{ type = "number", key = "scale", label = "Scale", min = 0.5, max = 1.5, step = 0.05 },
+				{ type = "number", key = "scale", label = "Scale", min = 0.5, max = 1.5, step = 0.05,
+					tip = "The size of the whole crossbar." },
 				{ type = "number", key = "x", label = "Horizontal position", min = -1500, max = 1500, step = 10,
-					tip = "Hold Shift with the mouse, or use Move bars on the General tab, for bigger steps." },
+					tip = "Hold Shift while changing it for bigger steps, or drag the bars with Move bars on the General tab." },
 				{ type = "number", key = "y", label = "Vertical position", min = -200, max = 1200, step = 10,
-					tip = "Hold Shift with the mouse, or use Move bars on the General tab, for bigger steps." },
+					tip = "Hold Shift while changing it for bigger steps, or drag the bars with Move bars on the General tab." },
 				{ type = "number", key = "clusterPadding", label = "Padding between button groups", min = 0, max = 80, step = 2,
-					tip = "Gap between the D-pad group and the face button group of each bar." },
+					tip = "The gap between the D-pad group and the face button group of each bar." },
 				{ type = "number", key = "dimAlpha", label = "Inactive side opacity", min = 0, max = 1, step = 0.05,
-					tip = "How visible the other bars are while one is selected." },
-				{ type = "check", key = "showKeyLabels", label = "Show controller buttons on slots", onChange = Refresh },
-				{ type = "number", key = "keyIconSize", label = "Controller button size", min = 16, max = 60, step = 2, onChange = Refresh },
+					tip = "How visible the other bars stay while one is selected. 0 hides them." },
+				{ type = "check", key = "showKeyLabels", label = "Show controller buttons on slots", onChange = Refresh,
+					tip = "Shows on each slot the button that uses it." },
+				{ type = "number", key = "keyIconSize", label = "Controller button size", min = 16, max = 60, step = 2, onChange = Refresh,
+					tip = "The size of the button icons on the slots." },
 				{ type = "check", key = "rangeIndicator", label = "Show out of range abilities in red", onChange = Nothing,
 					tip = "Tints an ability red while your target is out of its range." },
 				{ type = "check", key = "showInteractPrompt", label = "Show interact prompt", onChange = Nothing,
 					tip = "Over the character: the button, the action's icon and the name of what you can loot, talk to, skin, mine or gather." },
-				{ type = "check", key = "showSetLabels", label = "Show set labels", onChange = Refresh },
+				{ type = "check", key = "showSetLabels", label = "Show set labels", onChange = Refresh,
+					tip = "The current set's number above the crossbar, and the trigger icons above the bottom bars." },
 				{ type = "choice", key = "showTopLeft", label = "Top left bar (double tap {PADLTRIGGER})",
 					choices = function() return { { "always", "Always shown" }, { "selected", "Only when selected" } } end,
-					tip = "Only when selected: the top left bar is hidden until you double tap {PADLTRIGGER}." },
+					tip = "Always shown, or hidden until you double tap {PADLTRIGGER} to use it." },
 				{ type = "choice", key = "showTopRight", label = "Top right bar (double tap {PADRTRIGGER})",
 					choices = function() return { { "always", "Always shown" }, { "selected", "Only when selected" } } end,
-					tip = "Only when selected: the top right bar is hidden until you double tap {PADRTRIGGER}." },
+					tip = "Always shown, or hidden until you double tap {PADRTRIGGER} to use it." },
 			},
 		},
 		{
 			name = "Layers and forms",
 			icon = "Interface\\Icons\\Ability_Druid_CatForm",
 			rows = {
-				{ type = "choice", key = "sideWL", label = "Double tap {PADLTRIGGER} shows", choices = SideChoices },
-				{ type = "choice", key = "sideWR", label = "Double tap {PADRTRIGGER} shows", choices = SideChoices },
-				{ type = "choice", key = "sideLR", label = "{PADLTRIGGER} then {PADRTRIGGER} shows", choices = SideChoices },
-				{ type = "choice", key = "sideRL", label = "{PADRTRIGGER} then {PADLTRIGGER} shows", choices = SideChoices },
+				{ type = "choice", key = "sideWL", label = "Double tap {PADLTRIGGER} shows", choices = SideChoices,
+					tip = "Which set's left or right half shows when you double tap {PADLTRIGGER}." },
+				{ type = "choice", key = "sideWR", label = "Double tap {PADRTRIGGER} shows", choices = SideChoices,
+					tip = "Which set's left or right half shows when you double tap {PADRTRIGGER}." },
+				{ type = "choice", key = "sideLR", label = "{PADLTRIGGER} then {PADRTRIGGER} shows", choices = SideChoices,
+					tip = "Which set's left or right half shows when you hold {PADLTRIGGER} then {PADRTRIGGER}." },
+				{ type = "choice", key = "sideRL", label = "{PADRTRIGGER} then {PADLTRIGGER} shows", choices = SideChoices,
+					tip = "Which set's left or right half shows when you hold {PADRTRIGGER} then {PADLTRIGGER}." },
 				{ type = "check", key = "formsChangeBar", label = "Forms change the bottom row",
-					tip = "Each form or stance keeps its own set. {PADRSHOULDER} + a button changes the set of the current form; the button of your normal set gives the form its own set back (5-8)." },
+					tip = "Stealth, cat form, stances and so on each switch the bottom row to a set of their own, chosen below. In a form, {PADRSHOULDER} + a face button picks its set." },
 			},
 		},
 		{
@@ -302,9 +326,9 @@ local function BuildTabs()
 					choices = function() return { { "hold", "Hold" }, { "toggle", "Toggle" }, { "mixed", "Mixed" } } end,
 					tip = "Hold: selected while the trigger is held. Toggle: stays selected until pressed again, also after a double tap. Mixed: a tap toggles and a hold holds." },
 				{ type = "choice", key = "l3Action", label = "{PADLSTICK} (press left stick)", choices = StickChoices,
-					tip = "What pressing the left stick in does." },
+					tip = "What clicking the left stick in does." },
 				{ type = "choice", key = "r3Action", label = "{PADRSTICK} (press right stick)", choices = StickChoices,
-					tip = "What pressing the right stick in does. {PADLTRIGGER} or {PADRTRIGGER} + {PADRSTICK} still moves or removes an ability." },
+					tip = "What clicking the right stick in does. With {PADLTRIGGER} or {PADRTRIGGER} held, it still moves or removes an ability." },
 				{ type = "choice", key = "l1R3Action", label = "{PADLSHOULDER} + {PADRSTICK}", choices = StickChoices,
 					tip = "What {PADRSTICK} does while {PADLSHOULDER} is held. A class menu your class does not have falls back to {PADRSTICK}'s own action." },
 				{ type = "choice", key = "r1L3Action", label = "{PADRSHOULDER} + {PADLSTICK}", choices = StickChoices,
@@ -318,10 +342,11 @@ local function BuildTabs()
 				{ type = "choice", key = "l1RightStick", label = "{PADLSHOULDER} + right stick", choices = L1RightStickChoices,
 					tip = "What the right stick does while {PADLSHOULDER} is held: zoom the camera in and out, or turn the camera as it normally does." },
 				{ type = "number", key = "doubleTapTicks", label = "Double tap window", min = 2, max = 4, step = 1,
-					tip = "In 0.2 second steps: 2 is about 0.2-0.4 seconds, and it can be shorter in combat." },
-				{ type = "check", key = "holdToWalk", label = "Hold {PAD2} to walk" },
-				{ type = "check", key = "priorityBindings", label = "Priority bindings",
-					tip = "Turn on only if {PADRTRIGGER} does not change the bar. Then check that menus can still be navigated." },
+					tip = "How long you have for the second tap of a double tap: 2 is about 0.3 seconds, each step adds 0.2. Raise it if double taps are missed." },
+				{ type = "check", key = "holdToWalk", label = "Hold {PAD2} to walk",
+					tip = "While {PAD2} is held, the left stick walks instead of runs, like FFXIV." },
+				{ type = "check", key = "priorityBindings", label = "Force the addon's buttons",
+					tip = "Only if holding {PADLTRIGGER} or {PADRTRIGGER} doesn't show the crossbar: the addon's buttons then win over every other binding.\nMenus may stop answering the D-pad and face buttons while it is on; if so, turn it off." },
 			},
 		},
 		{
@@ -383,8 +408,6 @@ local function SetValue(row, value)
 	ns.db[row.key] = value
 	;(row.onChange or Sync)()
 end
-
-local UpdateRows
 
 -- Changes a row by one step: delta is -1 or 1. Checkboxes flip either way.
 local function StepRow(row, delta, big)
@@ -879,7 +902,11 @@ function UpdateRows()
 		end
 	end
 	local row = rows[cursor]
-	local tip = row and row.tip and ButtonText(row.tip, 15) or ""
+	local rowTip = row and row.tip
+	if type(rowTip) == "function" then
+		rowTip = rowTip()
+	end
+	local tip = rowTip and ButtonText(rowTip, 15) or ""
 	if searchRows and #rows == 0 then
 		tip = "No settings match the search."
 	elseif searchMore > 0 then
@@ -905,7 +932,7 @@ local function Search(text)
 		searchRows, searchMore = {}, 0
 		for _, tab in ipairs(tabs) do
 			for _, row in ipairs(tab.rows) do
-				local haystack = (ButtonText(row.label) .. " " .. ButtonText(row.tip or "") .. " " .. tab.name):lower()
+				local haystack = (ButtonText(row.label) .. " " .. ButtonText(type(row.tip) == "string" and row.tip or "") .. " " .. tab.name):lower()
 				local matches = true
 				for word in text:gmatch("%S+") do
 					if not haystack:find(word, 1, true) then
@@ -1163,7 +1190,7 @@ function RebuildRingRows()
 				type = "action",
 				label = where .. "|cff6f6f6fEmpty|r",
 				button = "+ Add",
-				tip = "Puts one of the game's windows, an installed addon, a toy or this addon's settings in this segment.",
+				tip = "Puts a game window, an addon, an ability, item, macro, toy, emote or equipment set in this segment.",
 				run = function() OpenEntryDialog(pageIndex, segment) end,
 			})
 		end
@@ -1388,6 +1415,7 @@ local function CreateDialog()
 		text:SetPoint("TOPLEFT")
 		text:SetText(label)
 		local box = CreateFrame("EditBox", nil, holder, "BackdropTemplate")
+		box.label, box.defaultLabel = text, label
 		box:SetSize(508, 26)
 		box:SetPoint("TOPLEFT", 0, -16)
 		Flat(box, CONTROL)
@@ -1409,7 +1437,8 @@ local function CreateDialog()
 	formHelp:SetPoint("TOPLEFT", 16, -164)
 	formHelp:SetPoint("RIGHT", -16, 0)
 	formHelp:SetJustifyH("LEFT")
-	formHelp:SetText("Runs the command as if you typed it in chat. Most addons list theirs in their description or with /help.")
+	local COMMAND_HELP = "Runs the command as if you typed it in chat. Most addons list theirs in their description or with /help."
+	formHelp:SetText(COMMAND_HELP)
 
 	dialog.error = dialog:CreateFontString(nil, "OVERLAY", "GameFontRedSmall")
 	dialog.error:SetPoint("BOTTOMLEFT", 16, 52)
@@ -1447,20 +1476,22 @@ local function CreateDialog()
 		end
 		wipe(shownFields)
 		for _, box in ipairs(fields) do
-			local show = mode == "command" or (mode == "page" and box == dialog.name)
+			local show = mode == "command" or ((mode == "page" or mode == "text") and box == dialog.name)
 			box.holder:SetShown(show)
 			if show then
 				tinsert(shownFields, box)
 			end
 		end
-		formHelp:SetShown(mode == "command")
+		formHelp:SetShown(mode == "command" or (mode == "text" and dialog.textHelp ~= nil))
+		formHelp:SetText(mode == "text" and dialog.textHelp or COMMAND_HELP)
+		dialog.name.label:SetText(mode == "text" and dialog.textLabel or dialog.name.defaultLabel)
 		if mode == "pick" then
 			hint:SetText(ButtonText("{PADDUP}{PADDDOWN} choose   {PAD1} select   {PAD2} " .. (folder and "back" or "cancel"), 18))
 			for _, box in ipairs(fields) do
 				box:ClearFocus()
 			end
 		else
-			hint:SetText(ButtonText("{PAD1} " .. (mode == "page" and "save" or "add") .. "   {PAD2} " .. (mode == "command" and "back" or "cancel"), 18))
+			hint:SetText(ButtonText("{PAD1} " .. ((mode == "page" or mode == "text") and "save" or "add") .. "   {PAD2} " .. (mode == "command" and "back" or "cancel"), 18))
 			search:ClearFocus()
 			if shownFields[1] and not (shownFields[1]:HasFocus() or (shownFields[2] and shownFields[2]:HasFocus()) or (shownFields[3] and shownFields[3]:HasFocus())) then
 				shownFields[1]:SetFocus()
@@ -1470,6 +1501,16 @@ local function CreateDialog()
 	end
 
 	local function Submit()
+		if dialog.mode == "text" then
+			local text = strtrim(dialog.name:GetText()):gsub("|", "")
+			if text == "" then
+				dialog.error:SetText("Type something, or press Cancel.")
+				return
+			end
+			dialog:Hide()
+			dialog.onTextSave(text)
+			return
+		end
 		local name = strtrim(dialog.name:GetText()):gsub("|", "")
 		if dialog.mode == "page" then
 			local pages = ns.RingPages()
@@ -1694,6 +1735,15 @@ local function CreateDialog()
 			dialog.command:SetText(custom.command or "")
 			dialog.icon:SetText(custom.icon and tostring(custom.icon) or "")
 		end
+	end
+
+	-- A single line of text for a setting: title, the field's label, the current text, a help line
+	-- under it and what to do with the saved text.
+	function OpenTextDialog(title, label, value, help, onSave)
+		dialog.textLabel, dialog.textHelp, dialog.onTextSave = label, help, onSave
+		Open("text", title, "Save")
+		dialog.name:SetText(value or "")
+		dialog.name:SetCursorPosition(0)
 	end
 
 	function OpenPageDialog(pageIndex)

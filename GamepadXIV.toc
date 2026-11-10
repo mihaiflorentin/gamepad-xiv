@@ -16,3 +16,5 @@ Edit.lua
 Config.lua
 Minimap.lua
 Ring.lua
+Lfg.lua
+Items.lua

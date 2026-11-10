@@ -73,9 +73,12 @@ ns.DEFAULTS = {
 	x = 0,
 	y = 90,
 	clusterPadding = 16, -- gap between the D-pad and face button diamonds of a side
-	dpadTarget = "both", -- "enemy", "friend" or "both": what D-pad left and right select
-	dpadParty = "off", -- "off", "raid" or "always": when the whole D-pad selects party members
-	partyTargeting = "soft", -- "soft" or "hard": party selection sets a soft target or the real one
+	dpadTarget = "friend", -- "enemy", "friend" or "both": what D-pad left and right select
+	dpadParty = "raid", -- "off", "raid" or "always": when the whole D-pad selects party members
+	partyTargeting = "hard", -- "soft" or "hard": party selection sets a soft target or the real one
+	lfgMessage = "Hello! Invite me for <activity> - <level> <class>.", -- whispered to a group's leader with A in Looking For Group
+	lfgConfirm = true, -- ask before that whisper is sent
+	openBagsWhenNeeded = false, -- experimental: open the bags for a spell that targets an item, and at the mailbox
 	partyHighlight = "fill", -- "outline", "thick", "fill" or "pulse": how the selected party member's frame is marked
 	raidHighlight = "thick", -- the same, for raid frames
 	partyMarker = "left", -- "off", "left" or "right": an arrow outside the selected party frame
@@ -334,6 +337,12 @@ local MIGRATIONS = {
 			end
 		end
 	end,
+	-- 6: the group finder message names the activity; a message left on the first default follows.
+	function(db)
+		if db.lfgMessage == "Hello! Invite me <level> <class>." or db.lfgMessage == "Hello! Invite me for <activity> <level> <class>." then
+			db.lfgMessage = "Hello! Invite me for <activity> - <level> <class>."
+		end
+	end,
 }
 
 local function RunMigrations(db)
@@ -426,6 +435,8 @@ local function HandleSlash(message)
 		ns.PrintDebug()
 	elseif command == "ringlog" then
 		ns.ToggleRingLog()
+	elseif command == "lfglog" then
+		ns.ToggleLfgLog()
 	elseif command == "wxhb" then
 		HandleSideCommand("W", a, b, c, { L = true, R = true })
 	elseif command == "exhb" then

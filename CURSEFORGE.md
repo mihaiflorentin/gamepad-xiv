@@ -120,23 +120,22 @@ Out of combat:
 
 ## Targeting
 
-- **← / →**: previous / next target (enemies and friendlies, or just one kind; see the settings)
+- **← / →**: previous / next friendly target by default (enemies, friendlies or both; see the settings)
 - **R1 + L2** or **L1 + R2**: next / previous enemy
 - **✕**: interact or attack
 
 ### Party selection and the soft target
 
-As in FFXIV, you can pick a party member **without losing your enemy target**:
+- **↑ / ↓** or **double tap L1**: step through your party, starting with yourself. Pets are included. By default this makes them your real target.
+- **L1 + ← / →**: step through the raid.
 
-- **↑ / ↓** or **double tap L1**: step through your party, starting with yourself. Pets are included.
+Prefer the FFXIV way? Set **Party targeting** to **Soft** in the settings, and you pick a party member **without losing your enemy target**:
+
 - The member's name appears above the crossbar, and their party frame is highlighted.
 - Your **next ability goes to that member**, then you go back to your real target.
 - **✕** makes them your real target, **○** cancels.
-- **L1 + ← / →**: step through the raid.
 
-Prefer real targets? Set **Party targeting** to **Hard** in the settings.
-
-You can also give the **whole D-pad to the party and raid frames** (**D-pad party selection**), so each direction moves to the frame that way.
+In a raid, the **whole D-pad moves over the party and raid frames** by default, each direction to the frame that way. Set **D-pad party selection** to **Always** or **Off** to change that.
 
 ### Face target (experimental)
 
@@ -183,13 +182,12 @@ Spells that open a list, such as Aspects, show a controller panel. Each choice g
 - It starts with Forever's three main menu pages and the same entries: Character, Bags, Spellbook, Talents, Professions, Quest & Maps, Game Menu, Group Finder, Guild, Social, Collections, Legacy, Tracking, Clock, Calendar and PvP, plus the Toy Box (in place of the Shop) and the Gamepad XIV settings. Chat and Buffs stay on Forever's own ring (Start).
 - Point the right stick at an entry to highlight it, then press ✕ to use it. Letting go of the stick keeps the highlight. ○ closes the ring.
 - L1 / R1 (or D-pad ← / →) turn the pages. D-pad ↑ shows the emotes, D-pad ↓ sits or stands.
-- In combat, the game windows can't be opened from the ring and show greyed out; emotes and addon entries still work.
+- **In combat**, keep the stick pushed at the entry and press ✕: windows, abilities, items, macros, toys and equipment sets all work. Letting go of the stick doesn't use anything in combat, and the highlight goes away with it. The Game Menu and the Toy Box can't be opened in combat (Esc still opens the Game Menu); they show greyed out.
 - The Gamepad XIV settings entry is always there, on the third page.
 - Under the wheel, the D-pad shows what up and down do: the emotes and sit / stand. The emotes open on Forever's eight; L1 / R1 page through every other emote in the game, A to Z.
 - The Game Menu entry opens with ✕ (it is the game's own Esc binding, which can't run on letting go of the stick).
 - **Use an entry by letting go of the stick** (Ring tab): point at an entry and let go to use it, like Forever's own ring. On by default; turned off, pointing only highlights and ✕ uses it. ✕ works either way.
 - Customize it in the **Ring** tab of the settings. Every segment of every page can be changed, Forever's entries included. Pick **+ Add** or **Change...** and choose from a list with a search box: the game's windows, your installed addons (found through their minimap button or their slash command), the Gamepad XIV settings, and **Select a toy**, **Select a macro**, **Select an item**, **Select an ability** (always the highest rank), **Select an emote** and **Select an equipment** (your Equipment Manager sets). Each opens a window of its own with a search box. Select a toy also has the **Toy Box**: one entry that opens all your toys on the ring, 8 a page. Searching the main list also finds what's inside them. Something you no longer have (an addon turned off, an item used up) stays on the ring, greyed out. For anything else, **Advanced: slash command** at the bottom takes a command of your own. Add, rename and remove as many pages as you like; **Reset the ring** brings back Forever's pages.
-- Abilities, items, macros, toys and equipment sets can't be used from the ring in combat; they show greyed out.
 - Start stays Forever's own menu; the game doesn't let addons take it over. You can move the ring to another button in the **Input** tab: pick **Gamepad XIV ring** for it.
 
 ### Back button
@@ -197,9 +195,25 @@ Spells that open a list, such as Aspects, show a controller panel. Each choice g
 - **Back** moves between open windows.
 - With **no windows open**, Back focuses the **quest tracker**, then **chat**, a bit like FFXIV's HUD cycling. **○** returns to the game.
 
+### Looking For Group
+
+With the Looking For Group window open (a hint under it shows the buttons):
+
+- **△** refreshes the list.
+- **✕** on a group whispers its leader. By default it asks first: **✕** sends, **△** cancels. The message is set in the settings (General tab, **Group finder message**), and `<level>`, `<class>`, `<name>`, `<leader>` and `<activity>` in it are filled in. The default is "Hello! Invite me for \<activity\> - \<level\> \<class\>." **Ask before whispering a group** turns the question off.
+- **□** opens the group's menu (Send Message, Group Invite, Report). It now shows next to the window, also when opened with a right click.
+
+These work out of combat; in combat the window works as usual.
+
+### Moving items
+
+With a bank, guild bank, mailbox, auction house or trade window open, **□** on an item moves it, like a right click: from your bags to the bank, guild bank, mail you are writing, an auction or the trade, and from the bank or guild bank back to your bags. **□** on a mail attachment takes it back, or into your bags from opened mail. A **□** prompt beside the window's other button prompts says where it goes. With a vendor open, **□** sells as before, and with none of these windows open it equips or uses the item as before. Works out of combat.
+
+**Open bags when needed (experimental, General tab):** opens your bags when a spell or scroll asks you to pick an item, and at the mailbox, if the game left them closed. Off by default until it is confirmed to work; if you try it, please report back.
+
 ### Popups and loot rolls
 
-- **Death, resurrection and party invite popups:** after about a second, the face buttons answer them directly. The buttons are shown under the popup. For example, **✕** releases your spirit.
+- **Death, resurrection and party invite popups:** after about a second, the face buttons answer them directly. The buttons are shown under the popup. For example, **✕** releases your spirit. This includes invites from a Looking For Group listing: **✕** accepts, **○** declines.
 - **Loot rolls:** press **Back** to focus the roll window, then use the buttons shown, such as **✕** for Need and **○** for Pass. This works in combat. While the window is open, the item and what you wear in that slot are shown beside it, and the window can be moved with **Move bars**.
 - **Always compare items:** item tooltips also show what you wear in that slot, without holding Shift. You can turn this off in the settings.
 
@@ -299,6 +313,7 @@ Hidden it by mistake? Type `/gxiv minimap`.
 - `/gxiv minimap`: show or hide the minimap icon
 - `/gxiv priority on`: use this if R2 does not change the bar
 - `/gxiv debug`: record button presses for 10 seconds, for bug reports
+- `/gxiv lfglog`: record what the Looking For Group buttons and item moves do, for bug reports (run it again to stop)
 
 ---
 

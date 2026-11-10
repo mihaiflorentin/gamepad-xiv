@@ -286,6 +286,18 @@ local ANSWERED_POPUPS = {
 local POPUP_KEYS = { PAD1 = "GetButton1", PAD2 = "GetButton2", PAD3 = "GetButton3", PAD4 = "GetButton4" }
 local POPUP_KEY_ORDER = { "PAD1", "PAD2", "PAD3", "PAD4" }
 
+-- The group finder's invite (a group from Looking For Group invites you) is a window of its own,
+-- not one of the four popups; it is number 5 here.
+local INVITE_POPUP = 5
+local INVITE_BUTTONS = { PAD1 = "LFGInvitePopupAcceptButton", PAD2 = "LFGInvitePopupDeclineButton" }
+
+local function PopupByIndex(index)
+	if index == INVITE_POPUP then
+		return LFGInvitePopup
+	end
+	return index > 0 and _G["StaticPopup" .. index] or nil
+end
+
 local function GetAnsweredPopup()
 	for index = 1, 4 do
 		local popup = _G["StaticPopup" .. index]
@@ -293,9 +305,16 @@ local function GetAnsweredPopup()
 			return popup, index
 		end
 	end
+	if LFGInvitePopup and LFGInvitePopup:IsShown() then
+		return LFGInvitePopup, INVITE_POPUP
+	end
 end
 
 local function GetPopupButton(popup, key)
+	if popup and popup == LFGInvitePopup then
+		local button = INVITE_BUTTONS[key] and _G[INVITE_BUTTONS[key]]
+		return button and button:IsShown() and button or nil
+	end
 	local getter = popup and popup[POPUP_KEYS[key]]
 	local button = getter and getter(popup)
 	if button and button:IsShown() then
@@ -308,7 +327,7 @@ local popupHint
 -- Stays on what the bindings really do: in combat they only change when combat ends.
 local function UpdatePopupHint()
 	local index = driver:GetAttribute("fc-answeredPopup") or 0
-	local popup = index > 0 and _G["StaticPopup" .. index]
+	local popup = PopupByIndex(index)
 	if not popup or not popup:IsShown() or not ns.IsActive() then
 		if popupHint then
 			popupHint:Hide()
@@ -948,6 +967,41 @@ function ns.SetRingPickBinding(binding)
 	end
 	driver:SetAttribute("fc-ringPickBinding", binding)
 	SecureHandlerExecute(driver, [[ self:RunAttribute("ApplyLayer") ]])
+end
+
+-- What the secure side needs to follow the ring's page for A in combat: the page it opens on and
+-- how many there are. Out of combat only.
+function ns.SetRingPages(startPage, count, currentPage)
+	if driver and not InCombatLockdown() then
+		driver:SetAttribute("fc-ringStartPage", startPage)
+		driver:SetAttribute("fc-ringPages", count)
+		if currentPage then
+			driver:SetAttribute("fc-ringPage", currentPage)
+		end
+	end
+end
+
+-- The segment the right stick's held directions point at, as the secure side reads them for A in
+-- combat: right is 1, then counterclockwise. 0 with none held.
+function ns.RingHeldSegment()
+	if not driver then
+		return 0
+	end
+	local up = driver:GetAttribute("fc-held-Up") == 1
+	local down = driver:GetAttribute("fc-held-Down") == 1
+	if driver:GetAttribute("fc-held-Right") == 1 then
+		return (up and 2) or (down and 8) or 1
+	elseif driver:GetAttribute("fc-held-Left") == 1 then
+		return (up and 4) or (down and 6) or 5
+	end
+	return (up and 3) or (down and 7) or 0
+end
+
+-- The toy pages are showing (or not): A then uses nothing set up for combat.
+function ns.SetRingSub(on)
+	if driver and not InCombatLockdown() then
+		driver:SetAttribute("fc-ringSub", on and 1 or 0)
+	end
 end
 
 local function SetupDriverData()
@@ -1692,8 +1746,8 @@ function ns.CreateInput()
 			UpdatePopupHint()
 		end)
 	end
-	for index = 1, 4 do
-		local popup = _G["StaticPopup" .. index]
+	for index = 1, INVITE_POPUP do
+		local popup = PopupByIndex(index)
 		if popup then
 			popup:HookScript("OnShow", OnPopupChanged)
 			popup:HookScript("OnHide", OnPopupChanged)

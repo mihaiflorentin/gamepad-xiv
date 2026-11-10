@@ -1289,7 +1289,69 @@ do
 	driver.attrs["fc-ringRelease"] = 0
 	local toggle2, toggle2Fn = RunButton(S.RingToggleClick)
 	toggle2Fn(toggle2, "LeftButton", true)
-	Check("release off: stick directions not taken", driver.bindings.PADRSTICKUP, nil)
+	Check("release off: stick directions still kept for combat", driver.bindings.PADRSTICKUP, "CLICK GamepadXIVRingreleaseUp:LeftButton")
+	releases.Up(true)
+	Check("release off: letting go does nothing", releases.Up(false), false)
+	Check("release off: ring stays open", driver.attrs["fc-ring"], 1)
+
+	-- In combat A reads the held directions and the page, and uses what the ring set up beforehand.
+	driver.attrs["fc-ringStartPage"], driver.attrs["fc-ringPages"] = 2, 3
+	toggle2Fn(toggle2, "LeftButton", false)
+	toggle2Fn(toggle2, "LeftButton", true) -- closes
+	toggle2Fn(toggle2, "LeftButton", true) -- opens again
+	Check("combat: opens on the start page", driver.attrs["fc-ringPage"], 2)
+	local nextButton, nextFn = RunButton(S.RingKeyClick, { ["fc-ringAction"] = "next" })
+	local prevButton, prevFn = RunButton(S.RingKeyClick, { ["fc-ringAction"] = "prev" })
+	local emoteButton, emoteFn = RunButton(S.RingKeyClick, { ["fc-ringAction"] = "emotes" })
+	nextFn(nextButton, "LeftButton", true)
+	Check("combat: next page", driver.attrs["fc-ringPage"], 3)
+	nextFn(nextButton, "LeftButton", true)
+	Check("combat: next page wraps", driver.attrs["fc-ringPage"], 1)
+	prevFn(prevButton, "LeftButton", true)
+	prevFn(prevButton, "LeftButton", true)
+	Check("combat: previous page", driver.attrs["fc-ringPage"], 2)
+	local combatPick, combatPickFn = RunButton(S.RingPickPre)
+	combatPick.attrs["p2s2-type"] = "macro"
+	combatPick.attrs["p2s2-macrotext"] = "/click CharacterMicroButton"
+	combatPick.attrs["p2s3-type"] = "spell"
+	combatPick.attrs["p2s3-spell"] = "Sprint"
+	combatPick.attrs["fc-keep"] = 1
+	unitsThatExist.combat = true
+	releases.Up(true)
+	releases.Right(true)
+	local _, combatMessage = combatPickFn(combatPick, "LeftButton", true)
+	Check("combat: up and right is segment 2", combatPick.attrs.type, "macro")
+	Check("combat: its macro", combatPick.attrs.macrotext, "/click CharacterMicroButton")
+	Check("combat: told", combatMessage, "pick")
+	Check("combat: ring closed", driver.attrs["fc-ring"], 0)
+	Check("combat: letting go after does nothing", releases.Right(false), false)
+	releases.Up(false)
+	toggle2Fn(toggle2, "LeftButton", true)
+	releases.Up(true)
+	combatPickFn(combatPick, "LeftButton", true)
+	Check("combat: up is segment 3", combatPick.attrs.type, "spell")
+	Check("combat: its spell", combatPick.attrs.spell, "Sprint")
+	Check("combat: macro text cleared", combatPick.attrs.macrotext, nil)
+	toggle2Fn(toggle2, "LeftButton", true)
+	combatPickFn(combatPick, "LeftButton", true)
+	Check("combat: directions reset on open, nothing used", combatPick.attrs.type, nil)
+	toggle2Fn(toggle2, "LeftButton", true)
+	emoteFn(emoteButton, "LeftButton", true)
+	releases.Up(true)
+	combatPickFn(combatPick, "LeftButton", true)
+	Check("combat: the emotes use nothing secure", combatPick.attrs.type, nil)
+	releases.Up(false)
+	toggle2Fn(toggle2, "LeftButton", true)
+	releases.Down(true)
+	releases.Left(true)
+	combatPickFn(combatPick, "LeftButton", true)
+	Check("combat: an empty segment uses nothing", combatPick.attrs.type, nil)
+	releases.Down(false)
+	releases.Left(false)
+	unitsThatExist.combat = nil
+	combatPick.attrs["fc-keep"] = nil
+	driver.attrs["fc-ringStartPage"], driver.attrs["fc-ringPages"] = nil, nil
+	toggle2Fn(toggle2, "LeftButton", true)
 	toggle2Fn(toggle2, "LeftButton", true)
 	driver.attrs["fc-ringRelease"] = 1
 	driver.attrs["fc-held-Up"] = 1 -- left from an earlier ring
@@ -1320,6 +1382,16 @@ do
 	Check("release: stick back in the middle uses the entry", releaseMessage, "pick")
 	Check("release: ring closed", driver.attrs["fc-ring"], 0)
 	Check("release: stick directions handed back", driver.bindings.PADRSTICKUP, nil)
+	-- In combat letting go can't tell the segment: the ring stays open for A.
+	toggle2Fn(toggle2, "LeftButton", true)
+	unitsThatExist.combat = true
+	releases.Up(true)
+	releases.Right(true)
+	releases.Up(false)
+	Check("release in combat: letting go does nothing", releases.Right(false), false)
+	Check("release in combat: ring stays open", driver.attrs["fc-ring"], 1)
+	unitsThatExist.combat = nil
+	toggle2Fn(toggle2, "LeftButton", true)
 	driver.attrs["fc-ringRelease"] = 0
 	local post = assert(loadstring("local self, message, button, down = ...\n" .. S.RingPickPost))
 	setfenv(post, setmetatable({}, { __index = ALLOWED }))
