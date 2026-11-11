@@ -15,7 +15,7 @@ Its double tap timing is adapted from [CrossHotbar](https://github.com/ChainStra
 - **Selection feedback:** the selected bar grows and glows with a short animation, and the others shrink and dim.
 - **Range indicator:** an ability turns red while your target is out of its range. Abilities with no range stay as they are.
 - **Controller button art:** optional button icons on every slot, in the style of your controller, plus an original addon icon.
-- **Targeting:** enemies and friendlies in turn on D-pad left/right, tab target on R1 + L2 and L1 + R2; a soft target for party and raid members.
+- **Targeting:** enemies and friendlies in turn on D-pad left/right, tab target on R1 + L2 and L1 + R2, in either order; a soft target for party and raid members.
 - **Party selection:** double tap L1 or use the D-pad, pets included, with the name above the crossbar and a highlight on the member's frame (outline, thick outline, fill or pulse, set separately for party and raid, plus an optional arrow beside party frames).
 - **Face target:** an optional, experimental setting that turns your character toward the enemy when casting.
 - **Camera and movement:** L3 and R3 set in the settings, L1 + right stick zoom (from a light push, with the camera held still), L1 + left stick forward auto-run (in either order), hold B to walk, Y / B to ascend and descend, first / third person on R3.
@@ -24,7 +24,7 @@ Its double tap timing is adapted from [CrossHotbar](https://github.com/ChainStra
 - **Menus:** map, character, spellbook and inventory on L1 + a face button, with context-sensitive X and A.
 - **Chat and map:** click item links in chat, Shift-click items to link them even with chat closed, and L1 + R1 to place a map pin.
 - **Back with nothing open** focuses the quest tracker, then chat, instead of Forever's "No interface frame to focus".
-- **Editing:** drag and drop directly on the crossbar, plus an edit mode for sets that are not on screen, and a controller flow to move or remove an ability.
+- **Editing:** drag and drop directly on the crossbar (R1 + a button shows any set on the bottom row), and a controller flow to move or remove an ability.
 - **Layout:** drag each bar anywhere, or all of them together, and set the scale, opacity and the padding between button groups.
 - **Minimap icon:** left click for settings, right click for a menu, drag to move it around the minimap.
 - **Settings panel and slash commands**, saved per character.
@@ -63,9 +63,10 @@ Two rows are always visible, as in FFXIV: the current set at the bottom and the 
 | Hold L2, then R2 / hold R2, then L2 | Expanded Hold: that bottom side shows another set |
 | Hold R1 + Y, B, A, X | set 1, 2, 3, 4 on the bottom row |
 | Hold R1 + D-pad up, right, down, left | set 5, 6, 7, 8 on the bottom row |
-| R1 + L2 / L1 + R2 | tab target: next / previous enemy |
-| L2 / R2 + Back | edit mode |
+| Tap R1 (with Quick set swap on) | swaps between two pairs of sets, bottom and top row together |
+| R1 + L2 / L1 + R2 | tab target: next enemy, either way round |
 | L2 / R2 + R3 | move or remove an ability |
+| L2 / R2 + Back | move the bars |
 | L2 / R2 + Start | settings menu |
 
 **Activation modes**, under `L2 / R2 activation`:
@@ -73,6 +74,8 @@ Two rows are always visible, as in FFXIV: the current set at the bottom and the 
 - **Hold:** a bar stays selected while you hold the trigger. Releasing returns to exploration mode, where A, X, Y and the D-pad do their normal jobs.
 - **Toggle:** a selected bar stays selected without holding the trigger, including after a double tap. The next press of the same trigger deselects it, and the other trigger replaces it.
 - **Mixed:** a quick tap keeps the bar selected until the next press, and holding works like Hold. A double tap is held, as in Hold.
+
+**Quick set swap** (`r1Tap`): `S.R1Click` resets `fc-r1Chord` on R1 down. Anything else while R1 is held marks it: a set pick (`S.SetClick`), `ApplyLayer` running in a trigger or L1 layer or with the ring, a class menu or a flyout open (so R1 + R3's ring and R1 + L3's class menu mark it), and R1 + L2, which then goes through `GamepadXIVR1ChordL2`, a button that marks it and runs `/targetenemy`. An R1 + L3 / R3 set to a plain key binding, such as sheathe, is not marked, but is usually slower than the tap window. R1 up with nothing marked, within 2 ticks of the trigger clock (`fc-ticks` / `fc-ready` on `GamepadXIVR1`, about 0.2-0.4 s), runs `S.SwapTapSets`: the bottom row goes to pair B if it shows pair A's set, else to pair A, and with `r1TapTop` the top row's two sides go to both halves of the pair's top set, saved through `OnTapSwap`. A slower release, such as holding R1 to look at the set overlay, swaps nothing. The tap does not move Forever's page, so for the spellbook bind flow pick the set with R1 + a button.
 
 **Forms and stances** change the bottom row, and each one remembers its own set. By default a form shows the game's stance bar (set 0 in `formSet1-4`): bonus bar N is action slots 73 + (N - 1) × 12 onwards, 12 slots that fill the left side and the right side's first four (`ns.sideSlots` 17-24, `fc-stanceSides`); the right side's last four stay the player's own set. R1 + a button in a form picks one of the 8 sets for it instead. Installs from before this keep their sets 5-8. The top row does not change. This can be turned off in the settings. The form number comes from the game's bonus bar (`[bonusbar:1-4]`: cat, prowl, bear and moonkin for druids, stealth for rogues); stealth also counts as form 1 on its own, and warrior stances use their stance number, for when the game gives them no bonus bar. `/gxiv debug` prints what the game reports for the current form.
 
@@ -100,7 +103,7 @@ Out of combat, hold L2 or R2 and press R3 (FFXIV uses the touchpad here). A pane
 - **X / Square: Remove.** The ability leaves the bar right away.
 - **B / Circle: Cancel.**
 
-Entering combat cancels it. It is also on the minimap menu and in `/gxiv clear`.
+Entering combat cancels it. It is also in `/gxiv clear`.
 
 ## Moving the bars
 
@@ -112,25 +115,23 @@ The gap between the D-pad group and the face button group is set in the settings
 
 Directly on the crossbar, out of combat:
 
-- Drag a spell, item or macro onto any visible slot, on either row. This works at any time, without edit mode.
+- Drag a spell, item or macro onto any visible slot, on either row, at any time. R1 + a button shows any of the 8 sets on the bottom row to fill it; the Expanded Hold bars are halves of a set (set 3 by default).
 - Buttons from other addons can go on the crossbar through a macro. In Forever, `/click` needs `1` at the end to press the button, for example `/click PallyPowerAuto LeftButton 1`; with `Down` or nothing there, the button does not act.
 - Drag a slot off the bar to move it, even when the bars are locked.
 - In the spellbook, the `Bind to Action Bar` button still works and shows this crossbar. Press L2 or R2 + a button. Choosing set 1-3 with R1 also moves Forever's page, so the slot lands on that set. Sets 4-8 are not Forever pages: the slot lands on the page shown at the top, so drag abilities onto those sets instead. The L2+R2 bars of pages 1-3 are sets 4 left, 4 right and 5 left.
-- `/gxiv edit` or L2/R2 + Back opens edit mode. The arrows choose the set shown on the bottom row, and `Expanded` shows the Expanded Hold bars there. In this mode slots do not cast: click picks up or places an action, and right click clears it.
 
-Edit mode is used with the mouse and closes by itself when you enter combat. Leave with the `Done` button, because Escape does not close the panel.
 
 In the bind window from the spellbook, the bars do not react to your presses and the chosen slot is not highlighted, because the buttons belong to Forever's window. After a `/reload`, press R1 + the set once before binding, so that Forever's page matches. Forms and stances change the set without moving the page, and the top row is not bound directly: for the default top row, choose set 2 and bind there.
 
 ## Settings
 
-The addon has its own settings window, with the settings on six tabs in a column on the left: General, Targeting, Appearance, Crossbar, Layers and forms, and Input. The search box above the tabs finds settings on every tab by name or description. Open it with `/gxiv config`, L2/R2 + Start, the minimap icon, or the button under Options > AddOns > Gamepad XIV. With the controller, D-pad up / down picks a setting, left / right changes it, A toggles or presses, L1 / R1 change tab, and B or Start closes the window. With the mouse, click the arrows (Shift for bigger steps) or use the mouse wheel. `Reset to defaults`, under the tabs, restores the defaults of the open tab, or of the search results while searching. The window closes when combat starts.
+The addon has its own settings window, with the settings on tabs in a column on the left: General, Targeting, Appearance, Crossbars, Input and Ring. Each tab is split into sections under gold titles, such as Crossbars: layout, slots, top row and Expanded Hold, quick set swap, forms and stances. A tab longer than the window scrolls, with a scrollbar beside the rows. The search box above the tabs finds settings on every tab by name or description. Open it with `/gxiv config`, L2/R2 + Start, the minimap icon, or the button under Options > AddOns > Gamepad XIV. With the controller, D-pad up / down picks a setting, left / right changes it, A toggles or presses, L1 / R1 change tab, and B or Start closes the window. With the mouse, click the arrows (Shift for bigger steps) or use the mouse wheel; the wheel over a row without a value, or over the scrollbar, scrolls the tab. `Reset to defaults`, under the tabs, restores the defaults of the open tab, or of the search results while searching. The window closes when combat starts.
 
 | Setting | What it does | Default |
 |---|---|---|
 | Enable layout | turns the crossbar on or off | on |
 | Show minimap icon | shows the icon around the minimap | on |
-| Edit crossbar / Move bars | open edit mode / move mode; close the settings afterwards to see the crossbar | |
+| Move bars | shows a blue handle on each bar to drag it, with Reset positions and Done; also `/gxiv move` and L2/R2 + Back | |
 | Show loot roll item details | the roll item and what you wear in that slot, beside the loot roll window | on |
 | Always compare items | WoW's `alwaysCompareItems`: item tooltips compare with what you wear, without Shift | on |
 | Face target (turn toward the enemy) | see [Face target](#face-target) | off |
@@ -149,6 +150,9 @@ The addon has its own settings window, with the settings on six tabs in a column
 | Double tap L2 / R2 shows | which set and side each top bar shows | set 2 left / right |
 | L2 then R2 / R2 then L2 shows | which set and side Expanded Hold shows | set 3 left / right |
 | Forms change the bottom row | gives each form or stance its own set | on |
+| Quick set swap (tap R1) | a quick tap of R1 (released within about 0.3 s) with nothing else pressed swaps between pair A and pair B, like FFXIV; works in combat | on |
+| Quick set swap: include the top row | the tap also changes the top row to the pair's top set (both halves) | on |
+| Pair A / B: bottom row, top row | the sets of the two pairs | A: 1 and 2 (the default layout), B: 4 and 5 |
 | Form 1-4 uses | the game's stance bar or one of the 8 sets, for each form or stance | the game's stance bar |
 | L2 / R2 activation | Hold, Toggle or Mixed | Hold |
 | D-pad left / right selection | Enemies only, Friendly only or Both: what D-pad left / right select | Friendly only |
@@ -172,7 +176,7 @@ The addon has its own settings window, with the settings on six tabs in a column
 | Marks in the middle of the selected bar | the small cross and dots between its slots | on |
 | Top left bar / Top right bar | Always shown, or Only when selected: the double tap bars on top stay hidden until you double tap L2 or R2 | Always shown |
 | Highlight color | Gold, White, Green, Cyan, Blue, Purple, Pink, Red or Orange, for the highlight and the marker | Gold |
-| L3 (press left stick) / R3 (press right stick) | dropdowns: Draw / sheathe weapon, First / third person, Auto-run, Walk / run, Sit / stand, Target nearest enemy, Assist target, Follow target, World map, Bags, Screenshot, Pet commands / forms menu, Pet spells / stances menu, your class's stance and form spells (highest rank known) or Nothing. Long lists have a search box | Draw / sheathe weapon / First / third person |
+| L3 (press left stick) / R3 (press right stick) | dropdowns: Draw / sheathe weapon, First / third person, Auto-run, Walk / run, Sit / stand, Target nearest enemy, Assist target, Follow target, World map, Bags, Screenshot, the game's ping bindings (read from its key binding list: `TOGGLEPINGLISTENER` and the `PING*` commands, with the game's own names), Pet commands / forms menu, Pet spells / stances menu, your class's stance and form spells (highest rank known) or Nothing. Long lists have a search box | Draw / sheathe weapon / First / third person |
 | L1 + R3 / R1 + L3 | the same choices as L3 / R3. A class menu the class does not have falls back to the stick's own action | Pet commands / forms menu / Pet spells / stances menu |
 | L1 + left stick forward | the same choices as L3 / R3. Pressing L1 while already moving forward also starts auto-run, but only while this is Auto-run | Auto-run |
 | L1 + right stick | Zoom (up zooms in), Zoom (up zooms out) or Turn the camera as usual | Zoom (up zooms in) |
@@ -204,17 +208,15 @@ Square gets a priority override binding on a frame of the addon's own, taken bac
 
 The experimental **Open bags when needed** setting (`openBagsWhenNeeded`) is a fallback for Forever, which opens the bags itself at the mailbox and for spells where `SpellCanTargetItem()` is true. A player found them closed for a scroll and at the mailbox. 0.25 s after `CURRENT_SPELL_CAST_CHANGED` (also checking `SpellCanTargetItemID()`) or `MAIL_SHOW`, if the bags are still closed, it calls `OpenAllBags`, and `CloseAllBags` when the spell is over if it opened them and no bank, vendor, mail, auction or trade window is open. It logs what it sees to `/gxiv lfglog`.
 
+## Tutorial
+
+`Tutorial.lua`. A tutorial of the buttons, one feature a step, in chapters: Basics (jump, interact, cancel, the map), Movement (walking, auto-run), Camera (zoom, R3), Cross hotbar (the bars, filling them, the top row, Expanded Hold, sets, quick set swap, moving an ability), Targeting (the D-pad, party members, enemy targeting) and Menus and windows (the L1 windows, the ring, moving items) and All set (where the settings are). The box shows the chapter beside the step number. Each step dims the screen around what it is about, with a pulsing outline, and shows a controller (`Media/controller.tga`, a generic shaded gamepad made by `tools/make_controller_art.py`) with the game's button icons for the controller in use. Each step acts out its input as a looping scene: a tap presses a button once, a double tap twice, a hold presses it and keeps it down while another button is tapped, and a stick slides in the direction to push it. The buttons in the scene glow; the others are dimmed. Every button's part is an animation group of Scale and Translation steps padded to the same length, so they stay in step. Steps are built from the settings when shown, so they name the buttons in use, and features that are off (quick set swap, the ring, walking) are left out.
+
+It starts by itself once per account (`GamepadXIVAccountDB.tutorialSeen`, a few seconds after login with the layout active, out of combat), and on demand from the Tutorial button above Reset to defaults, Settings > General (Tutorial), the minimap menu or `/gxiv tutorial`. A / Cross next, B / Circle back, X / Square chapters, Y / Triangle close: the driver binds them (`fc-tutorial`, `tutorial-PAD1/2/3/4`) only in the base layer and out of combat, so a step's buttons can be tried with a trigger or shoulder held. The Chapters button (or X / Square) lists every step under its chapter's name, beside the box, to jump to one: click it, or D-pad up / down and A, with B to go back (the D-pad is bound only while the list is open, `tutorial-PADDUP/PADDDOWN`). Pages whose task can be done anywhere check that the player did it (`checks` per numbered step, or `goal`): the driver's layer and move/remove stage, post-hooks on the cast buttons and `JumpOrAscendStart`, `ACTIONBAR_SLOT_CHANGED`, the current set, the camera zoom and which windows are shown. Each step done gets a tick, and Next stays locked until the page is done; the chapter list still goes anywhere. Pages that need an enemy, a friend, an NPC or a service nearby are not checked. Combat hides it and it comes back at the same step when combat ends.
+
 ## Minimap icon
 
-Left click opens the settings, and dragging moves the icon around the minimap. Right click opens a menu with:
-
-- Edit crossbar, Move bars, Move or remove an ability, and Settings
-- Enable layout and Face target
-- L2 / R2 activation (Hold, Toggle, Mixed)
-- D-pad left / right selection: Enemies only, Friendly only or Both
-- D-pad party selection: Off, In a raid or Always
-- Party targeting: Soft or Hard
-- Reset bar positions and Hide minimap icon
+Left click opens the settings, and dragging moves the icon around the minimap. Right click opens a short menu: Settings, Move bars and Tutorial; Enable layout and Face target, ticked while on; and Hide minimap icon. Everything else is in the settings.
 
 The menu closes on a click elsewhere and when you enter combat. The same entry also appears in the minimap's AddOn compartment. If you hide the icon, `/gxiv minimap` or `Show minimap icon` in the settings brings it back.
 
@@ -224,7 +226,8 @@ The menu closes on a click elsewhere and when you enter combat. The same entry a
 |---|---|
 | `/gxiv status` | shows what is active and the current input CVars |
 | `/gxiv on`, `/gxiv off` | turns the layout on or off, and `off` restores your input CVars |
-| `/gxiv edit` | edit mode |
+| `/gxiv edit` | the same as `/gxiv move` |
+| `/gxiv tutorial` | starts the tutorial (also `/gxiv tour`) |
 | `/gxiv config` | settings |
 | `/gxiv clear` | moves or removes an ability |
 | `/gxiv move` | moves the bars |
@@ -266,12 +269,12 @@ The client asks you to confirm experimental camera features the first time. The 
 |---|---|
 | Left / right stick | movement / camera |
 | A | Confirm: interact or attack (Forever's button); with a temporary target, makes it the real target |
-| B | Cancel; hold to walk; while flying or swimming, descend |
+| B | Cancel; hold to walk; while swimming, descend |
 | X | Map; with a target, the target menu |
-| Y | Jump; while flying or swimming, ascend |
+| Y | Jump; while swimming, ascend |
 | D-pad left / right | previous / next target (real target); see `D-pad left / right selection` and `D-pad party selection` |
 | D-pad up / down | temporary target through the party, starting with yourself; see `D-pad party selection` |
-| L2 or R2 + R1 / L1 | next / previous enemy |
+| L2 or R2 + R1 / L1 | next enemy |
 | L1 + R3 | hunters and warlocks: Forever's pet commands (attack, follow and so on); druids, paladins: forms or auras |
 | R1 + L3 | hunters and warlocks: Forever's pet spells; warriors: stances |
 | L1 + left stick forward | auto-run, whichever you press first; set under `L1 + left stick forward` |
@@ -350,7 +353,7 @@ If you see "Gamepad XIV has been blocked from an action", choose `Ignore`, and r
 
 1. `/gxiv status` should show `gamepad UI: true` and `active: true`. **If R2 does not change the bar**, run `/gxiv priority on`: how the addon's bindings rank against Forever's cannot be determined from the Lua source. Then make sure menus and the inventory can still be navigated.
 2. No errors at login (`/console scriptErrors 1`).
-3. Drag abilities directly onto both rows. Try `/gxiv edit`, `/gxiv move` and `/gxiv config`.
+3. Drag abilities directly onto both rows. Try `/gxiv move` and `/gxiv config`.
 4. Hold R2 and press A: the ability from set 1 is used.
 5. Double tap R2, hold, and use several abilities: the top right bar is selected, with the animation. Releasing returns to normal.
 6. **Repeat 4 and 5 in combat.** This is the most important test.
@@ -358,7 +361,7 @@ If you see "Gamepad XIV has been blocked from an action", choose `Ignore`, and r
 8. Press D-pad up, then use a heal: it lands on you and your real target does not change. Try D-pad left/right on enemies and friendlies, and tab target on R1 + L2 and L1 + R2.
    Enter a form or stance, including in combat: the bottom row changes, and R1 + a button changes that form's set.
 9. L1 alone does nothing. Try L1 + left stick forward (auto-run), L1 + right stick (zoom), double tap L1 (party) and L1 + R1. If something does not work, run `/gxiv debug` and include its output in your report.
-10. Enter combat with edit mode open: the panel closes, slots cast again, and L2 and R2 stop acting as clicks.
+10. Enter combat with Move bars open: the panel closes, slots cast again, and L2 and R2 stop acting as clicks.
 11. Hold R2, press L1, and release R2 before L1; then hold R1, press L2, and release R1 before L2. The bars must return to normal. If a bar stays selected, please report it: the client is sending the release to a different key.
 12. If a key does nothing, run `/gxiv status` and include the error message in your report.
 

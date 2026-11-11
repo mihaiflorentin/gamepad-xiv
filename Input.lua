@@ -437,6 +437,50 @@ local function GetPadState()
 	return C_GamePad.GetDeviceMappedState() or C_GamePad.GetDeviceMappedState(C_GamePad.GetActiveDeviceID())
 end
 
+-- Whether a controller button is down right now, from the controller state.
+local function PadDown(state, binding)
+	for i = 1, state.buttonCount do
+		if C_GamePad.ButtonIndexToBinding(i - 1) == binding then
+			return state.buttons[i]
+		end
+	end
+	return false
+end
+
+-- A window that opens from L1 + a face button can take L1's release for its own tabs, which leaves
+-- the driver in the L1 layer: the next face button then opens the window again. Out of combat,
+-- the layer goes back to the base once L1 has been seen up twice in a row.
+local function CreateL1Release()
+	local watcher = CreateFrame("Frame")
+	local elapsedSince, upCount = 0, 0
+	watcher:SetScript("OnUpdate", function(_, elapsed)
+		elapsedSince = elapsedSince + elapsed
+		if elapsedSince < 0.15 then
+			return
+		end
+		elapsedSince = 0
+		if InCombatLockdown() or driver:GetAttribute("fc-layer") ~= "L1" then
+			upCount = 0
+			return
+		end
+		local state = GetPadState()
+		if not state or PadDown(state, "PADLSHOULDER") then
+			upCount = 0
+			return
+		end
+		upCount = upCount + 1
+		if upCount >= 2 then
+			upCount = 0
+			SecureHandlerExecute(driver, [[
+				if self:GetAttribute("fc-layer") == "L1" then
+					self:SetAttribute("fc-layer", "BASE")
+					self:RunAttribute("ApplyLayer")
+				end
+			]])
+		end
+	end)
+end
+
 -- A hidden texture, only for asking the client which cursor a unit has.
 local probeTexture
 
@@ -1195,7 +1239,7 @@ local flyoutPanel
 
 local function ShowFlyoutPanel(flyoutID)
 	if not flyoutPanel then
-		flyoutPanel = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+		flyoutPanel = CreateFrame("Frame", "GamepadXIVFlyoutPanel", UIParent, "BackdropTemplate")
 		flyoutPanel:SetFrameStrata("HIGH")
 		flyoutPanel:SetPoint("CENTER", UIParent, "CENTER", 0, 60)
 		flyoutPanel:SetBackdrop({
@@ -1265,7 +1309,7 @@ local function GetActionName(slot)
 end
 
 local function CreateClearPanel()
-	clearPanel = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+	clearPanel = CreateFrame("Frame", "GamepadXIVClearPanel", UIParent, "BackdropTemplate")
 	clearPanel:SetSize(420, 118)
 	clearPanel:SetFrameStrata("HIGH")
 	clearPanel:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
@@ -1342,7 +1386,7 @@ function ns.StartClear()
 	if InCombatLockdown() then
 		ns.Print("Abilities cannot be moved or removed in combat.")
 	elseif not ns.IsActive() or ns.editing then
-		ns.Print("This needs the layout active and edit mode closed.")
+		ns.Print("This needs the layout active and Move bars closed.")
 	else
 		SecureHandlerExecute(driver, [[ self:RunAttribute("SetClear", 1) ]])
 	end
@@ -1507,6 +1551,7 @@ function ns.CreateInput()
 	driver:SetAttribute("OpenFlyout", S.OpenFlyout)
 	driver:SetAttribute("CloseFlyout", S.CloseFlyout)
 	driver:SetAttribute("SetClear", S.SetClear)
+	driver:SetAttribute("SwapTapSets", S.SwapTapSets)
 	driver:SetAttribute("fc-clear", 0)
 	driver:SetAttribute("fc-flyout", "")
 	for n, key in ipairs(FLYOUT_KEYS) do
@@ -1532,6 +1577,12 @@ function ns.CreateInput()
 	driver:SetAttribute("fc-w", "")
 	driver:SetAttribute("fc-first", "")
 	driver:SetAttribute("fc-editing", 0)
+	-- The tutorial's buttons, used while it is open (fc-tutorial): next, back, chapters and close.
+	driver:SetAttribute("fc-tutorial", 0)
+	driver:SetAttribute("tutorial-PAD1", "GamepadXIVTutorialNext")
+	driver:SetAttribute("tutorial-PAD2", "GamepadXIVTutorialBack")
+	driver:SetAttribute("tutorial-PAD4", "GamepadXIVTutorialClose")
+	driver:SetAttribute("tutorial-PAD3", "GamepadXIVTutorialChapters")
 	driver:SetAttribute("fc-soft", "")
 	driver:SetAttribute("fc-latch", "")
 	driver:SetAttribute("fc-consumed", "")
@@ -1548,6 +1599,10 @@ function ns.CreateInput()
 	end
 
 	driver.OnLayerChanged = function(_, ...) ns.ShowLayer(...) end
+	-- The R1 tap changed the top row: kept, so the next sync does not put the old one back.
+	driver.OnTapSwap = function(_, _, sideWL, sideWR)
+		ns.db.sideWL, ns.db.sideWR = sideWL, sideWR
+	end
 	driver.OnEditEnded = function() ns.OnEditEnded() end
 	driver.OnFlyoutChanged = function(_, flyoutID) ShowFlyoutPanel(flyoutID) end
 	driver.OnRing = function(_, action) ns.OnRing(action) end
@@ -1577,6 +1632,7 @@ function ns.CreateInput()
 	EnableChatLinks()
 	FixEquipmentSetList()
 	CreateMapPinChord()
+	CreateL1Release()
 	CreateBackCycle()
 	KeepChatOpenForLinks()
 	HookInteractPrompt()
@@ -1586,7 +1642,17 @@ function ns.CreateInput()
 	CreateTrigger("GamepadXIVR2", "R")
 	CreateL1()
 	CreateSecureButton("GamepadXIVStickUp", S.StickUpClick)
-	CreateSecureButton("GamepadXIVR1", S.R1Click)
+	-- R1 keeps the trigger clock too: a quick release is the set swap tap.
+	local r1 = CreateSecureButton("GamepadXIVR1", S.R1Click)
+	r1:SetAttribute("fc-ready", 1)
+	r1:SetAttribute("fc-ticks", 0)
+	r1:SetAttribute("_onattributechanged", S.TriggerAttribute)
+	RegisterAttributeDriver(r1, "fc-ready", 1)
+	-- R1 + L2 while the R1 tap is on: marks R1's press as a chord, then tab targets. R1 + L3 / R3
+	-- need none: the ring and the class menus mark it when they open.
+	local chordL2 = CreateSecureButton("GamepadXIVR1ChordL2", S.R1ChordPre)
+	chordL2:SetAttribute("type", "macro")
+	chordL2:SetAttribute("macrotext", "/targetenemy")
 	CreateCycle("GamepadXIVPartyPrev", -1, false)
 	CreateCycle("GamepadXIVPartyNext", 1, false)
 	CreateCycle("GamepadXIVRaidPrev", -1, true)
@@ -1845,6 +1911,35 @@ function ns.SetEditSides(left, right)
 	end
 end
 
+-- The tutorial takes the face buttons while it is open, and D-pad up / down while its chapter list
+-- is; out of combat only. `free` lists face buttons a step teaches, which keep their own action on it.
+local TUTORIAL_FACE = { PAD1 = "GamepadXIVTutorialNext", PAD2 = "GamepadXIVTutorialBack",
+	PAD3 = "GamepadXIVTutorialChapters", PAD4 = "GamepadXIVTutorialClose" }
+function ns.SetTutorialKeys(on, chapters, free)
+	if not driver or InCombatLockdown() then
+		return
+	end
+	-- Only rebinds when something changed: rebinding a held button can lose its release.
+	local changed = false
+	local function Set(name, value)
+		if driver:GetAttribute(name) ~= value then
+			driver:SetAttribute(name, value)
+			changed = true
+		end
+	end
+	Set("fc-tutorial", on and 1 or 0)
+	for key, button in pairs(TUTORIAL_FACE) do
+		local freed = not chapters and free and tContains(free, key)
+		Set("tutorial-" .. key, not freed and button or nil)
+	end
+	Set("tutorial-PADDUP", on and chapters and "GamepadXIVTutorialUp" or nil)
+	Set("tutorial-PADDDOWN", on and chapters and "GamepadXIVTutorialDown" or nil)
+	if not changed then
+		return
+	end
+	SecureHandlerExecute(driver, [[ self:RunAttribute("ApplyLayer") ]])
+end
+
 function ns.BeginEdit(left, right)
 	ns.SetEditSides(left, right)
 	SecureHandlerExecute(driver, [[ self:RunAttribute("BeginEdit") ]])
@@ -2004,7 +2099,36 @@ end
 -- Each stance spell of the player's class becomes an action like the others: key "spell-<id>",
 -- before "Nothing", with a button that casts it. Runs once at login, out of combat, before the
 -- settings window is made.
+-- The game's ping key bindings (the ping wheel and each ping type) become actions too, with the
+-- game's own names, before the class menus. Read from the key binding list, so a client without
+-- pings adds nothing. Key "ping-<binding>".
+local function AddPingActions()
+	if not (GetNumBindings and GetBinding) then
+		return
+	end
+	local at = #ns.STICK_ACTIONS
+	for index, action in ipairs(ns.STICK_ACTIONS) do
+		if action[1] == "classLeft" then
+			at = index
+			break
+		end
+	end
+	for i = 1, GetNumBindings() do
+		local command = GetBinding(i)
+		if type(command) == "string" and (command == "TOGGLEPINGLISTENER" or command:match("^PING")) then
+			local label = _G["BINDING_NAME_" .. command]
+			if label then
+				local key = "ping-" .. command:lower()
+				tinsert(ns.STICK_ACTIONS, at, { key, label, command })
+				ns.STICK_ACTION_GROUPS[key] = "ping"
+				at = at + 1
+			end
+		end
+	end
+end
+
 function ns.CreateSpellActions()
+	AddPingActions()
 	local playerClass = UnitClassBase("player")
 	for _, spell in ipairs(ns.STANCE_SPELLS) do
 		local name, icon = ns.SpellNameAndIcon(spell[2])
@@ -2148,6 +2272,13 @@ function ns.Sync()
 	driver:SetAttribute("fc-r1l3", StickBinding(db.r1L3Action, "NONE"))
 	driver:SetAttribute("fc-r1l3-menu", CLASS_MENU[db.r1L3Action])
 	driver:SetAttribute("fc-r1r3", StickBinding(db.r1R3Action, "CLICK GamepadXIVRingToggle:LeftButton"))
+	-- The R1 tap: two pairs of a bottom set and a top set.
+	driver:SetAttribute("fc-r1Tap", db.r1Tap and 1 or 0)
+	driver:SetAttribute("fc-tapTop", db.r1TapTop and 1 or 0)
+	driver:SetAttribute("fc-tapA-bottom", db.r1TapBottomA)
+	driver:SetAttribute("fc-tapA-top", db.r1TapTopA)
+	driver:SetAttribute("fc-tapB-bottom", db.r1TapBottomB)
+	driver:SetAttribute("fc-tapB-top", db.r1TapTopB)
 	driver:SetAttribute("fc-ringRelease", db.ringReleaseToUse and 1 or 0)
 	ns.UpdateClassMenuHints()
 	local answeredPopup, answeredPopupIndex = GetAnsweredPopup()

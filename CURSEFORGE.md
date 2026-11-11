@@ -26,6 +26,9 @@ Found a bug or have an idea? **[Report it on the CurseForge issue tracker](https
 
 ---
 
+
+**New here?** A short tutorial starts by itself the first time: it lights up each button to press on a controller picture and points at the bars it is about. **✕** next, **○** back, **□** chapters (jump to any step), **△** close. Replay it any time with the Tutorial button in the settings, the minimap menu or `/gxiv tutorial`.
+
 ## What you need
 
 - WoW Forever with the **Gamepad UI turned on** (in the game's settings).
@@ -98,6 +101,8 @@ Hold **R1** to see the **CHANGE SET** overlay, then press:
 
 The set changes the bottom row. By default, the top row shows set 2 and Expanded Hold shows set 3. You can change both in the settings.
 
+**Quick set swap (tap R1):** like FFXIV, a quick tap of **R1** on its own (let go within about 0.3 seconds) swaps between two pairs of sets, for example single target and area of effect. It is on by default; in the settings (Crossbars tab, Quick set swap) you can turn it off and pick each pair's bottom and top sets; by default pair A is your usual layout, sets 1 (bottom) and 2 (top), and pair B is sets 4 and 5. Fill pair B with your other abilities. **Include the top row** (on by default) changes the top row too; off, only the bottom row changes. The tap works in combat. Holding **R1** + a button still picks a set.
+
 ### Forms and stances
 
 Each form or stance (Stealth, Bear, Cat, Battle Stance and so on) changes **the bottom row**, even in combat. Both bottom sides swap to the form's own set: form 1 uses set 5, form 2 set 6 and so on. To pick another set, press R1 + a button while in the form, or choose it under **Form 1-4 uses**; R1 + the button of your normal set gives the form its own set back. **Form 1-4 uses** can also show the game's stance bar, Forever's 8 abilities for that form, on the left side. Rogue stealth is form 1. You can turn this off in the settings.
@@ -121,7 +126,7 @@ Out of combat:
 ## Targeting
 
 - **← / →**: previous / next friendly target by default (enemies, friendlies or both; see the settings)
-- **R1 + L2** or **L1 + R2**: next / previous enemy
+- **R1 + L2** or **L1 + R2**, in either order: next enemy (tab target)
 - **✕**: interact or attack
 
 ### Party selection and the soft target
@@ -150,7 +155,7 @@ FFXIV turns your character toward the enemy when you attack. Turn on **Face targ
 - **L1 + left stick forward**: auto-run (press them in either order)
 - Both can be changed in the **Input** tab of the settings: the right stick can zoom the other way or turn the camera as usual, and the left stick can do any of the L3 / R3 actions.
 - **Hold ○**: walk
-- **△ / ○ while flying or swimming**: go up / down
+- **△ / ○ while swimming**: go up / down
 - **L3**: draw / sheathe weapon (you can change it in the settings)
 - **R3**: first / third person (you can change it in the settings)
 - **L1 + R1**: draw / sheathe weapon; on a mount, dismount (can be changed in the **Input** tab)
@@ -263,7 +268,7 @@ Choose how the selected party or raid member's frame is marked (outline, thick o
 
 ### L3 and R3
 
-On the **Input** tab, choose what pressing each stick does: draw / sheathe weapon, first / third person, auto-run, walk / run, sit / stand, target nearest enemy, assist, follow, world map, bags, screenshot, or nothing. Your class's stance and form spells are there too: Stealth, Prowl, cat, bear, travel and the other druid forms, warrior stances, paladin auras, hunter aspects, Shadowform and Ghost Wolf, always at the highest rank you know. Long lists have a search box, and choices with an in-game icon show it.
+On the **Input** tab, choose what pressing each stick does: draw / sheathe weapon, first / third person, auto-run, walk / run, sit / stand, target nearest enemy, assist, follow, world map, bags, screenshot, the ping wheel and each ping type (Attack, Warning, On My Way, Assist), or nothing. Your class's stance and form spells are there too: Stealth, Prowl, cat, bear, travel and the other druid forms, warrior stances, paladin auras, hunter aspects, Shadowform and Ghost Wolf, always at the highest rank you know. Long lists have a search box, and choices with an in-game icon show it.
 
 ### Layout
 
@@ -279,7 +284,7 @@ On the **Input** tab, choose what pressing each stick does: draw / sheathe weapo
 
 Open it with **L2 + Start**, `/gxiv config`, the minimap icon, or **Options > AddOns > Gamepad XIV**.
 
-- Settings are grouped on tabs: **General, Targeting, Appearance, Crossbar, Layers and forms, Input**.
+- Settings are grouped on tabs: **General, Targeting, Appearance, Crossbars, Input, Ring**. Long tabs scroll.
 - Use the **search box** to find any setting by name.
 - With the controller: **↑ / ↓** pick a setting, **← / →** change it, **✕** presses, **L1 / R1** change tab, **○** closes.
 - **Reset to defaults** (under the tabs) puts every setting on the open tab, or every setting the search found, back to its default.
@@ -290,7 +295,7 @@ Open it with **L2 + Start**, `/gxiv config`, the minimap icon, or **Options > Ad
 ## Minimap icon
 
 - **Left click:** settings
-- **Right click:** a quick menu (edit, move bars, activation mode, targeting options and more)
+- **Right click:** a short menu: Settings, Move bars, Tutorial, Enable layout, Face target and Hide minimap icon
 - **Drag:** move it around the minimap
 
 Hidden it by mistake? Type `/gxiv minimap`.
@@ -302,8 +307,8 @@ Hidden it by mistake? Type `/gxiv minimap`.
 - `/gxiv config`: open the settings
 - `/gxiv status`: show what is active
 - `/gxiv on` / `/gxiv off`: turn the crossbar on or off
-- `/gxiv edit`: edit mode
 - `/gxiv clear`: move or remove an ability
+- `/gxiv tutorial`: the tutorial
 - `/gxiv move`: move the bars
 - `/gxiv reset`: put the bars back in their default place
 - `/gxiv scale 0.5-1.5`: crossbar size

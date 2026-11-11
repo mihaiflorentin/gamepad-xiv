@@ -78,6 +78,12 @@ ns.DEFAULTS = {
 	partyTargeting = "hard", -- "soft" or "hard": party selection sets a soft target or the real one
 	lfgMessage = "Hello! Invite me for <activity> - <level> <class>.", -- whispered to a group's leader with A in Looking For Group
 	lfgConfirm = true, -- ask before that whisper is sent
+	r1Tap = true, -- a tap of R1 swaps the bottom and top rows between two pairs of sets, like FFXIV
+	r1TapTop = true, -- the tap also swaps the top row
+	r1TapBottomA = 1, -- pair A: the bottom row's set; with the top, the default layout
+	r1TapTopA = 2, -- pair A: the top row's set (both halves)
+	r1TapBottomB = 4, -- pair B: sets no other default uses (3 is the L2 + R2 bars)
+	r1TapTopB = 5,
 	openBagsWhenNeeded = false, -- experimental: open the bags for a spell that targets an item, and at the mailbox
 	partyHighlight = "fill", -- "outline", "thick", "fill" or "pulse": how the selected party member's frame is marked
 	raidHighlight = "thick", -- the same, for raid frames
@@ -343,6 +349,27 @@ local MIGRATIONS = {
 			db.lfgMessage = "Hello! Invite me for <activity> - <level> <class>."
 		end
 	end,
+	-- 7: the quick set swap's first pairs (1 + 5, 2 + 6) left the default top row (set 2) behind,
+	-- so its first tap emptied the top row. Pair A is now the default layout, 1 + 2, and pair B
+	-- 3 + 4; a top row the old pairs moved to set 5 or 6 goes back to set 2.
+	function(db)
+		if db.r1TapBottomA == 1 and db.r1TapTopA == 5 and db.r1TapBottomB == 2 and db.r1TapTopB == 6 then
+			db.r1TapTopA, db.r1TapBottomB, db.r1TapTopB = 2, 3, 4
+			if (db.sideWL == 9 or db.sideWL == 11) and db.sideWR == db.sideWL + 1 then
+				db.sideWL, db.sideWR = 3, 4
+			end
+		end
+	end,
+	-- 8: pair B 3 + 4 put the L2 + R2 bars (set 3) on the bottom row; it is now 4 + 5.
+	function(db)
+		if db.r1TapBottomA == 1 and db.r1TapTopA == 2 and db.r1TapBottomB == 3 and db.r1TapTopB == 4 then
+			db.r1TapBottomB, db.r1TapTopB = 4, 5
+		end
+	end,
+	-- 9: the quick set swap is on by default; it was off while it was tested.
+	function(db)
+		db.r1Tap = true
+	end,
 }
 
 local function RunMigrations(db)
@@ -386,10 +413,10 @@ end
 local SLASH_HELP = {
 	"/gxiv status - shows what is active",
 	"/gxiv on | off - turns the layout on or off",
-	"/gxiv edit - edit the crossbar slots (also L2/R2 + Back)",
 	"/gxiv config - settings (also L2/R2 + Start)",
 	"/gxiv clear - move or remove an ability (also L2/R2 + R3)",
-	"/gxiv move - drag the bars around the screen (Shift + drag moves all of them)",
+	"/gxiv tutorial - a short tutorial of the buttons",
+	"/gxiv move - drag the bars around the screen (Shift + drag moves all of them; also L2/R2 + Back)",
 	"/gxiv minimap - shows or hides the minimap icon",
 	"/gxiv debug - reports bindings, L1 and the right stick",
 	"/gxiv reset - put the bars back in their default place",
@@ -424,6 +451,8 @@ local function HandleSlash(message)
 		ns.OpenConfig()
 	elseif command == "clear" then
 		ns.StartClear()
+	elseif command == "tutorial" or command == "tour" then
+		ns.StartTutorial()
 	elseif command == "move" then
 		ns.ToggleMove()
 	elseif command == "reset" then

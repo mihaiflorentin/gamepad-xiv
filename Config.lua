@@ -119,26 +119,35 @@ local function BuildTabs()
 			name = "General",
 			icon = "Interface\\Icons\\INV_Misc_Gear_01",
 			rows = {
+				{ type = "header", label = "CROSSBAR" },
 				{ type = "check", key = "enabled", label = "Enable layout",
 					tip = "Replaces Forever's action bar with the cross hotbars. Turn off to get Forever's bar back. Only works with the game's gamepad UI on." },
-				{ type = "action", label = "Slots", button = "Edit crossbar", run = CloseAnd(function() ns.ToggleEditor() end),
-					tip = "Opens the slot editor: pick a bar and drag spells, items and macros onto its slots with the mouse." },
-				{ type = "action", label = "Position", button = "Move bars", run = CloseAnd(function() ns.ToggleMove() end),
+				{ type = "action", label = "Bar positions", button = "Move bars", run = CloseAnd(function() ns.ToggleMove() end),
 					tip = "Unlocks the bars so you can drag each one anywhere on the screen with the mouse." },
+				{ type = "action", label = "Tutorial", button = "Start the tutorial", run = CloseAnd(function() ns.StartTutorial() end),
+					tip = "A short tutorial of the buttons, with a controller showing what to press. It shows once by itself after installing." },
+				{ type = "spacer", label = "" },
+				{ type = "header", label = "INTERFACE" },
 				{ type = "check", key = "minimapShown", label = "Show minimap icon", onChange = function() ns.UpdateMinimapButton() end,
 					tip = "The Gamepad XIV icon on the minimap. Left click opens these settings, right click a quick menu; drag it to move it." },
+				{ type = "check", key = "showInteractPrompt", label = "Show interact prompt", onChange = Nothing,
+					tip = "Over the character: the button, the action's icon and the name of what you can loot, talk to, skin, mine or gather." },
 				{ type = "check", key = "lootDetails", label = "Show loot roll item details",
 					onChange = function() if ns.RefreshLootDetails then ns.RefreshLootDetails() end end,
 					tip = "While a loot roll window is open, the item and what you wear in that slot are shown beside it." },
 				{ type = "check", key = "alwaysCompareItems", label = "Always compare items",
 					onChange = function() ns.ApplyAlwaysCompare() end,
 					tip = "Every item tooltip also shows what you wear in that slot, without holding Shift. This is WoW's own setting." },
+				{ type = "spacer", label = "" },
+				{ type = "header", label = "CAMERA" },
 				{ type = "check", key = "autoFace", label = "Face target (turn toward the enemy)",
 					onChange = function()
 						ns.AllowExperimentalCamera()
 						ns.Sync()
 					end,
 					tip = "Experimental. Turns you toward your enemy target by locking the camera on it, since WoW can't turn only the character. The camera then follows the target too." },
+				{ type = "spacer", label = "" },
+				{ type = "header", label = "LOOKING FOR GROUP" },
 				{ type = "action", label = "Group finder message", button = "Edit message",
 					run = function()
 						OpenTextDialog("Group finder message", "The whisper {PAD1} sends to a group's leader in Looking For Group", ns.db.lfgMessage,
@@ -148,6 +157,8 @@ local function BuildTabs()
 					tip = function() return "In Looking For Group, {PAD1} on a group whispers this to its leader:\n" .. ns.db.lfgMessage end },
 				{ type = "check", key = "lfgConfirm", label = "Ask before whispering a group",
 					tip = "On: {PAD1} on a group first asks whether to send the message. Off: it is sent straight away." },
+				{ type = "spacer", label = "" },
+				{ type = "header", label = "BAGS" },
 				{ type = "check", key = "openBagsWhenNeeded", label = "Open bags when needed (experimental)",
 					tip = "Experimental. Opens your bags when a spell or scroll asks you to pick an item, and at the mailbox, if the game left them closed." },
 			},
@@ -156,6 +167,7 @@ local function BuildTabs()
 			name = "Targeting",
 			icon = "Interface\\Icons\\Ability_Hunter_SniperShot",
 			rows = {
+				{ type = "header", label = "TARGETING" },
 				{ type = "choice", key = "dpadTarget", label = "D-pad left / right selection",
 					choices = function() return { { "enemy", "Enemies only" }, { "friend", "Friendly only" }, { "both", "Both" } } end,
 					tip = "Which targets {PADDLEFT} / {PADDRIGHT} step through: enemies, friendlies, or both in turn. Not used while D-pad party selection is on." },
@@ -165,6 +177,8 @@ local function BuildTabs()
 				{ type = "choice", key = "partyTargeting", label = "Party targeting",
 					choices = function() return { { "soft", "Soft" }, { "hard", "Hard" } } end,
 					tip = "Hard: selecting a party or raid member makes them your target. Soft (like FFXIV): they get only your next ability, and your enemy target stays." },
+				{ type = "spacer", label = "" },
+				{ type = "header", label = "PARTY AND RAID FRAMES" },
 				{ type = "choice", key = "partyHighlight", label = "Party highlight", choices = HighlightChoices,
 					tip = "How the selected party member's frame is marked. Outline: a thin gold border. Thick outline: a wide one. Fill: a gold tint with a border. Pulse: a border that fades in and out." },
 				{ type = "choice", key = "partyMarker", label = "Party marker",
@@ -188,6 +202,7 @@ local function BuildTabs()
 			name = "Appearance",
 			icon = "Interface\\Icons\\INV_Misc_Gem_Variety_01",
 			rows = {
+				{ type = "header", label = "BARS" },
 				{ type = "choice", key = "theme", label = "Theme",
 					choices = function()
 						local choices = {}
@@ -218,6 +233,8 @@ local function BuildTabs()
 					end,
 					onChange = Refresh,
 					tip = "A ring around each group of four slots. From theme uses the theme's own." },
+				{ type = "number", key = "backgroundAlpha", label = "Background opacity", min = 0.1, max = 1, step = 0.05, onChange = Refresh,
+					tip = "How solid the background behind each group of four slots is." },
 				{ type = "choice", key = "slotFill", label = "Slot background",
 					choices = function()
 						local choices = { { "theme", "From theme" } }
@@ -238,8 +255,8 @@ local function BuildTabs()
 					end,
 					onChange = Refresh,
 					tip = "A border around each slot, in the slot's own shape. From theme uses the theme's own." },
-				{ type = "number", key = "backgroundAlpha", label = "Background opacity", min = 0.1, max = 1, step = 0.05, onChange = Refresh,
-					tip = "How solid the background behind each group of four slots is." },
+				{ type = "spacer", label = "" },
+				{ type = "header", label = "SELECTED BAR" },
 				{ type = "choice", key = "activeHighlight", label = "Selected bar highlight",
 					choices = function()
 						local choices = {}
@@ -250,6 +267,12 @@ local function BuildTabs()
 					end,
 					onChange = function() ns.RefreshActiveHighlight() end,
 					tip = "How the bar you are using is lit up." },
+				{ type = "number", key = "activeStrength", label = "Selected bar brightness", min = 0.1, max = 1, step = 0.05,
+					onChange = function() ns.RefreshActiveHighlight() end,
+					tip = "How strong the selected bar highlight is." },
+				{ type = "check", key = "activeMarks", label = "Marks in the middle of the selected bar",
+					onChange = function() ns.RefreshActiveHighlight() end,
+					tip = "The small cross and dots between the slots of the bar you are using." },
 				{ type = "choice", key = "activeColorBottom", label = "Bottom bar color", choices = ActiveColorChoices,
 					onChange = function() ns.RefreshActiveHighlight() end,
 					tip = "The highlight color of the bottom bars, while {PADLTRIGGER} or {PADRTRIGGER} is held." },
@@ -262,18 +285,14 @@ local function BuildTabs()
 				{ type = "choice", key = "activeColorCombo", label = "Combo color", choices = ActiveColorChoices,
 					onChange = function() ns.RefreshActiveHighlight() end,
 					tip = "The highlight color while {PADLTRIGGER} then {PADRTRIGGER}, or {PADRTRIGGER} then {PADLTRIGGER}, is held." },
-				{ type = "number", key = "activeStrength", label = "Selected bar brightness", min = 0.1, max = 1, step = 0.05,
-					onChange = function() ns.RefreshActiveHighlight() end,
-					tip = "How strong the selected bar highlight is." },
-				{ type = "check", key = "activeMarks", label = "Marks in the middle of the selected bar",
-					onChange = function() ns.RefreshActiveHighlight() end,
-					tip = "The small cross and dots between the slots of the bar you are using." },
 			},
 		},
 		{
-			name = "Crossbar",
+			name = "Crossbars",
 			icon = "Interface\\Icons\\INV_Misc_Book_09",
+			forms = true, -- each form's set is added at the end
 			rows = {
+				{ type = "header", label = "LAYOUT" },
 				{ type = "number", key = "scale", label = "Scale", min = 0.5, max = 1.5, step = 0.05,
 					tip = "The size of the whole crossbar." },
 				{ type = "number", key = "x", label = "Horizontal position", min = -1500, max = 1500, step = 10,
@@ -284,28 +303,24 @@ local function BuildTabs()
 					tip = "The gap between the D-pad group and the face button group of each bar." },
 				{ type = "number", key = "dimAlpha", label = "Inactive side opacity", min = 0, max = 1, step = 0.05,
 					tip = "How visible the other bars stay while one is selected. 0 hides them." },
+				{ type = "spacer", label = "" },
+				{ type = "header", label = "SLOTS" },
 				{ type = "check", key = "showKeyLabels", label = "Show controller buttons on slots", onChange = Refresh,
 					tip = "Shows on each slot the button that uses it." },
 				{ type = "number", key = "keyIconSize", label = "Controller button size", min = 16, max = 60, step = 2, onChange = Refresh,
 					tip = "The size of the button icons on the slots." },
 				{ type = "check", key = "rangeIndicator", label = "Show out of range abilities in red", onChange = Nothing,
 					tip = "Tints an ability red while your target is out of its range." },
-				{ type = "check", key = "showInteractPrompt", label = "Show interact prompt", onChange = Nothing,
-					tip = "Over the character: the button, the action's icon and the name of what you can loot, talk to, skin, mine or gather." },
 				{ type = "check", key = "showSetLabels", label = "Show set labels", onChange = Refresh,
 					tip = "The current set's number above the crossbar, and the trigger icons above the bottom bars." },
+				{ type = "spacer", label = "" },
+				{ type = "header", label = "TOP ROW AND EXPANDED HOLD" },
 				{ type = "choice", key = "showTopLeft", label = "Top left bar (double tap {PADLTRIGGER})",
 					choices = function() return { { "always", "Always shown" }, { "selected", "Only when selected" } } end,
 					tip = "Always shown, or hidden until you double tap {PADLTRIGGER} to use it." },
 				{ type = "choice", key = "showTopRight", label = "Top right bar (double tap {PADRTRIGGER})",
 					choices = function() return { { "always", "Always shown" }, { "selected", "Only when selected" } } end,
 					tip = "Always shown, or hidden until you double tap {PADRTRIGGER} to use it." },
-			},
-		},
-		{
-			name = "Layers and forms",
-			icon = "Interface\\Icons\\Ability_Druid_CatForm",
-			rows = {
 				{ type = "choice", key = "sideWL", label = "Double tap {PADLTRIGGER} shows", choices = SideChoices,
 					tip = "Which set's left or right half shows when you double tap {PADLTRIGGER}." },
 				{ type = "choice", key = "sideWR", label = "Double tap {PADRTRIGGER} shows", choices = SideChoices,
@@ -314,6 +329,22 @@ local function BuildTabs()
 					tip = "Which set's left or right half shows when you hold {PADLTRIGGER} then {PADRTRIGGER}." },
 				{ type = "choice", key = "sideRL", label = "{PADRTRIGGER} then {PADLTRIGGER} shows", choices = SideChoices,
 					tip = "Which set's left or right half shows when you hold {PADRTRIGGER} then {PADLTRIGGER}." },
+				{ type = "spacer", label = "" },
+				{ type = "header", label = "QUICK SET SWAP" },
+				{ type = "check", key = "r1Tap", label = "Quick set swap (tap {PADRSHOULDER})",
+					tip = "A quick tap of {PADRSHOULDER} (about 0.3 seconds), with nothing else pressed, swaps between pair A and pair B below, like FFXIV. Holding {PADRSHOULDER} still picks a set." },
+				{ type = "check", key = "r1TapTop", label = "Include the top row",
+					tip = "Quick set swap. On: the top row changes to the pair's top set too. Off: only the bottom row changes." },
+				{ type = "choice", key = "r1TapBottomA", label = "Pair A: bottom row", choices = SetChoices,
+					tip = "Quick set swap: the set the bottom row shows in pair A, for example your single target abilities." },
+				{ type = "choice", key = "r1TapTopA", label = "Pair A: top row", choices = SetChoices,
+					tip = "Quick set swap: the set the top row (double tap {PADLTRIGGER} / {PADRTRIGGER}) shows in pair A." },
+				{ type = "choice", key = "r1TapBottomB", label = "Pair B: bottom row", choices = SetChoices,
+					tip = "Quick set swap: the set the bottom row shows in pair B, for example your area of effect abilities." },
+				{ type = "choice", key = "r1TapTopB", label = "Pair B: top row", choices = SetChoices,
+					tip = "Quick set swap: the set the top row shows in pair B." },
+				{ type = "spacer", label = "" },
+				{ type = "header", label = "FORMS AND STANCES" },
 				{ type = "check", key = "formsChangeBar", label = "Forms change the bottom row",
 					tip = "Stealth, cat form, stances and so on each switch the bottom row to a set of their own, chosen below. In a form, {PADRSHOULDER} + a face button picks its set." },
 			},
@@ -322,27 +353,34 @@ local function BuildTabs()
 			name = "Input",
 			icon = "Interface\\Icons\\INV_Gizmo_02",
 			rows = {
+				{ type = "header", label = "TRIGGERS" },
 				{ type = "choice", key = "triggerMode", label = "{PADLTRIGGER} / {PADRTRIGGER} activation",
 					choices = function() return { { "hold", "Hold" }, { "toggle", "Toggle" }, { "mixed", "Mixed" } } end,
 					tip = "Hold: selected while the trigger is held. Toggle: stays selected until pressed again, also after a double tap. Mixed: a tap toggles and a hold holds." },
+				{ type = "number", key = "doubleTapTicks", label = "Double tap window", min = 2, max = 4, step = 1,
+					tip = "How long you have for the second tap of a double tap: 2 is about 0.3 seconds, each step adds 0.2. Raise it if double taps are missed." },
+				{ type = "spacer", label = "" },
+				{ type = "header", label = "STICKS" },
 				{ type = "choice", key = "l3Action", label = "{PADLSTICK} (press left stick)", choices = StickChoices,
 					tip = "What clicking the left stick in does." },
 				{ type = "choice", key = "r3Action", label = "{PADRSTICK} (press right stick)", choices = StickChoices,
 					tip = "What clicking the right stick in does. With {PADLTRIGGER} or {PADRTRIGGER} held, it still moves or removes an ability." },
+				{ type = "spacer", label = "" },
+				{ type = "header", label = "BUTTON COMBINATIONS" },
+				{ type = "choice", key = "l1R1Action", label = "{PADLSHOULDER} + {PADRSHOULDER}", choices = L1R1Choices,
+					tip = "What {PADRSHOULDER} does while {PADLSHOULDER} is held. Sheathe by default, which dismounts when mounted and descends when flying. On the world map {PADLSHOULDER} + {PADRSHOULDER} still places a map pin." },
 				{ type = "choice", key = "l1R3Action", label = "{PADLSHOULDER} + {PADRSTICK}", choices = StickChoices,
 					tip = "What {PADRSTICK} does while {PADLSHOULDER} is held. A class menu your class does not have falls back to {PADRSTICK}'s own action." },
 				{ type = "choice", key = "r1L3Action", label = "{PADRSHOULDER} + {PADLSTICK}", choices = StickChoices,
 					tip = "What {PADLSTICK} does while {PADRSHOULDER} is held. A class menu your class does not have falls back to {PADLSTICK}'s own action." },
 				{ type = "choice", key = "r1R3Action", label = "{PADRSHOULDER} + {PADRSTICK}", choices = StickChoices,
 					tip = "What {PADRSTICK} does while {PADRSHOULDER} is held. The Gamepad XIV ring by default." },
-				{ type = "choice", key = "l1R1Action", label = "{PADLSHOULDER} + {PADRSHOULDER}", choices = L1R1Choices,
-					tip = "What {PADRSHOULDER} does while {PADLSHOULDER} is held. Sheathe by default, which dismounts when mounted and descends when flying. On the world map {PADLSHOULDER} + {PADRSHOULDER} still places a map pin." },
 				{ type = "choice", key = "l1StickUpAction", label = "{PADLSHOULDER} + left stick forward", choices = StickChoices,
 					tip = "What pushing the left stick forward does while {PADLSHOULDER} is held. With Auto-run, pressing {PADLSHOULDER} while already moving forward also starts auto-run." },
 				{ type = "choice", key = "l1RightStick", label = "{PADLSHOULDER} + right stick", choices = L1RightStickChoices,
 					tip = "What the right stick does while {PADLSHOULDER} is held: zoom the camera in and out, or turn the camera as it normally does." },
-				{ type = "number", key = "doubleTapTicks", label = "Double tap window", min = 2, max = 4, step = 1,
-					tip = "How long you have for the second tap of a double tap: 2 is about 0.3 seconds, each step adds 0.2. Raise it if double taps are missed." },
+				{ type = "spacer", label = "" },
+				{ type = "header", label = "OTHER" },
 				{ type = "check", key = "holdToWalk", label = "Hold {PAD2} to walk",
 					tip = "While {PAD2} is held, the left stick walks instead of runs, like FFXIV." },
 				{ type = "check", key = "priorityBindings", label = "Force the addon's buttons",
@@ -357,8 +395,12 @@ local function BuildTabs()
 			rows = {},
 		},
 	}
-	for _, row in ipairs(formRows) do
-		tinsert(tabs[4].rows, row)
+	for _, tab in ipairs(tabs) do
+		if tab.forms then
+			for _, row in ipairs(formRows) do
+				tinsert(tab.rows, row)
+			end
+		end
 	end
 	for index = #tabs, 1, -1 do
 		if tabs[index].hidden then
@@ -378,6 +420,10 @@ end
 
 local window, tabs, rowFrames, tabButtons
 local selectedTab, cursor = 1, 1
+local scroll = 0 -- rows scrolled past at the top of a long tab
+-- The rows that fit between the title and the description under them, with a gap above it; a
+-- longer tab scrolls.
+local VISIBLE_ROWS = math.floor((HEIGHT + ROWS_TOP - 130) / ROW_HEIGHT)
 local searchRows -- the rows matching the search text, or nil when not searching
 local searchMore = 0 -- matches left out because they do not fit
 
@@ -574,7 +620,7 @@ local function ActivateRow(row)
 	elseif row.type == "action" then
 		row.run()
 	elseif row.dropdown then
-		ToggleList(row, rowFrames[cursor].dropdown)
+		ToggleList(row, rowFrames[cursor - scroll].dropdown)
 	else
 		StepRow(row, 1)
 	end
@@ -596,6 +642,10 @@ local function Flat(frame, color, edge)
 end
 
 -- A flat button: a dark box that lightens and takes a gold edge under the mouse.
+-- Small icons in front of the sidebar buttons' text.
+local RESET_ICON = "|TInterface\\Buttons\\UI-RefreshButton:14:14|t"
+local TUTORIAL_ICON = "|TInterface\\Icons\\INV_Misc_Book_09:16:16:0:0:64:64:5:59:5:59|t"
+
 local function CreateFlatButton(parent, width, height, font)
 	local button = CreateFrame("Button", nil, parent, "BackdropTemplate")
 	button:SetSize(width, height)
@@ -644,6 +694,21 @@ local function CreateToggle(parent)
 	end
 	toggle:SetChecked(false)
 	return toggle
+end
+
+-- The mouse wheel over a row with no value to change scrolls a long tab, taking the cursor along.
+local function ScrollRows(delta)
+	local rows = CurrentRows()
+	local newScroll = math.max(0, math.min(scroll + delta, #rows - #rowFrames))
+	if newScroll == scroll then
+		return
+	end
+	scroll = newScroll
+	cursor = math.max(scroll + 1, math.min(cursor, scroll + #rowFrames))
+	while rows[cursor] and Unselectable(rows[cursor]) and cursor < scroll + #rowFrames do
+		cursor = cursor + 1
+	end
+	UpdateRows()
 end
 
 local function CreateRowFrame(index)
@@ -749,7 +814,7 @@ local function CreateRowFrame(index)
 		if frame.row and Unselectable(frame.row) then
 			return
 		end
-		cursor = index
+		cursor = scroll + index
 		UpdateRows()
 	end
 	frame:SetScript("OnEnter", Focus)
@@ -757,8 +822,10 @@ local function CreateRowFrame(index)
 	frame:SetScript("OnMouseWheel", function(_, delta)
 		local row = frame.row
 		if row and (row.type == "number" or row.type == "choice") then
-			cursor = index
+			cursor = scroll + index
 			StepRow(row, delta > 0 and 1 or -1, IsShiftKeyDown())
+		else
+			ScrollRows(delta > 0 and -3 or 3)
 		end
 	end)
 	frame:SetScript("OnClick", function()
@@ -768,24 +835,24 @@ local function CreateRowFrame(index)
 		Focus()
 	end)
 	frame.dropdown:SetScript("OnClick", function()
-		cursor = index
+		cursor = scroll + index
 		ToggleList(frame.row, frame.dropdown)
 		UpdateRows()
 	end)
 	frame.check:SetScript("OnClick", function()
-		cursor = index
+		cursor = scroll + index
 		StepRow(frame.row, 1)
 	end)
 	frame.prev:SetScript("OnClick", function()
-		cursor = index
+		cursor = scroll + index
 		StepRow(frame.row, -1, IsShiftKeyDown())
 	end)
 	frame.next:SetScript("OnClick", function()
-		cursor = index
+		cursor = scroll + index
 		StepRow(frame.row, 1, IsShiftKeyDown())
 	end)
 	frame.action:SetScript("OnClick", function()
-		cursor = index
+		cursor = scroll + index
 		frame.row.run()
 	end)
 	for _, child in ipairs({ frame.check, frame.prev, frame.next, frame.action, frame.dropdown }) do
@@ -796,7 +863,7 @@ local function CreateRowFrame(index)
 		button:SetScript("OnClick", function()
 			local row = frame.row
 			local n = #row.buttons - i + 1
-			cursor = index
+			cursor = scroll + index
 			row.sub = n
 			row.buttons[n].run()
 			UpdateRows()
@@ -812,7 +879,7 @@ local function CreateRowFrame(index)
 end
 
 function UpdateRows()
-	if not window then
+	if not (window and rowFrames and window.scrollBar) then
 		return
 	end
 	local rows = CurrentRows()
@@ -824,8 +891,19 @@ function UpdateRows()
 	while rows[cursor] and Unselectable(rows[cursor]) and cursor > 1 do
 		cursor = cursor - 1
 	end
+	-- A long tab scrolls to keep the cursor in view, with the section title above it when moving up.
+	if cursor - scroll > #rowFrames then
+		scroll = cursor - #rowFrames
+	elseif cursor <= scroll then
+		scroll = cursor - 1
+		while scroll > 0 and Unselectable(rows[scroll]) do
+			scroll = scroll - 1
+		end
+	end
+	scroll = math.max(0, math.min(scroll, #rows - #rowFrames))
+	window.scrollBar.Update(#rows)
 	for index, frame in ipairs(rowFrames) do
-		local row = rows[index]
+		local row = rows[scroll + index]
 		frame.row = row
 		frame:SetShown(row ~= nil)
 		if row then
@@ -858,14 +936,14 @@ function UpdateRows()
 				button:SetShown(data ~= nil)
 				if data then
 					button:SetText(data.danger and ("|cffff7070" .. data.text .. "|r") or data.text)
-					local picked = index == cursor and row.sub == #buttons - i + 1
+					local picked = scroll + index == cursor and row.sub == #buttons - i + 1
 					button:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3], picked and 0.9 or 0)
 					if not picked then
 						button:SetBackdropBorderColor(unpack(EDGE))
 					end
 				end
 			end
-			local isFocused = index == cursor and not header
+			local isFocused = scroll + index == cursor and not header
 			frame.focus:SetShown(isFocused)
 			frame.focusBar:SetShown(isFocused)
 			frame.check:SetShown(row.type == "check")
@@ -906,14 +984,14 @@ function UpdateRows()
 	if type(rowTip) == "function" then
 		rowTip = rowTip()
 	end
-	local tip = rowTip and ButtonText(rowTip, 15) or ""
+	local tip = rowTip and ButtonText(rowTip, 19) or ""
 	if searchRows and #rows == 0 then
 		tip = "No settings match the search."
 	elseif searchMore > 0 then
 		tip = format("%d more matches are not shown; type more to narrow the search.\n%s", searchMore, tip)
 	end
 	window.tip:SetText(tip)
-	window.defaults:SetText("Reset to defaults")
+	window.defaults:SetText(RESET_ICON .. "  Reset to defaults")
 	for index, button in ipairs(tabButtons) do
 		local selected = not searchRows and index == selectedTab
 		button.selected:SetShown(selected)
@@ -942,7 +1020,7 @@ local function Search(text)
 				end
 				if matches and not Unselectable(row) then
 					row.tabName = tab.name
-					if #searchRows < #rowFrames then
+					if #searchRows < 100 then
 						tinsert(searchRows, row)
 					else
 						searchMore = searchMore + 1
@@ -1412,12 +1490,13 @@ local function CreateDialog()
 		holder:SetSize(508, 44)
 		holder:SetPoint("TOPLEFT", 16, y)
 		local text = holder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		text:SetPoint("TOPLEFT")
 		text:SetText(label)
 		local box = CreateFrame("EditBox", nil, holder, "BackdropTemplate")
 		box.label, box.defaultLabel = text, label
 		box:SetSize(508, 26)
 		box:SetPoint("TOPLEFT", 0, -16)
+		-- On the box's top edge, so a label with a button icon grows upward, not into the box.
+		text:SetPoint("BOTTOMLEFT", box, "TOPLEFT", 0, 4)
 		Flat(box, CONTROL)
 		box:SetFontObject(ChatFontNormal)
 		box:SetTextInsets(8, 8, 0, 0)
@@ -1483,8 +1562,9 @@ local function CreateDialog()
 			end
 		end
 		formHelp:SetShown(mode == "command" or (mode == "text" and dialog.textHelp ~= nil))
-		formHelp:SetText(mode == "text" and dialog.textHelp or COMMAND_HELP)
-		dialog.name.label:SetText(mode == "text" and dialog.textLabel or dialog.name.defaultLabel)
+		formHelp:SetText(mode == "text" and ButtonText(dialog.textHelp or "", 16) or COMMAND_HELP)
+		-- A text field's label may name a button, drawn as its icon.
+		dialog.name.label:SetText(mode == "text" and ButtonText(dialog.textLabel or "", 12) or dialog.name.defaultLabel)
 		if mode == "pick" then
 			hint:SetText(ButtonText("{PADDUP}{PADDDOWN} choose   {PAD1} select   {PAD2} " .. (folder and "back" or "cancel"), 18))
 			for _, box in ipairs(fields) do
@@ -1795,15 +1875,73 @@ local function CreateWindow()
 	close:SetScript("OnClick", function() window:Hide() end)
 
 	RebuildRingRows()
-	-- The menu ring tab grows with the entries: the settings entry, up to 11 entries and the add row.
-	local maxRows = 13
-	for _, tab in ipairs(tabs) do
-		maxRows = math.max(maxRows, #tab.rows)
-	end
 	rowFrames = {}
-	for index = 1, maxRows do
+	for index = 1, VISIBLE_ROWS do
 		rowFrames[index] = CreateRowFrame(index)
 	end
+	-- A scrollbar beside the rows of a long tab: drag or click it, or use the mouse wheel on it.
+	local bar = CreateFrame("Frame", nil, window)
+	bar:SetPoint("TOPLEFT", rowFrames[1], "TOPRIGHT", 4, 0)
+	bar:SetPoint("BOTTOMLEFT", rowFrames[#rowFrames], "BOTTOMRIGHT", 4, 0)
+	bar:SetWidth(6)
+	bar.track = bar:CreateTexture(nil, "BACKGROUND")
+	bar.track:SetAllPoints()
+	bar.track:SetColorTexture(1, 1, 1, 0.08)
+	bar.thumb = bar:CreateTexture(nil, "ARTWORK")
+	bar.thumb:SetPoint("LEFT")
+	bar.thumb:SetPoint("RIGHT")
+	bar.thumb:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.6)
+	bar.rowCount = 0
+	function bar.Update(rowCount)
+		bar.rowCount = rowCount
+		local visible = #rowFrames
+		bar:SetShown(rowCount > visible)
+		if rowCount <= visible then
+			return
+		end
+		local height = visible * ROW_HEIGHT
+		bar.thumbHeight = math.max(24, height * visible / rowCount)
+		local offset = (height - bar.thumbHeight) * scroll / (rowCount - visible)
+		bar.thumb:SetHeight(bar.thumbHeight)
+		bar.thumb:SetPoint("TOP", 0, -offset)
+	end
+	-- The row scrolled to when the thumb's middle is at the mouse.
+	local function ScrollToMouse()
+		local visible = #rowFrames
+		local height = visible * ROW_HEIGHT
+		local _, y = GetCursorPosition()
+		y = y / bar:GetEffectiveScale()
+		local fraction = (bar:GetTop() - y - bar.thumbHeight / 2) / math.max(1, height - bar.thumbHeight)
+		fraction = math.max(0, math.min(1, fraction))
+		local target = math.floor(fraction * (bar.rowCount - visible) + 0.5)
+		ScrollRows(target - scroll)
+	end
+	bar:EnableMouse(true)
+	bar:SetScript("OnMouseDown", function()
+		bar.dragging = true
+		ScrollToMouse()
+	end)
+	bar:SetScript("OnMouseUp", function()
+		bar.dragging = nil
+	end)
+	bar:SetScript("OnHide", function()
+		bar.dragging = nil
+	end)
+	bar:SetScript("OnUpdate", function()
+		if bar.dragging then
+			if not IsMouseButtonDown("LeftButton") then
+				bar.dragging = nil
+				return
+			end
+			ScrollToMouse()
+		end
+	end)
+	bar:EnableMouseWheel(true)
+	bar:SetScript("OnMouseWheel", function(_, delta)
+		ScrollRows(delta > 0 and -3 or 3)
+	end)
+	bar:Hide()
+	window.scrollBar = bar
 
 	list = CreateFrame("Frame", nil, window, "BackdropTemplate")
 	list:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -1859,12 +1997,17 @@ local function CreateWindow()
 	window.tip = window:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	window.tip:SetPoint("BOTTOMLEFT", 24 + SIDEBAR, 56)
 	window.tip:SetPoint("BOTTOMRIGHT", -24, 56)
-	window.tip:SetHeight(40)
+	window.tip:SetHeight(76) -- two lines with button icons, in the gap under the rows
 	window.tip:SetJustifyH("LEFT")
 	window.tip:SetJustifyV("TOP")
 
+	-- The hints line up with the window: changing tab under the tab column, moving through the rows
+	-- in the middle, and pick and close at the right end, under the close button.
+	window.tabHint = window:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+	window.tabHint:SetPoint("LEFT", window, "BOTTOMLEFT", 20, 23)
 	window.hint = window:CreateFontString(nil, "OVERLAY", "GameFontDisable")
-	window.hint:SetPoint("LEFT", window, "BOTTOMLEFT", 20, 23)
+	window.closeHint = window:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+	window.closeHint:SetPoint("RIGHT", window, "BOTTOMRIGHT", -20, 23)
 	-- Redrawn on every show and when another controller is plugged in, so the icons match it.
 	window.UpdateHint = function()
 		-- Each hint is its buttons right next to their word, with a divider before the next one, so
@@ -1872,15 +2015,21 @@ local function CreateWindow()
 		local hints = {
 			{ "{PADDUP}{PADDDOWN}", "rows" },
 			{ "{PADDLEFT}{PADDRIGHT}", "change" },
-			{ "{PAD1}", "pick" },
-			{ "{PADLSHOULDER}{PADRSHOULDER}", "tabs" },
-			{ "{PAD2}", "close" },
 		}
+		local function Hint(buttons, word)
+			return ButtonText(buttons, 22) .. " |cffd0d0d0" .. word .. "|r"
+		end
 		local parts = {}
 		for _, hint in ipairs(hints) do
-			tinsert(parts, ButtonText(hint[1], 22) .. " |cffd0d0d0" .. hint[2] .. "|r")
+			tinsert(parts, Hint(hint[1], hint[2]))
 		end
 		window.hint:SetText(table.concat(parts, "    |cff4d4d4d|||r    "))
+		window.tabHint:SetText(Hint("{PADLSHOULDER}{PADRSHOULDER}", "tabs"))
+		window.closeHint:SetText(Hint("{PAD1}", "pick") .. "    |cff4d4d4d|||r    " .. Hint("{PAD2}", "close"))
+		-- Centred in the space left between the tab column and pick / close, so it keeps clear of both.
+		local closeLeft = WIDTH - 20 - window.closeHint:GetStringWidth()
+		window.hint:ClearAllPoints()
+		window.hint:SetPoint("CENTER", window, "BOTTOMLEFT", (SIDEBAR + closeLeft) / 2, 23)
 	end
 	if InputDeviceIconSetManager then
 		InputDeviceIconSetManager:RegisterActiveInputDeviceIconSetUpdatedCallback(function()
@@ -1905,6 +2054,19 @@ local function CreateWindow()
 	end)
 	defaults:HookScript("OnLeave", function() GameTooltip:Hide() end)
 	defaults:SetScript("OnClick", ResetTab)
+
+	-- The tutorial, right above: easy to find again for anyone who closed it at the start.
+	local tour = CreateFlatButton(window, SIDEBAR - 24, 26, "GameFontHighlightSmall")
+	tour:SetPoint("BOTTOM", defaults, "TOP", 0, 6)
+	tour:SetText(TUTORIAL_ICON .. "  Tutorial")
+	tour:HookScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:SetText("Start the tutorial")
+		GameTooltip:AddLine("A short walk through every button, with the controller.", 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	tour:HookScript("OnLeave", function() GameTooltip:Hide() end)
+	tour:SetScript("OnClick", CloseAnd(function() ns.StartTutorial() end))
 
 	-- The column on the left: a search box, then one button per tab.
 	local sidebar = window:CreateTexture(nil, "BACKGROUND", nil, 1)

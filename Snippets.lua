@@ -43,6 +43,14 @@ S.ApplyLayer = [[
 		end
 	end
 
+	-- Anything else that happens while R1 is held, such as a trigger, L1, the ring, a class menu or a
+	-- flyout, makes its release no tap.
+	if (layer ~= "SET" and layer ~= "BASE") or ringOpen or classMenuOpen or flyout ~= "" then
+		self:SetAttribute("fc-r1Chord", 1)
+	end
+	-- With the R1 tap on, R1 + L2 goes through a button that marks the press as a chord too.
+	local tapChords = layer == "SET" and self:GetAttribute("fc-r1Tap") == 1
+
 	if layer == "L" or layer == "R" or layer == "WL" or layer == "WR" then
 		active = layer
 	elseif layer == "LR" then
@@ -120,8 +128,14 @@ S.ApplyLayer = [[
 			end
 			-- Forever leaves some popups unfocused, such as death and party invites, so their buttons get pressed directly.
 			local popupButton = self:GetAttribute("popup-" .. key)
+			-- The tutorial takes three buttons, only here: with a trigger or shoulder held they still
+			-- do what it teaches. Never in combat.
+			local tutorialButton = self:GetAttribute("fc-tutorial") == 1 and not PlayerInCombat()
+				and self:GetAttribute("tutorial-" .. key)
 			if popupButton then
 				self:SetBindingClick(priority, key, popupButton, "LeftButton")
+			elseif tutorialButton then
+				self:SetBindingClick(priority, key, tutorialButton, "LeftButton")
 			else
 				self:SetBinding(priority, key, action)
 			end
@@ -154,13 +168,16 @@ S.ApplyLayer = [[
 	end
 
 	-- R1 + L2 is tab targeting; while R1 is held L2 selects nothing.
-	if layer == "SET" then
+	if tapChords then
+		self:SetBindingClick(priority, "PADLTRIGGER", "GamepadXIVR1ChordL2", "LeftButton")
+	elseif layer == "SET" then
 		self:SetBinding(priority, "PADLTRIGGER", "TARGETNEARESTENEMY")
 	else
 		self:SetBindingClick(priority, "PADLTRIGGER", "GamepadXIVL2", "LeftButton")
 	end
+	-- L1 + R2 tab targets the next enemy, like R1 + L2: the order of a shoulder and a trigger doesn't matter.
 	if layer == "L1" then
-		self:SetBinding(priority, "PADRTRIGGER", "TARGETPREVIOUSENEMY")
+		self:SetBinding(priority, "PADRTRIGGER", "TARGETNEARESTENEMY")
 	else
 		self:SetBindingClick(priority, "PADRTRIGGER", "GamepadXIVR2", "LeftButton")
 	end
@@ -171,7 +188,7 @@ S.ApplyLayer = [[
 		local rightHeld = active == "R" or active == "WR"
 		local leftHeld = active == "L" or active == "WL"
 		self:SetBinding(priority, "PADRSHOULDER", (petChords and rightHeld) and "NONE" or "TARGETNEARESTENEMY")
-		self:SetBinding(priority, "PADLSHOULDER", (petChords and leftHeld) and "NONE" or "TARGETPREVIOUSENEMY")
+		self:SetBinding(priority, "PADLSHOULDER", (petChords and leftHeld) and "NONE" or "TARGETNEARESTENEMY")
 		self:SetBindingClick(priority, "PADBACK", "GamepadXIVEditToggle", "LeftButton")
 		self:SetBindingClick(priority, "PADFORWARD", "GamepadXIVConfigToggle", "LeftButton")
 	elseif layer == "L1" then
@@ -384,7 +401,7 @@ S.UpdateYield = [[
 	self:RunAttribute("BindAll")
 ]]
 
--- Driver: edit mode. The slots show the chosen sides and stop casting, so clicks can edit them.
+-- Driver: edit state, used while the bars are moved. Every row shows and the slots stop casting.
 S.BeginEdit = [[
 	self:SetAttribute("fc-editing", 1)
 	for n = 1, 4 do
@@ -421,6 +438,10 @@ S.OnStateCombat = [[
 	end
 	if newstate == 1 and self:GetAttribute("fc-clear") ~= 0 then
 		self:RunAttribute("SetClear", 0)
+	end
+	-- The tutorial's buttons go back to their own actions in combat.
+	if self:GetAttribute("fc-tutorial") == 1 then
+		self:RunAttribute("ApplyLayer")
 	end
 ]]
 
@@ -649,15 +670,53 @@ S.TriggerAttribute = [[
 	end
 ]]
 
--- R1 outside a trigger layer: holds the set selection layer.
+-- R1 outside a trigger layer: holds the set selection layer. With the R1 tap on, letting it go
+-- quickly without having pressed anything else swaps between the two set pairs, like FFXIV's
+-- option. Quick is within 2 ticks of the trigger clock, about 0.2-0.4 seconds, so holding R1 to
+-- look at the sets and letting go changes nothing.
 S.R1Click = [[
 	local driver = self:GetFrameRef("driver")
 	if down then
+		driver:SetAttribute("fc-r1Chord", 0)
+		self:SetAttribute("fc-ticks", 2)
 		driver:SetAttribute("fc-layer", "SET")
 	elseif driver:GetAttribute("fc-layer") == "SET" then
 		driver:SetAttribute("fc-layer", "BASE")
+		local quick = self:GetAttribute("fc-ready") == 0
+		if quick and driver:GetAttribute("fc-r1Tap") == 1 and driver:GetAttribute("fc-r1Chord") == 0 then
+			driver:RunAttribute("SwapTapSets")
+		end
+	end
+	if not down then
+		driver:SetAttribute("fc-r1Chord", 1)
 	end
 	driver:RunAttribute("ApplyLayer")
+]]
+
+-- Driver: the R1 tap. The bottom row changes to pair B when it shows pair A's set, else to pair A.
+-- With the top row option on, the top row changes with it, to both halves of the pair's top set.
+S.SwapTapSets = [[
+	local form = self:GetAttribute("fc-form")
+	local current = self:GetAttribute("fc-formset-" .. form)
+	local pair = (current == self:GetAttribute("fc-tapA-bottom")) and "B" or "A"
+	local bottom = self:GetAttribute("fc-tap" .. pair .. "-bottom")
+	local top = self:GetAttribute("fc-tapTop") == 1 and self:GetAttribute("fc-tap" .. pair .. "-top")
+	if not bottom then
+		return
+	end
+	self:SetAttribute("fc-formset-" .. form, bottom)
+	if top then
+		self:SetAttribute("fc-side-WL", top * 2 - 1)
+		self:SetAttribute("fc-side-WR", top * 2)
+		self:CallMethod("OnTapSwap", pair, top * 2 - 1, top * 2)
+	end
+]]
+
+-- R1 + L2 with the R1 tap on: marks R1's press as a chord, then the button tab targets.
+S.R1ChordPre = [[
+	if down then
+		self:GetFrameRef("driver"):SetAttribute("fc-r1Chord", 1)
+	end
 ]]
 
 -- Set selection button: R1 + action key.
@@ -666,6 +725,7 @@ S.SetClick = [[
 		return
 	end
 	local driver = self:GetFrameRef("driver")
+	driver:SetAttribute("fc-r1Chord", 1)
 	local set = self:GetAttribute("fc-setIndex")
 	local form = driver:GetAttribute("fc-form")
 	-- In a form, picking the normal bar's own set gives the form its own set back, 4 + its number.

@@ -30,44 +30,18 @@ end
 
 -- A plain frame on purpose. Blizzard's menu claims Forever's gamepad focus when it opens, and when
 -- that happens from addon code, Forever's protected interact call gets blocked.
-local ROW_HEIGHT = 20
-local MENU_WIDTH = 230
+-- Short on purpose: the rest is in the settings, a left click away.
+local ROW_HEIGHT = 22
+local DIVIDER_HEIGHT = 9
+local MENU_WIDTH = 210
 local menu
 
 local function GetMenuRows()
-	local function ModeRow(mode, label)
-		return {
-			text = ns.ButtonText("{PADLTRIGGER} / {PADRTRIGGER}: ", 16) .. label,
-			isChecked = function() return ns.db.triggerMode == mode end,
-			onClick = function() SetSetting("triggerMode", mode) end,
-		}
-	end
-	local function DpadTargetRow(mode, label)
-		return {
-			text = "D-pad arrows: " .. label,
-			isChecked = function() return ns.db.dpadTarget == mode end,
-			onClick = function() SetSetting("dpadTarget", mode) end,
-		}
-	end
-	local function DpadRow(mode, label)
-		return {
-			text = "D-pad party selection: " .. label,
-			isChecked = function() return ns.db.dpadParty == mode end,
-			onClick = function() SetSetting("dpadParty", mode) end,
-		}
-	end
-	local function PartyTargetingRow(mode, label)
-		return {
-			text = "Party targeting: " .. label,
-			isChecked = function() return ns.db.partyTargeting == mode end,
-			onClick = function() SetSetting("partyTargeting", mode) end,
-		}
-	end
 	return {
-		{ text = "Edit crossbar", onClick = function() ns.ToggleEditor() end, closes = true },
-		{ text = "Move bars", onClick = function() ns.ToggleMove() end, closes = true },
-		{ text = "Move or remove an ability", onClick = function() ns.StartClear() end, closes = true },
 		{ text = "Settings", onClick = function() ns.OpenConfig() end, closes = true },
+		{ text = "Move bars", onClick = function() ns.ToggleMove() end, closes = true },
+		{ text = "Tutorial", onClick = function() ns.StartTutorial() end, closes = true },
+		{ divider = true },
 		{
 			text = "Enable layout",
 			isChecked = function() return ns.db.enabled end,
@@ -81,25 +55,16 @@ local function GetMenuRows()
 				SetSetting("autoFace", not ns.db.autoFace)
 			end,
 		},
-		ModeRow("hold", "Hold"),
-		ModeRow("toggle", "Toggle"),
-		ModeRow("mixed", "Mixed"),
-		DpadTargetRow("enemy", "Enemies only"),
-		DpadTargetRow("friend", "Friendly only"),
-		DpadTargetRow("both", "Both"),
-		DpadRow("off", "Off"),
-		DpadRow("raid", "In a raid"),
-		DpadRow("always", "Always"),
-		PartyTargetingRow("soft", "Soft"),
-		PartyTargetingRow("hard", "Hard"),
-		{ text = "Reset bar positions", onClick = function() ns.ResetPositions() end, closes = true },
-		{ text = "Hide minimap icon", onClick = function() SetMinimapShown(false) end, closes = true },
+		{ divider = true },
+		{ text = "Hide minimap icon", onClick = function() SetMinimapShown(false) end, closes = true, dim = true },
 	}
 end
 
 local function RefreshMenu()
 	for _, row in ipairs(menu.rows) do
-		row.check:SetShown(row.info.isChecked and row.info.isChecked() or false)
+		if row.check then
+			row.check:SetShown(row.info.isChecked() and true or false)
+		end
 	end
 end
 
@@ -117,38 +82,55 @@ local function CreateMenu()
 	menu:Hide()
 
 	local title = menu:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	title:SetPoint("TOPLEFT", 12, -10)
+	title:SetPoint("TOPLEFT", 12, -11)
 	title:SetText(ns.ICON_MARKUP .. " Gamepad XIV")
 
 	menu.rows = {}
-	for index, info in ipairs(GetMenuRows()) do
-		local row = CreateFrame("Button", nil, menu)
-		row:SetSize(MENU_WIDTH - 16, ROW_HEIGHT)
-		row:SetPoint("TOPLEFT", 8, -30 - (index - 1) * ROW_HEIGHT)
-		row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-		row.info = info
+	local y = -32
+	for _, info in ipairs(GetMenuRows()) do
+		if info.divider then
+			local line = menu:CreateTexture(nil, "ARTWORK")
+			line:SetColorTexture(1, 0.82, 0, 0.25)
+			line:SetHeight(1)
+			line:SetPoint("TOPLEFT", 14, y - 4)
+			line:SetPoint("TOPRIGHT", -14, y - 4)
+			y = y - DIVIDER_HEIGHT
+		else
+			local row = CreateFrame("Button", nil, menu)
+			row:SetSize(MENU_WIDTH - 16, ROW_HEIGHT)
+			row:SetPoint("TOPLEFT", 8, y)
+			row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+			row.info = info
 
-		row.check = row:CreateTexture(nil, "ARTWORK")
-		row.check:SetSize(16, 16)
-		row.check:SetPoint("LEFT", 2, 0)
-		row.check:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+			local label = row:CreateFontString(nil, "OVERLAY", info.dim and "GameFontDisableSmall" or "GameFontHighlight")
+			label:SetPoint("LEFT", 8, 0)
+			label:SetText(info.text)
 
-		local label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		label:SetPoint("LEFT", 22, 0)
-		label:SetText(info.text)
-
-		row:SetScript("OnClick", function()
-			if info.closes then
-				menu:Hide()
+			-- An on / off setting gets a box on the right, ticked while on.
+			if info.isChecked then
+				local box = row:CreateTexture(nil, "ARTWORK")
+				box:SetSize(20, 20)
+				box:SetPoint("RIGHT", -4, 0)
+				box:SetTexture("Interface\\Buttons\\UI-CheckBox-Up")
+				row.check = row:CreateTexture(nil, "OVERLAY")
+				row.check:SetAllPoints(box)
+				row.check:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
 			end
-			info.onClick()
-			if menu:IsShown() then
-				RefreshMenu()
-			end
-		end)
-		menu.rows[index] = row
+
+			row:SetScript("OnClick", function()
+				if info.closes then
+					menu:Hide()
+				end
+				info.onClick()
+				if menu:IsShown() then
+					RefreshMenu()
+				end
+			end)
+			tinsert(menu.rows, row)
+			y = y - ROW_HEIGHT
+		end
 	end
-	menu:SetSize(MENU_WIDTH, 38 + #menu.rows * ROW_HEIGHT)
+	menu:SetSize(MENU_WIDTH, -y + 10)
 
 	-- Any click elsewhere closes it, and so does combat.
 	menu:SetScript("OnShow", function(self)

@@ -86,6 +86,20 @@ local LABEL_OFFSETS = { -- where each segment's label sits from its icon, from F
 	{ 60, 0 }, { 30, 45 }, { 0, 60 }, { -30, 45 }, { -60, 0 }, { -30, -45 }, { 0, -60 }, { 30, -45 },
 }
 
+-- Where a built-in entry is: its page, the page the ring opens on, and its segment (1 is right, then
+-- counter-clockwise). Nothing when it isn't on the ring.
+function ns.RingFindBuiltin(name)
+	local saved = ns.RingPages()
+	for index, savedPage in ipairs(saved) do
+		for segment = 1, SEGMENTS do
+			local entry = savedPage.slots[segment]
+			if entry and entry.builtin == name then
+				return index, math.min(START_PAGE, #saved), segment
+			end
+		end
+	end
+end
+
 function ns.RingSlotFree(pageIndex, segment)
 	return not ns.db.ringPages[pageIndex].slots[segment]
 end
@@ -695,6 +709,14 @@ end
 local ring
 local pages = {} -- the built pages: { header, entries = { [segment] = entry } }
 local page, selected = START_PAGE, 0
+
+-- For the tutorial: the main page shown and the highlighted segment, while the ring is open. Read only.
+function ns.RingSelection()
+	if ring and ring:IsShown() and not ring.sub then
+		return page, selected
+	end
+end
+
 local emotePages -- every emote, 8 a page: Forever's eight first, then the game's whole list A to Z
 
 local function BuildPages()

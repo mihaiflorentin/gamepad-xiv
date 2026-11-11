@@ -149,11 +149,6 @@ local function CreateSide(root, row)
 				PickupAction(self.action)
 			end
 		end)
-		button:HookScript("OnClick", function(self, mouseButton, down)
-			if ns.editing and not down and not InCombatLockdown() then
-				ns.OnSlotClick(self, mouseButton)
-			end
-		end)
 
 		side.buttons[i] = button
 		button:Show()
@@ -303,7 +298,7 @@ function ns.ApplyLayout()
 	end
 end
 
--- The labels outside edit mode name buttons, so they are redrawn when another controller is plugged in.
+-- The labels outside Move bars name buttons, so they are redrawn when another controller is plugged in.
 local function SetPlayLabels()
 	local root = ns.root
 	if not root or ns.editing or not root.shownSet then
@@ -451,7 +446,7 @@ function ns.ShowLayer(layer, leftSide, rightSide, set, form)
 		sides.R.label:SetText(DescribeLabel(rightSide))
 		sides.WL.label:SetText(ns.ButtonText("Double tap {PADLTRIGGER}: ", 18) .. DescribeLabel(ns.db.sideWL))
 		sides.WR.label:SetText(ns.ButtonText("Double tap {PADRTRIGGER}: ", 18) .. DescribeLabel(ns.db.sideWR))
-		root.setText:SetText("EDIT")
+		root.setText:SetText("MOVE")
 	else
 		sides.WL.label:SetText("")
 		sides.WR.label:SetText("")

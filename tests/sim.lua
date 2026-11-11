@@ -641,7 +641,7 @@ do
 	Check("L1 held: layer", Layer(), "L1")
 	Check("L1 held: left stick forward auto-runs", driver.bindings.PADLSTICKUP, "TOGGLEAUTORUN")
 	Check("L1 held: D-pad and face buttons change", driver.bindings.PAD1, "L1_PAD1")
-	Check("L1 held: R2 targets", driver.bindings.PADRTRIGGER, "TARGETPREVIOUSENEMY")
+	Check("L1 held: R2 targets", driver.bindings.PADRTRIGGER, "TARGETNEARESTENEMY")
 	Check("L1 held: R3 keeps its action", driver.bindings.PADRSTICK, "CLICK GamepadXIVView:LeftButton")
 	Check("L1 held: visuals told", driver.calls.OnLayerChanged[1], "L1")
 	Check("L1 held: on foot R1 sheathes", driver.bindings.PADRSHOULDER, "TOGGLESHEATH")
@@ -879,7 +879,7 @@ Wait(R2, 3)
 driver.attrs["fc-petChords"] = 1
 R2.press()
 Check("pet chords: R2 leaves R1 free", driver.bindings.PADRSHOULDER, "NONE")
-Check("pet chords: R2 + L1 still targets", driver.bindings.PADLSHOULDER, "TARGETPREVIOUSENEMY")
+Check("pet chords: R2 + L1 still targets", driver.bindings.PADLSHOULDER, "TARGETNEARESTENEMY")
 R2.release()
 Wait(R2, 3)
 L2.press()
@@ -1404,6 +1404,146 @@ do
 	driver.attrs["ringBind-PADDDOWN"] = nil
 	driver.attrs["fc-ring"], driver.attrs["fc-r1r3"] = nil, nil
 	driver:RunAttribute("ApplyLayer")
+end
+
+-- R1 tap: swaps the bottom and top rows between two pairs of sets.
+do
+	driver.attrs["SwapTapSets"] = S.SwapTapSets
+	driver.attrs["fc-formset-0"] = 1
+	driver.attrs["fc-side-WL"], driver.attrs["fc-side-WR"] = 3, 4
+	driver.attrs["fc-tapA-bottom"], driver.attrs["fc-tapA-top"] = 1, 5
+	driver.attrs["fc-tapB-bottom"], driver.attrs["fc-tapB-top"] = 2, 6
+	driver.attrs["fc-tapTop"] = 1
+	local tapR1, tapFn = RunButton(S.R1Click)
+	-- R1 runs the trigger clock: the state driver writes fc-ready back to 1 on each tick.
+	local attrFn = assert(loadstring("local self, name, value = ...\n" .. S.TriggerAttribute))
+	setfenv(attrFn, setmetatable({}, { __index = ALLOWED }))
+	tapR1.attrs["fc-ready"] = 1
+	tapR1.onAttribute = function(key, value) attrFn(tapR1, key, value) end
+	local function R1Tick(ticks)
+		for _ = 1, ticks do
+			if tapR1.attrs["fc-ready"] ~= 1 then
+				tapR1:SetAttribute("fc-ready", 1)
+			end
+		end
+	end
+	local function Tap() tapFn(tapR1, "LeftButton", true); tapFn(tapR1, "LeftButton", false); R1Tick(3) end
+
+	driver.attrs["fc-r1Tap"] = 0
+	Tap()
+	Check("tap off: set unchanged", driver.attrs["fc-formset-0"], 1)
+
+	driver.attrs["fc-r1Tap"] = 1
+	Tap()
+	Check("tap: bottom row to pair B", driver.attrs["fc-formset-0"], 2)
+	Check("tap: top row to set 6 left", driver.attrs["fc-side-WL"], 11)
+	Check("tap: top row to set 6 right", driver.attrs["fc-side-WR"], 12)
+	Check("tap: top row saved", driver.calls.OnTapSwap and driver.calls.OnTapSwap[2], 11)
+	Check("tap: back to the base layer", Layer(), "BASE")
+	Tap()
+	Check("tap again: pair A", driver.attrs["fc-formset-0"], 1)
+	Check("tap again: top row set 5", driver.attrs["fc-side-WL"], 9)
+
+	-- A slow release (R1 held to look at the sets) changes nothing.
+	tapFn(tapR1, "LeftButton", true)
+	R1Tick(1)
+	tapFn(tapR1, "LeftButton", false)
+	Check("release after 1 tick: still a tap", driver.attrs["fc-formset-0"], 2)
+	R1Tick(3)
+	tapFn(tapR1, "LeftButton", true)
+	R1Tick(2)
+	tapFn(tapR1, "LeftButton", false)
+	Check("release after 2 ticks: no swap", driver.attrs["fc-formset-0"], 2)
+	R1Tick(3)
+	Tap()
+	Check("quick tap after: pair A", driver.attrs["fc-formset-0"], 1)
+
+	-- R1 + a set button is a set pick, not a tap.
+	tapFn(tapR1, "LeftButton", true)
+	local pickButton, pickFn = RunButton(S.SetClick, { ["fc-setIndex"] = 3 })
+	pickFn(pickButton, "LeftButton", true)
+	tapFn(tapR1, "LeftButton", false)
+	Check("R1 + set: picked, no swap", driver.attrs["fc-formset-0"], 3)
+
+	-- R1 + L2 goes through the chord button, which marks it.
+	tapFn(tapR1, "LeftButton", true)
+	Check("tap on: R1 + L2 is the chord button", driver.bindings.PADLTRIGGER, "CLICK GamepadXIVR1ChordL2:LeftButton")
+	local chord, chordFn = RunButton(S.R1ChordPre)
+	chordFn(chord, "LeftButton", true)
+	tapFn(tapR1, "LeftButton", false)
+	Check("R1 + L2: no swap", driver.attrs["fc-formset-0"], 3)
+
+	-- R1 + R3 opens the ring with its own button, which marks the press.
+	driver.attrs["fc-r1r3"] = "CLICK GamepadXIVRingToggle:LeftButton"
+	tapFn(tapR1, "LeftButton", true)
+	Check("tap on: R1 + R3 is the ring itself", driver.bindings.PADRSTICK, "CLICK GamepadXIVRingToggle:LeftButton")
+	driver.attrs["fc-ring"] = 1
+	driver:RunAttribute("ApplyLayer")
+	driver.attrs["fc-ring"] = 0
+	tapFn(tapR1, "LeftButton", false)
+	Check("R1 + R3: no swap", driver.attrs["fc-formset-0"], 3)
+	driver.attrs["fc-r1r3"] = nil
+
+	-- R1 + R2 changes the layer: no tap.
+	tapFn(tapR1, "LeftButton", true)
+	R2.press()
+	R2.release()
+	Wait(R2, 3)
+	tapFn(tapR1, "LeftButton", false)
+	Check("R1 + R2: no swap", driver.attrs["fc-formset-0"], 3)
+
+	-- Top row option off: only the bottom row changes.
+	driver.attrs["fc-tapTop"] = 0
+	driver.calls.OnTapSwap = nil
+	Tap()
+	Check("top off: bottom row to pair A", driver.attrs["fc-formset-0"], 1)
+	Check("top off: top row kept", driver.attrs["fc-side-WL"], 9)
+	Check("top off: nothing saved", driver.calls.OnTapSwap, nil)
+
+	driver.attrs["fc-r1Tap"] = 0
+	driver.attrs["fc-formset-0"] = 1
+	driver.attrs["fc-side-WL"], driver.attrs["fc-side-WR"] = 3, 4
+	driver:RunAttribute("ApplyLayer")
+	Check("tap off: R1 + L2 tab targets again", driver.bindings.PADLTRIGGER, "CLICK GamepadXIVL2:LeftButton")
+end
+
+-- The tutorial takes the face buttons (and the D-pad while its chapter list is open) in the base
+-- layer only, and never in combat.
+do
+	driver.attrs["tutorial-PAD1"] = "GamepadXIVTutorialNext"
+	driver.attrs["tutorial-PAD2"] = "GamepadXIVTutorialBack"
+	driver.attrs["tutorial-PAD4"] = "GamepadXIVTutorialClose"
+	driver.attrs["fc-tutorial"] = 1
+	driver:RunAttribute("ApplyLayer")
+	Check("tutorial: A is next", driver.bindings.PAD1, "CLICK GamepadXIVTutorialNext:LeftButton")
+	Check("tutorial: B is back", driver.bindings.PAD2, "CLICK GamepadXIVTutorialBack:LeftButton")
+	Check("tutorial: Y closes", driver.bindings.PAD4, "CLICK GamepadXIVTutorialClose:LeftButton")
+	driver.attrs["tutorial-PAD3"] = "GamepadXIVTutorialChapters"
+	driver:RunAttribute("ApplyLayer")
+	Check("tutorial: X opens the chapters", driver.bindings.PAD3, "CLICK GamepadXIVTutorialChapters:LeftButton")
+	local dpadUp = driver.bindings.PADDUP
+	Check("tutorial, list closed: D-pad up keeps its action", dpadUp ~= "CLICK GamepadXIVTutorialUp:LeftButton", true)
+	driver.attrs["tutorial-PADDUP"] = "GamepadXIVTutorialUp"
+	driver.attrs["tutorial-PADDDOWN"] = "GamepadXIVTutorialDown"
+	driver:RunAttribute("ApplyLayer")
+	Check("tutorial, list open: D-pad up moves up", driver.bindings.PADDUP, "CLICK GamepadXIVTutorialUp:LeftButton")
+	Check("tutorial, list open: D-pad down moves down", driver.bindings.PADDDOWN, "CLICK GamepadXIVTutorialDown:LeftButton")
+	driver.attrs["tutorial-PADDUP"], driver.attrs["tutorial-PADDDOWN"] = nil, nil
+	driver:RunAttribute("ApplyLayer")
+	Check("tutorial, list closed again: D-pad up is back", driver.bindings.PADDUP, dpadUp)
+	R2.press()
+	Check("tutorial + R2 held: A casts", driver.bindings.PAD1, "CLICK GamepadXIVCastR8:LeftButton")
+	R2.release()
+	Wait(R2, 3)
+	Check("tutorial after R2: A is next again", driver.bindings.PAD1, "CLICK GamepadXIVTutorialNext:LeftButton")
+	unitsThatExist.combat = true
+	driver:RunAttribute("ApplyLayer")
+	Check("tutorial in combat: A interacts", driver.bindings.PAD1, "BASE_PAD1")
+	unitsThatExist.combat = nil
+	driver.attrs["fc-tutorial"] = 0
+	driver:RunAttribute("ApplyLayer")
+	Check("tutorial off: A interacts", driver.bindings.PAD1, "BASE_PAD1")
+	Check("tutorial off: Y has its action", driver.bindings.PAD4, "BASE_PAD4")
 end
 
 print(failures == 0 and "ALL PASSED" or (failures .. " FAILED"))

@@ -2,6 +2,7 @@
 ## Title: Gamepad XIV
 ## Notes: FFXIV-style controller play: cross hotbars, targeting, camera and interact.
 ## Version: @project-version@
+## SavedVariables: GamepadXIVAccountDB
 ## SavedVariablesPerCharacter: GamepadXIVDB
 ## IconTexture: Interface\AddOns\GamepadXIV\Icon
 ## AddonCompartmentFunc: GamepadXIV_OnCompartmentClick
@@ -18,3 +19,4 @@ Minimap.lua
 Ring.lua
 Lfg.lua
 Items.lua
+Tutorial.lua
