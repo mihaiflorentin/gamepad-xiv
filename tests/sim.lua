@@ -106,7 +106,7 @@ local function NewFrame(name)
 end
 
 local driver = NewFrame("GamepadXIVDriver")
-for _, key in ipairs({ "ApplyLayer", "BindAll", "UpdateTargetBindings", "UpdateYield", "OnTrigger", "BeginEdit", "EndEdit", "SetSoft", "UpdateForm", "CycleGroup", "PartyCycleUnit", "SelectGroupUnit", "MoveFrameCursor", "OpenFlyout", "CloseFlyout", "SetClear" }) do
+for _, key in ipairs({ "ApplyLayer", "BindAll", "UpdateTargetBindings", "UpdateYield", "OnTrigger", "BeginEdit", "EndEdit", "SetSoft", "ReturnToGroupUnit", "UpdateForm", "CycleGroup", "PartyCycleUnit", "SelectGroupUnit", "MoveFrameCursor", "OpenFlyout", "CloseFlyout", "SetClear" }) do
 	driver.attrs[key] = S[key]
 end
 
@@ -1058,6 +1058,7 @@ end
 do
 	driver.attrs["fc-partyTargeting"] = "hard"
 	ClearSoft()
+	unitsThatExist.target = true -- the pressed button targets a friend; the game is not simulated
 	local function AddFrame(index, unit, x, y)
 		local frame = NewFrame("uf" .. index)
 		frame.attrs.unit = unit
@@ -1079,6 +1080,42 @@ do
 	Check("party targeting hard: every press moves", Move(), "raid2")
 	Check("party targeting hard: wraps", Move(), "raid1")
 	Check("party targeting hard: pick is spent", driver.attrs["fc-realPick"], nil)
+	-- D-pad up/down after the frames were rebuilt in another order: steps on from the last player.
+	do
+		local cycle, cycleFn = RunButton(S.CyclePreClick, { ["fc-step"] = 1, ["fc-raidOnly"] = 1 })
+		unitsThatExist.raid1 = true -- in a raid
+		driver.attrs["fc-cycleFrame"], driver.attrs["fc-cycleUnit"] = nil, nil
+		cycleFn(cycle, "LeftButton", true)
+		Check("cycle hard: first press, top frame", cycle.attrs.unit, "raid1")
+		cycleFn(cycle, "LeftButton", true)
+		Check("cycle hard: next", cycle.attrs.unit, "raid2")
+		AddFrame(3, "raid3", 0, 0)
+		driver.attrs["fc-ufCount"] = 3
+		driver.attrs["fc-cycleFrame"] = nil -- the frame list was rebuilt
+		cycleFn(cycle, "LeftButton", true)
+		Check("cycle hard: rebuilt frames resume after the last player", cycle.attrs.unit, "raid3")
+		driver.attrs["fc-cycleUnit"] = "raid1" -- targeted another way, out of combat
+		cycleFn(cycle, "LeftButton", true)
+		Check("cycle hard: steps on from the synced target", cycle.attrs.unit, "raid2")
+		-- An enemy or no target in between: the first press goes back to raid2, then it moves on.
+		unitsThatExist.target = "enemy"
+		cycleFn(cycle, "LeftButton", true)
+		Check("cycle hard: after an enemy, back to the last member", cycle.attrs.unit, "raid2")
+		unitsThatExist.target = true
+		cycleFn(cycle, "LeftButton", true)
+		Check("cycle hard: then moves on", cycle.attrs.unit, "raid3")
+		unitsThatExist.target = nil
+		cycleFn(cycle, "LeftButton", true)
+		Check("cycle hard: no target, back to the last member", cycle.attrs.unit, "raid3")
+		unitsThatExist.target = true
+		driver.attrs["fc-partyTargeting"] = "soft"
+		Check("cycle soft: no return step", driver:RunAttribute("ReturnToGroupUnit"), false)
+		driver.attrs["fc-partyTargeting"] = "hard"
+		driver.refs.uf3, unitsThatExist.raid3 = nil, nil
+		driver.attrs["fc-ufCount"] = 2
+		driver.attrs["fc-cycleUnit"], driver.attrs["fc-cycleFrame"] = nil, nil
+		driver.attrs["fc-ufCursor"] = 2
+	end
 	unitsThatExist.raid2 = nil
 	Check("party targeting hard: one frame targets it again", Move(), "raid1")
 	unitsThatExist.raid1 = nil
@@ -1103,14 +1140,14 @@ do
 	l1.attrs["fc-ready"] = 0
 	local l1Fn = assert(loadstring("local self, button, down = ...\n" .. S.L1Click))
 	setfenv(l1Fn, setmetatable({}, { __index = ALLOWED }))
-	driver.attrs["fc-cycle-party"] = nil
+	driver.attrs["fc-cycle-party"], driver.attrs["fc-cycleUnit"] = nil, nil
 	l1Fn(l1, "LeftButton", true)
 	Check("party targeting hard: double tap L1 targets", l1.attrs.unit, "player")
 	l1Fn(l1, "LeftButton", false)
 	Check("party targeting hard: L1 release targets nothing", l1.attrs.unit, nil)
-	unitsThatExist.party1 = nil
+	unitsThatExist.party1, unitsThatExist.target = nil, nil
 	driver.attrs["fc-partyTargeting"] = "soft"
-	driver.attrs["fc-cycle-party"] = nil
+	driver.attrs["fc-cycle-party"], driver.attrs["fc-cycleUnit"] = nil, nil
 
 	local softMove, softFn = RunButton(S.CyclePreClick, { ["fc-step"] = 1, ["fc-raidOnly"] = 0 })
 	softFn(softMove, "LeftButton", true)

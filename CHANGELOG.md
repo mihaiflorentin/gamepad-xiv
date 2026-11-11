@@ -1,5 +1,11 @@
 # Gamepad XIV
 
+## v0.1.11
+
+### Fixes
+
+- **Party targeting on Hard:** D-pad up / down steps on from the player you last selected, also after the party frames change, instead of starting over at the top. After targeting an enemy or nothing, the first press goes back to that player and the next ones move on. Out of combat it also steps on from whoever you targeted another way.
+
 ## v0.1.10
 
 ### New

@@ -2,6 +2,7 @@ local _, ns = ...
 local S = ns.Snippets
 
 local driver
+local SyncCycleToTarget
 
 -- Temp CVars disappear with the session and never touch the player's saved settings.
 local TEMP_CVARS = {
@@ -356,6 +357,12 @@ local function CreateCycle(name, step, raidOnly)
 	button:SetAttribute("type", "target")
 	button:SetAttribute("fc-step", step)
 	button:SetAttribute("fc-raidOnly", raidOnly and 1 or 0)
+	-- Play log: what each press picked, to find presses that seem to do nothing.
+	button:HookScript("OnClick", function(self)
+		ns.PlayLog("party cycle:", name, "unit", self:GetAttribute("unit") or "nil",
+			"frame", driver:GetAttribute("fc-cycleFrame") or "nil", "of", driver:GetAttribute("fc-ufCount") or 0,
+			"list", driver:GetAttribute("fc-cycle-party") or "nil", "soft", driver:GetAttribute("fc-soft") or "")
+	end)
 end
 
 local function CreateTargetCycle(name, step)
@@ -403,6 +410,43 @@ local function RefreshUnitFrameRefs()
 		driver:SetAttribute("fc-ufCount", count)
 		driver:SetAttribute("fc-ufCursor", nil)
 		driver:SetAttribute("fc-cycleFrame", nil)
+	end
+end
+
+-- With Party targeting on Hard, D-pad party selection steps on from the player you have targeted,
+-- however you targeted them. Secure code can't tell which group member the target is, so this is
+-- done here, out of combat only; in combat it steps on from the last player it selected itself.
+SyncCycleToTarget = function()
+	if InCombatLockdown() or not driver or ns.db.partyTargeting ~= "hard" or not UnitExists("target") then
+		return
+	end
+	local unit, listIndex
+	if IsInRaid() then
+		for i = 1, 40 do
+			if not unit and UnitIsUnit("raid" .. i, "target") then
+				unit, listIndex = "raid" .. i, i
+			end
+		end
+		if unit then
+			driver:SetAttribute("fc-cycle-raid", listIndex)
+		end
+	else
+		local units = { "player", "pet" }
+		for i = 1, 4 do
+			tinsert(units, "party" .. i)
+			tinsert(units, "partypet" .. i)
+		end
+		for index, candidate in ipairs(units) do
+			if not unit and UnitIsUnit(candidate, "target") then
+				unit, listIndex = candidate, index - 1
+			end
+		end
+		if unit then
+			driver:SetAttribute("fc-cycle-party", listIndex)
+		end
+	end
+	if unit then
+		driver:SetAttribute("fc-cycleUnit", unit)
 	end
 end
 
@@ -1565,6 +1609,7 @@ function ns.CreateInput()
 	driver:SetAttribute("UpdateYield", S.UpdateYield)
 	driver:SetAttribute("OnTrigger", S.OnTrigger)
 	driver:SetAttribute("SetSoft", S.SetSoft)
+	driver:SetAttribute("ReturnToGroupUnit", S.ReturnToGroupUnit)
 	driver:SetAttribute("CycleGroup", S.CycleGroup)
 	driver:SetAttribute("PartyCycleUnit", S.PartyCycleUnit)
 	driver:SetAttribute("SelectGroupUnit", S.SelectGroupUnit)
@@ -1925,6 +1970,7 @@ function ns.CreateInput()
 			if not UnitExists("target") then
 				SetCameraLock(false)
 			end
+			SyncCycleToTarget()
 			return
 		end
 		if event == "CVAR_UPDATE" and cvar ~= "InputDeviceInterfaceStyle" then
@@ -2333,6 +2379,7 @@ function ns.Sync()
 		driver:SetAttribute("fc-cycle-party", nil)
 		driver:SetAttribute("fc-cycle-raid", nil)
 		driver:SetAttribute("fc-cycleFrame", nil)
+		driver:SetAttribute("fc-cycleUnit", nil)
 		SecureHandlerExecute(driver, [[ self:RunAttribute("SetSoft", "") ]])
 	end
 	if driver:GetAttribute("fc-triggerMode") ~= db.triggerMode then

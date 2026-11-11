@@ -1043,6 +1043,9 @@ S.SelectGroupUnit = [[
 -- that row or column, then the nearest frame on another one. Without frames, it steps through the list.
 S.MoveFrameCursor = [[
 	local dx, dy = ...
+	if self:RunAttribute("ReturnToGroupUnit") then
+		return
+	end
 	local real = self:GetAttribute("fc-partyTargeting") == "hard"
 	local cursor = self:GetAttribute("fc-ufCursor")
 	local cursorUnit
@@ -1096,6 +1099,7 @@ S.MoveFrameCursor = [[
 	if bestUnit then
 		self:SetAttribute("fc-ufCursor", bestIndex)
 		self:SetAttribute("fc-cycleFrame", bestIndex)
+		self:SetAttribute("fc-cycleUnit", bestUnit)
 		self:RunAttribute("SelectGroupUnit", bestUnit)
 	elseif not currentX then
 		self:RunAttribute("CycleGroup", dx - dy, dx ~= 0 and 1 or 0)
@@ -1114,9 +1118,30 @@ S.PartyCycleUnit = [[
 	return member == 0 and "pet" or ("partypet" .. member)
 ]]
 
+-- Driver, Party targeting on Hard: with no target or an enemy targeted, the next D-pad press goes
+-- back to the group member selected last, and only the press after that moves on. Returns true
+-- when it did.
+S.ReturnToGroupUnit = [[
+	if self:GetAttribute("fc-partyTargeting") ~= "hard" then
+		return false
+	end
+	local lastUnit = self:GetAttribute("fc-cycleUnit")
+	if not lastUnit or not UnitExists(lastUnit) then
+		return false
+	end
+	if UnitExists("target") and SecureCmdOptionParse("[@target,harm] 1") ~= "1" then
+		return false
+	end
+	self:RunAttribute("SelectGroupUnit", lastUnit)
+	return true
+]]
+
 -- Driver: moves the soft target. The first step in a party starts on the player, like FFXIV.
 S.CycleGroup = [[
 	local step, raidOnly = ...
+	if self:RunAttribute("ReturnToGroupUnit") then
+		return
+	end
 	local inRaid = UnitExists("raid1")
 	local useRaid = raidOnly == 1 and inRaid
 
@@ -1124,6 +1149,24 @@ S.CycleGroup = [[
 	-- bottom. Pets shown below the members then come after them, and frames sorted by role keep their order.
 	if useRaid or not inRaid then
 		local current = self:GetAttribute("fc-cycleFrame")
+		-- The last selected unit is kept by name, so a rebuilt or reordered set of frames still
+		-- steps on from that player instead of starting over at the top.
+		local lastUnit = self:GetAttribute("fc-cycleUnit")
+		if current and current > (self:GetAttribute("fc-ufCount") or 0) then
+			current = nil
+		end
+		if lastUnit then
+			local frame = current and self:GetFrameRef("uf" .. current)
+			if not (frame and frame:IsVisible() and frame:GetAttribute("unit") == lastUnit) then
+				current = nil
+				for index = 1, self:GetAttribute("fc-ufCount") or 0 do
+					local other = self:GetFrameRef("uf" .. index)
+					if not current and other and other:IsVisible() and other:GetAttribute("unit") == lastUnit then
+						current = index
+					end
+				end
+			end
+		end
 		local fresh = self:GetAttribute("fc-soft") == ""
 		if self:GetAttribute("fc-partyTargeting") == "hard" then
 			fresh = not current
@@ -1171,9 +1214,11 @@ S.CycleGroup = [[
 			elseif currentKey and step < 0 then
 				pick = lastIndex
 			end
+			local unit = self:GetFrameRef("uf" .. pick):GetAttribute("unit")
 			self:SetAttribute("fc-cycleFrame", pick)
 			self:SetAttribute("fc-ufCursor", pick)
-			self:RunAttribute("SelectGroupUnit", self:GetFrameRef("uf" .. pick):GetAttribute("unit"))
+			self:SetAttribute("fc-cycleUnit", unit)
+			self:RunAttribute("SelectGroupUnit", unit)
 			return
 		end
 	end
@@ -1210,9 +1255,12 @@ S.CycleGroup = [[
 	end
 
 	self:SetAttribute("fc-cycle-" .. prefix, index)
+	local unit
 	if useRaid then
-		self:RunAttribute("SelectGroupUnit", (index == 0) and "player" or ("raid" .. index))
+		unit = (index == 0) and "player" or ("raid" .. index)
 	else
-		self:RunAttribute("SelectGroupUnit", self:RunAttribute("PartyCycleUnit", index))
+		unit = self:RunAttribute("PartyCycleUnit", index)
 	end
+	self:SetAttribute("fc-cycleUnit", unit)
+	self:RunAttribute("SelectGroupUnit", unit)
 ]]
