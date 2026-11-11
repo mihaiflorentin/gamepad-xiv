@@ -81,7 +81,7 @@ Two rows are always visible, as in FFXIV: the current set at the bottom and the 
 
 The keys are the same on every bar. By default, the top row shows set 2 and Expanded Hold shows set 3. Change them in the settings or with `/gxiv wxhb R 4 L` and `/gxiv exhb LR 5 R`.
 
-Holding R1 shows `CHANGE SET`, with each set's number where its button is. Choosing set 1-3 also moves Forever's own page to the same number.
+Holding R1 shows `CHANGE SET` above the top row, with each set's number and its button's icon where that button is. Choosing set 1-3 also moves Forever's own page to the same number.
 
 ## Interact prompt
 
@@ -146,7 +146,7 @@ The addon has its own settings window, with the settings on tabs in a column on 
 | Inactive side opacity | how visible the other bars are while one is selected | 0.55 |
 | Show controller buttons on slots | your controller's button art on each slot | off |
 | Show out of range abilities in red | tints an ability red while your target is out of its range | on |
-| Show set labels | the `L2`, `R2` and `SET` labels | on |
+| Show set labels | each bar's set, with its trigger (below the bottom bars, above the top bars), and the `SET` label | on |
 | Double tap L2 / R2 shows | which set and side each top bar shows | set 2 left / right |
 | L2 then R2 / R2 then L2 shows | which set and side Expanded Hold shows | set 3 left / right |
 | Forms change the bottom row | gives each form or stance its own set | on |

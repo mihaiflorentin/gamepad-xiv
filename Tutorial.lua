@@ -203,6 +203,58 @@ local function Since(what, since)
 	return seen[what] ~= nil and seen[what] >= since
 end
 
+-- A set with an ability on its left or right side.
+local function SetHasAction(set)
+	for side = set * 2 - 1, set * 2 do
+		for _, slot in ipairs(ns.sideSlots and ns.sideSlots[side] or {}) do
+			if slot > 0 and HasAction and HasAction(slot) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- The set the player was on before a page showed another one; it comes back when the page is left.
+local restoreSet = nil
+
+local function ShowSet(driver, form, set)
+	driver:SetAttribute("fc-formset-" .. form, set)
+	SecureHandlerExecute(driver, [[ self:RunAttribute("ApplyLayer") ]])
+end
+
+local function RestoreSet()
+	local driver = _G.GamepadXIVDriver
+	if restoreSet and driver and not InCombatLockdown() then
+		ShowSet(driver, restoreSet.form, restoreSet.set)
+		restoreSet = nil
+	end
+end
+
+-- Shows a set that has abilities on the bottom row, out of combat. False when no set has any.
+local function ShowFilledSet()
+	local driver = _G.GamepadXIVDriver
+	if not (driver and driver.GetAttribute) then
+		return true
+	end
+	local form = driver:GetAttribute("fc-form") or 0
+	local set = driver:GetAttribute("fc-formset-" .. form)
+	-- Set 0 is the game's stance bar, which the tutorial leaves alone.
+	if not set or set == 0 or SetHasAction(set) then
+		return true
+	end
+	for other = 1, ns.NUM_SETS do
+		if SetHasAction(other) then
+			if not InCombatLockdown() then
+				restoreSet = restoreSet or { form = form, set = set }
+				ShowSet(driver, form, other)
+			end
+			return true
+		end
+	end
+	return false
+end
+
 -- Post-hooks on the cross hotbar's cast buttons record a press; they never change what it does.
 local castsHooked = false
 local function HookCasts()
@@ -276,7 +328,7 @@ local function BuildSteps()
 		}
 	end
 	local ringText, ringKeys = ComboFor("ring")
-	-- The ring step asks to open Guild & Communities, wherever it is on the player's ring.
+	-- The ring step asks to open Communities, wherever it is on the player's ring.
 	local guildPage, ringStart, guildSegment
 	if ns.RingFindBuiltin then
 		guildPage, ringStart, guildSegment = ns.RingFindBuiltin("guild")
@@ -286,8 +338,9 @@ local function BuildSteps()
 	Chapter("Basics")
 	Add({
 		title = "Welcome to Gamepad XIV",
-		text = "Your abilities are on a cross hotbar, as in FFXIV.\n"
-			.. "A trigger brings up a bar, and the D-pad and face buttons use its slots. This tutorial shows what each button does.",
+		text = "Play with a controller, the FFXIV way\n"
+			.. "Your abilities live on a cross hotbar. Hold a trigger to bring up a bar, then cast from its slots with the D-pad and face buttons. "
+			.. "This tutorial walks you through each button with a short task on every page.",
 	})
 	Add({
 		title = "Jump",
@@ -312,7 +365,9 @@ local function BuildSteps()
 			function() return Shown("CharacterFrame") end,
 			function() return not Shown("CharacterFrame") end,
 		},
-		text = "The {PAD2} button closes the open window or clears your target.",
+		text = "How to close windows and clear your target\n"
+			.. "{PAD2} is your cancel button. It closes the window on screen, and with no window open it clears your target. "
+			.. "Try it on your character window.",
 		free = { "PAD2" },
 		lit = { S(1, Hold("PADLSHOULDER", 0, 0.9), Tap("PAD1", 0.4)), S(2, Tap("PAD2", 1.6)) },
 	})
@@ -513,21 +568,57 @@ local function BuildSteps()
 		target = Sides("L", "R", "WL", "WR"),
 		lit = { S(1, Tap("PADRSHOULDER", 0)), S(2, Tap("PADRSHOULDER", 1.2)) },
 	})
-	Add({
+	-- Picking the slot is undone by B as well, so the last step waits for a change made after it.
+	local MOVE_CHECKS = {
+		function() return Layer() == "L" or Layer() == "R" or ClearStage() ~= 0 end,
+		function() return ClearStage() ~= 0 end,
+		function() return ClearStage() ~= 0 and Layer() == "BASE" end,
+		function(state)
+			local picked = ClearStage() == 2 or ClearStage() == 3
+			state.picked = picked and (state.picked or Now()) or state.picked
+			return picked
+		end,
+		function(state) return ClearStage() == 3 or (ClearStage() == 0 and Since("slot", state.picked or state.since)) end,
+	}
+	local MOVE_HOW = { "Press and hold {PADRTRIGGER}", "Press {PADRSTICK} to start choosing", "Release {PADRTRIGGER}",
+		"Press the ability's slot, the same way you cast it, to pick it", "Press {PAD1} to move it, or {PAD3} to remove it" }
+	local function MoveLit(first, at)
+		return S(first, Hold("PADRTRIGGER", at, 0.9)), S(first + 1, Tap("PADRSTICK", at + 0.4)),
+			S(first + 3, Hold("PADRTRIGGER", at + 1.5, 0.8), Tap("PADDRIGHT", at + 1.9)), S(first + 4, Tap("PAD1", at + 2.9))
+	end
+	local moveStep = {
 		title = "Move or remove an ability",
-		holds = { true },
-		checks = {
-			function() return Layer() == "L" or Layer() == "R" or ClearStage() ~= 0 end,
-			function() return ClearStage() ~= 0 end,
-			function() return ClearStage() ~= 0 and Layer() == "BASE" end,
-			function() return ClearStage() == 2 or ClearStage() == 3 end,
-			function(state) return ClearStage() == 3 or (ClearStage() == 0 and Since("slot", state.since)) end,
-		},
-		how = { "Press and hold {PADRTRIGGER}", "Press {PADRSTICK} to start choosing", "Release {PADRTRIGGER}", "Press the ability's slot, the same way you cast it, to pick it", "Press {PAD1} to move it, or {PAD3} to remove it" },
 		text = "How to move or remove an ability\nRearrange your bars with the controller: pick an ability on your bars, then move it to another slot or take it off. {PAD2} cancels at any point.",
 		target = Sides("L", "R"),
-		lit = { S(1, Hold("PADRTRIGGER", 0, 0.9)), S(2, Tap("PADRSTICK", 0.4)), S(4, Hold("PADRTRIGGER", 1.5, 0.8), Tap("PADDRIGHT", 1.9)), S(5, Tap("PAD1", 2.9)) },
-	})
+	}
+	-- While on this page the bottom row shows a set that has abilities; the player's own set comes back
+	-- when the page is left. With none on any set, the page starts by putting one there.
+	function moveStep.prepare(step)
+		if ShowFilledSet() then
+			step.how, step.checks, step.holds, step.free = MOVE_HOW, MOVE_CHECKS, { true }, nil
+			step.lit = { MoveLit(1, 0) }
+			return
+		end
+		local how = { "Hold {PADLSHOULDER} and press {PAD2} to open your spellbook",
+			"Select an ability and press {PAD3} to bring up the Bind to Action Bar menu",
+			"Hold {PADRTRIGGER} and press a button to put it in that slot", "Press {PAD2} to close your spellbook" }
+		local checks = {
+			function(state) return SpellbookShown() or Since("slot", state.since) end,
+			function(state) return Shown("GamepadActionBarEditFrame") or Since("slot", state.since) end,
+			function(state) return Since("slot", state.since) end,
+			-- The ability may have gone to another set; the bottom row then shows that one.
+			function() return not SpellbookShown() and ShowFilledSet() end,
+		}
+		for index = 1, #MOVE_HOW do
+			tinsert(how, MOVE_HOW[index])
+			tinsert(checks, MOVE_CHECKS[index])
+		end
+		step.how, step.checks, step.holds, step.free = how, checks, { [5] = true }, { "PAD2" }
+		step.lit = { S(1, Hold("PADLSHOULDER", 0, 1.0), Tap("PAD2", 0.4)), S(2, Tap("PAD3", 1.5)),
+			S(3, Hold("PADRTRIGGER", 2.4, 0.9), Tap("PAD1", 2.8)), S(4, Tap("PAD2", 3.9)), MoveLit(5, 4.9) }
+	end
+	moveStep.prepare(moveStep)
+	Add(moveStep)
 
 	Chapter("Targeting")
 	Add({
@@ -584,8 +675,10 @@ local function BuildSteps()
 	end
 	if ringKeys then
 		local ringShown = function() return Shown("GamepadXIVRing") end
+		-- The ring stays open until the stick opens an entry; closing it earlier undoes the steps.
+		ringHolds = {}
 		if #ringKeys == 2 then
-			ringHolds = { true }
+			ringHolds[1] = true
 			RingStep("Press and hold {" .. ringKeys[1] .. "}", function() return Layer() ~= "BASE" or ringShown() end, Hold(ringKeys[1], 0, 0.8))
 			RingStep(((ringText or ""):find("forward") and "Push the left stick forward" or ("Press {" .. ringKeys[2] .. "}")) .. " to open the ring", ringShown,
 				Tap(ringKeys[2], 0.35))
@@ -594,7 +687,8 @@ local function BuildSteps()
 			RingStep("Press {" .. ringKeys[1] .. "} to open the ring", ringShown, Tap(ringKeys[1], 0.35))
 		end
 		if guildPage then
-			-- A real errand: open Guild & Communities, wherever the player's ring has it.
+			-- A real errand: open Communities, wherever the player's ring has it, by the name the ring shows.
+			local guildName = _G.RADIAL_LABEL_GUILD or "Communities"
 			if guildPage ~= ringStart then
 				local turns = math.abs(guildPage - ringStart)
 				RingStep("Press {" .. (guildPage < ringStart and "PADLSHOULDER" or "PADRSHOULDER") .. "}"
@@ -604,15 +698,17 @@ local function BuildSteps()
 				ringAt = 0.6
 			end
 			local angle = math.rad((guildSegment - 1) * 45)
-			RingStep("Point the right stick " .. RING_DIRECTIONS[guildSegment] .. ", at Guild & Communities",
+			RingStep("Point the right stick " .. RING_DIRECTIONS[guildSegment] .. ", at " .. guildName,
 				function() return RingOn(guildPage, guildSegment) or Shown("CommunitiesFrame") end,
 				Move("PADRSTICK", 1.2 + ringAt, math.cos(angle), math.sin(angle), 0.8))
-			RingStep("Let go of the stick to open it", function() return not ringShown() end)
-			RingStep("Press {PAD2} to close Guild & Communities", function() return not AnyWindowShown() end, Tap("PAD2", 2.9 + ringAt))
+			ringHolds[#ringKeys] = #ringHow + 1
+			RingStep("Let go of the stick to open it", function() return not ringShown() and Shown("CommunitiesFrame") end)
+			RingStep("Press {PAD2} to close " .. guildName, function() return not AnyWindowShown() end, Tap("PAD2", 2.9 + ringAt))
 		else
 			RingStep("Point the right stick at an entry", function() local _, segment = RingOn(); return (segment or 0) > 0 or not ringShown() end,
 				Move("PADRSTICK", 1.2, 0.7, 0.7, 0.8))
-			RingStep("Let go of the stick to open it", function() return not ringShown() end)
+			ringHolds[#ringKeys] = #ringHow + 1
+			RingStep("Let go of the stick to open it", function() return not ringShown() and AnyWindowShown() end)
 			RingStep("Press {PAD2} to close the window it opened", function() return not AnyWindowShown() end, Tap("PAD2", 2.9))
 		end
 	end
@@ -1102,6 +1198,7 @@ local function Close(finished)
 		callout:Hide()
 	end
 	ns.SetTutorialKeys(false)
+	RestoreSet()
 	if finished then
 		current = 1
 	end
@@ -1537,6 +1634,10 @@ function ShowStep(refresh)
 		return
 	end
 	if not refresh then
+		RestoreSet()
+		if step.prepare then
+			step.prepare(step)
+		end
 		checkState = { done = completed[step.title] and CheckCount(step) or 0, since = Now(), set = ns.currentSet,
 			target = UnitExists and UnitExists("target"), zoom = GetCameraZoom and GetCameraZoom() }
 		HookCasts()
@@ -1632,14 +1733,39 @@ function PlaceCallout()
 		return
 	end
 	local left, right, top, bottom = PlaceSpotlight(step.target)
+	-- Keep clear of the crossbars and of what the page points at: above them if the box fits,
+	-- else below, right or left, with a gap. Centred on them, kept on screen.
+	local bl, br, bt, bb = TargetRect(Sides("L", "R", "WL", "WR"))
+	if bl then
+		-- Also the R1 set picker, which shows above the top row (Bar.lua), and the set labels under
+		-- the bottom row, even while they're hidden.
+		local picker = ns.root and ns.root.setPicker
+		bt = bt + 24 + (picker and picker.GetHeight and picker:GetHeight() or 130)
+		bb = bb - 28
+	end
+	if left and bl then
+		left, right, top, bottom = math.min(left, bl), math.max(right, br), math.max(top, bt), math.min(bottom, bb)
+	elseif bl then
+		left, right, top, bottom = bl, br, bt, bb
+	end
 	if not left then
 		callout:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
 	else
-		local x = (left + right) / 2
-		if top + 20 + callout:GetHeight() < UIParent:GetHeight() then
-			callout:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", x, top + 20)
+		local gap = 30
+		local width, height = UIParent:GetWidth(), UIParent:GetHeight()
+		local w, h = callout:GetWidth(), callout:GetHeight()
+		local cx = math.max(w / 2 + 8, math.min(width - w / 2 - 8, (left + right) / 2))
+		local cy = math.max(h / 2 + 8, math.min(height - h / 2 - 8, (top + bottom) / 2))
+		if height - top - gap >= h + 8 then
+			callout:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", cx, top + gap)
+		elseif bottom - gap >= h + 8 then
+			callout:SetPoint("TOP", UIParent, "BOTTOMLEFT", cx, bottom - gap)
+		elseif width - right - gap >= w + 8 then
+			callout:SetPoint("LEFT", UIParent, "BOTTOMLEFT", right + gap, cy)
+		elseif left - gap >= w + 8 then
+			callout:SetPoint("RIGHT", UIParent, "BOTTOMLEFT", left - gap, cy)
 		else
-			callout:SetPoint("TOP", UIParent, "BOTTOMLEFT", x, bottom - 20)
+			callout:SetPoint("TOP", UIParent, "TOP", 0, -8)
 		end
 	end
 	overlay:Show()

@@ -1602,6 +1602,10 @@ function ns.CreateInput()
 	-- The R1 tap changed the top row: kept, so the next sync does not put the old one back.
 	driver.OnTapSwap = function(_, _, sideWL, sideWR)
 		ns.db.sideWL, ns.db.sideWR = sideWL, sideWR
+		-- Redraws the bars' labels with the new top sets, which also flashes the top bars.
+		if ns.lastShown then
+			ns.ShowLayer(unpack(ns.lastShown))
+		end
 	end
 	driver.OnEditEnded = function() ns.OnEditEnded() end
 	driver.OnFlyoutChanged = function(_, flyoutID) ShowFlyoutPanel(flyoutID) end

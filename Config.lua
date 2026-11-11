@@ -312,7 +312,7 @@ local function BuildTabs()
 				{ type = "check", key = "rangeIndicator", label = "Show out of range abilities in red", onChange = Nothing,
 					tip = "Tints an ability red while your target is out of its range." },
 				{ type = "check", key = "showSetLabels", label = "Show set labels", onChange = Refresh,
-					tip = "The current set's number above the crossbar, and the trigger icons above the bottom bars." },
+					tip = "Each bar's set with its trigger: below the bottom bars and above the top bars. Also the current set under the crossbar." },
 				{ type = "spacer", label = "" },
 				{ type = "header", label = "TOP ROW AND EXPANDED HOLD" },
 				{ type = "choice", key = "showTopLeft", label = "Top left bar (double tap {PADLTRIGGER})",

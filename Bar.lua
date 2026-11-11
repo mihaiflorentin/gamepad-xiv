@@ -106,8 +106,55 @@ local function CreateSide(root, row)
 		tinsert(side.highlights.ring, ring)
 	end
 
-	side.label = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-	side.label:SetPoint("TOP", content, "TOP", 0, 4)
+	-- A gold flash over the bar when its set changes (R1 + a button, quick set swap, Expanded Hold).
+	-- On its own frame above the buttons; purely visual.
+	local flashFrame = CreateFrame("Frame", nil, content)
+	flashFrame:SetAllPoints()
+	flashFrame:SetFrameLevel(content:GetFrameLevel() + 30)
+	local flash = flashFrame:CreateTexture(nil, "OVERLAY")
+	flash:SetPoint("CENTER")
+	flash:SetSize(BUTTON_SIZE * 8, BUTTON_SIZE * 4.5)
+	flash:SetAtlas("AftLevelup-WhiteIconGlow")
+	if not flash:GetAtlas() then
+		flash:SetColorTexture(1, 1, 1, 0.3)
+	end
+	flash:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
+	flash:SetBlendMode("ADD")
+	flash:SetAlpha(0)
+	local flashAnim = flash:CreateAnimationGroup()
+	local rise = flashAnim:CreateAnimation("Alpha")
+	rise:SetFromAlpha(0)
+	rise:SetToAlpha(0.85)
+	rise:SetDuration(0.12)
+	rise:SetOrder(1)
+	local grow = flashAnim:CreateAnimation("Scale")
+	grow:SetScaleFrom(0.85, 0.85)
+	grow:SetScaleTo(1.1, 1.1)
+	grow:SetDuration(0.47)
+	grow:SetOrder(1)
+	local fall = flashAnim:CreateAnimation("Alpha")
+	fall:SetFromAlpha(0.85)
+	fall:SetToAlpha(0)
+	fall:SetDuration(0.35)
+	fall:SetStartDelay(0.12)
+	fall:SetOrder(1)
+	flashAnim:SetToFinalAlpha(true)
+	side.flash = flashAnim
+
+	-- The bar's set, outside it so its buttons never cover it: above a top bar, below a bottom one.
+	side.label = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	if row == "WL" or row == "WR" then
+		side.label:SetPoint("BOTTOM", content, "TOP", 0, 4)
+	else
+		side.label:SetPoint("TOP", content, "BOTTOM", 0, -4)
+	end
+	-- The label pops when the set changes.
+	local pop = side.label:CreateAnimationGroup()
+	local shrink = pop:CreateAnimation("Scale")
+	shrink:SetScaleFrom(1.35, 1.35)
+	shrink:SetScaleTo(1, 1)
+	shrink:SetDuration(0.25)
+	side.labelPop = pop
 
 	side.buttons = {}
 	for i = 1, ns.NUM_SLOTS do
@@ -159,29 +206,49 @@ local function CreateSide(root, row)
 	return side
 end
 
--- The R1 overlay: which button picks which set, laid out like the buttons themselves.
+-- The R1 overlay: which button picks which set, laid out like the buttons themselves, each number
+-- with its button's icon. It sits above the top row, where no bar covers it (placed in ShowLayer).
 local function CreateSetPicker(root)
 	local picker = CreateFrame("Frame", nil, root)
-	picker:SetSize(190, 70)
-	picker:SetPoint("BOTTOM", root, "CENTER", 0, 64) -- above the bottom row, between the top bars
+	picker:SetSize(380, 130)
+	picker:SetFrameLevel(root:GetFrameLevel() + 20)
 	picker:Hide()
 
-	local title = picker:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-	title:SetPoint("BOTTOM", 0, 0)
+	local back = picker:CreateTexture(nil, "BACKGROUND")
+	back:SetAllPoints()
+	back:SetColorTexture(0, 0, 0, 0.55)
+
+	local title = picker:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	title:SetPoint("TOP", 0, -6)
 	title:SetText("CHANGE SET")
 
 	-- Offsets around each cluster's centre: up, right, down, left.
-	local AROUND = { { 0, 18 }, { 18, 0 }, { 0, -18 }, { -18, 0 } }
+	local AROUND = { { 0, 30 }, { 46, 0 }, { 0, -30 }, { -46, 0 } }
 	picker.numbers = {}
 	for set = 1, ns.NUM_SETS do
-		local number = picker:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		local number = picker:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
 		local around = AROUND[(set - 1) % 4 + 1]
-		local clusterX = (set <= 4) and 55 or -55
-		number:SetPoint("CENTER", picker, "CENTER", clusterX + around[1], 10 + around[2])
-		number:SetText(set)
+		local clusterX = (set <= 4) and 100 or -100
+		number:SetPoint("CENTER", picker, "CENTER", clusterX + around[1], -10 + around[2])
 		picker.numbers[set] = number
 	end
 	root.setPicker = picker
+end
+
+-- The button that picks each set, from the driver's key order.
+local function SetPickerKeys()
+	local keys = {}
+	for index, key in ipairs(ns.KEYS) do
+		keys[ns.SET_BY_KEY[index]] = key
+	end
+	return keys
+end
+
+local function DrawSetPicker()
+	local keys = SetPickerKeys()
+	for set, number in ipairs(ns.root.setPicker.numbers) do
+		number:SetText(ns.ButtonText("{" .. (keys[set] or "") .. "}", 26) .. " " .. set)
+	end
 end
 
 -- Places the two diamonds of a side with the chosen gap between them.
@@ -304,8 +371,19 @@ local function SetPlayLabels()
 	if not root or ns.editing or not root.shownSet then
 		return
 	end
-	root.sides.L.label:SetText(ns.ButtonText("{PADLTRIGGER}", 22))
-	root.sides.R.label:SetText(ns.ButtonText("{PADRTRIGGER}", 22))
+	-- Each bar names its set: the bottom ones with their trigger, the top ones with a double tap of it.
+	local shown = root.shownSides or {}
+	local function SetName(side)
+		if not side then
+			return ""
+		end
+		-- Past the eight sets are the stance bars of forms (set 0).
+		return side > ns.NUM_SETS * 2 and "STANCE" or ("SET " .. (ns.DescribeSide(side)))
+	end
+	root.sides.L.label:SetText(ns.ButtonText("{PADLTRIGGER}", 24) .. "  " .. SetName(shown[1]))
+	root.sides.R.label:SetText(SetName(shown[2]) .. "  " .. ns.ButtonText("{PADRTRIGGER}", 24))
+	root.sides.WL.label:SetText(ns.ButtonText("{PADLTRIGGER}{PADLTRIGGER}", 20) .. "  " .. SetName(ns.db.sideWL))
+	root.sides.WR.label:SetText(SetName(ns.db.sideWR) .. "  " .. ns.ButtonText("{PADRTRIGGER}{PADRTRIGGER}", 20))
 	local name = root.shownSet == 0 and "STANCE" or ("SET " .. root.shownSet)
 	root.setText:SetText(name .. "  " .. ns.ButtonText("{PADRSHOULDER}", 20))
 end
@@ -447,14 +525,36 @@ function ns.ShowLayer(layer, leftSide, rightSide, set, form)
 		sides.WL.label:SetText(ns.ButtonText("Double tap {PADLTRIGGER}: ", 18) .. DescribeLabel(ns.db.sideWL))
 		sides.WR.label:SetText(ns.ButtonText("Double tap {PADRTRIGGER}: ", 18) .. DescribeLabel(ns.db.sideWR))
 		root.setText:SetText("MOVE")
+		root.barSides = nil
 	else
-		sides.WL.label:SetText("")
-		sides.WR.label:SetText("")
 		root.shownSet = set
+		root.shownSides = { leftSide, rightSide }
+		-- A bar whose set changed flashes; nothing on the first show or after Move bars.
+		local now = { L = leftSide, R = rightSide, WL = ns.db.sideWL, WR = ns.db.sideWR }
+		local before = root.barSides
+		for row, sideIndex in pairs(now) do
+			if before and before[row] and before[row] ~= sideIndex then
+				sides[row].flash:Stop()
+				sides[row].flash:Play()
+				sides[row].labelPop:Stop()
+				sides[row].labelPop:Play()
+			end
+		end
+		root.barSides = now
 		SetPlayLabels()
 	end
 
-	root.setPicker:SetShown(layer == "SET")
+	local picker = root.setPicker
+	if layer == "SET" then
+		-- Above whichever top bar is higher, so nothing covers it.
+		local top = math.max(sides.WL:GetTop() or 0, sides.WR:GetTop() or 0)
+		local scale = sides.WL:GetEffectiveScale() / root:GetEffectiveScale()
+		local center = select(2, root:GetCenter()) or 0
+		picker:ClearAllPoints()
+		picker:SetPoint("BOTTOM", root, "CENTER", 0, top * scale - center + 24)
+		DrawSetPicker()
+	end
+	picker:SetShown(layer == "SET")
 	for index, number in ipairs(root.setPicker.numbers) do
 		if index == set then
 			number:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
