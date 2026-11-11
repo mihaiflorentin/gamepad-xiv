@@ -1,5 +1,12 @@
 # Gamepad XIV
 
+## v0.1.12
+
+### New
+
+- **Skip pets in party targeting:** an option for D-pad up / down to step through the players only, like FFXIV.
+- **Skip yourself in party targeting:** an option for D-pad up / down to step through the other party members only, so fewer presses reach the one you want.
+
 ## v0.1.11
 
 ### Fixes

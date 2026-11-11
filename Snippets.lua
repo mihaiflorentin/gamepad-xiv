@@ -1144,6 +1144,12 @@ S.CycleGroup = [[
 	end
 	local inRaid = UnitExists("raid1")
 	local useRaid = raidOnly == 1 and inRaid
+	-- Optionally the player is left out, in a group of more than one: with no target or an enemy
+	-- targeted, a heal already lands on yourself. Raid frames name the player raidN, so it applies
+	-- to the party.
+	local skipSelf = self:GetAttribute("fc-skipSelf") == 1 and UnitExists("party1")
+	-- Optionally pets are left out too, like FFXIV.
+	local skipPets = self:GetAttribute("fc-skipPets") == 1
 
 	-- With party or raid frames on screen, the list follows them as drawn: column by column, top to
 	-- bottom. Pets shown below the members then come after them, and frames sorted by role keep their order.
@@ -1188,7 +1194,10 @@ S.CycleGroup = [[
 			local frame = self:GetFrameRef("uf" .. index)
 			local unit = frame and frame:IsVisible() and frame:GetAttribute("unit")
 			local left, bottom, width, height
-			if unit and UnitExists(unit) then
+			-- pet, partypetN or raidpetN; the party pets are named too, in case strfind is missing.
+			local isPet = unit and (unit == "pet" or unit == "partypet1" or unit == "partypet2" or unit == "partypet3"
+				or unit == "partypet4" or (strfind and strfind(unit, "pet", 1, true)))
+			if unit and UnitExists(unit) and not (skipSelf and unit == "player") and not (skipPets and isPet) then
 				left, bottom, width, height = frame:GetRect()
 			end
 			if left then
@@ -1234,9 +1243,12 @@ S.CycleGroup = [[
 		restart = not stored
 	end
 
-	if restart and not useRaid then
+	if restart and not useRaid and not skipSelf then
 		index = 0
 	else
+		if restart and not useRaid then
+			index = step > 0 and 0 or 10 -- from the top, past the player; or from the bottom
+		end
 		for _ = 0, count do
 			index = index + step
 			if index > count then
@@ -1248,7 +1260,8 @@ S.CycleGroup = [[
 				if index > 0 and UnitExists("raid" .. index) then
 					break
 				end
-			elseif UnitExists(self:RunAttribute("PartyCycleUnit", index)) then
+			elseif UnitExists(self:RunAttribute("PartyCycleUnit", index)) and not (skipSelf and index == 0)
+					and not (skipPets and index % 2 == 1) then
 				break
 			end
 		end

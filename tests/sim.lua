@@ -14,6 +14,7 @@ local ALLOWED = {
 	UnitExists = function(unit) return unitsThatExist[unit] and 1 or nil end,
 	UnitIsDead = function(unit) return unitsThatExist["dead-" .. unit] end,
 	abs = math.abs,
+	strfind = string.find,
 	GetActionInfo = function(slot)
 		if unitsThatExist["flyout" .. tostring(slot)] then
 			return "flyout", 77
@@ -1044,11 +1045,52 @@ do
 	Check("party frames: up", Step(-1), "partypet1")
 	ClearSoft()
 	Check("party frames: no soft target starts at the top again", Step(1), "player")
+	-- Skip pets: the pet frames are left out.
+	driver.attrs["fc-skipPets"] = 1
+	Check("skip pets: moves on", Step(1), "party3")
+	Step(1); Step(1)
+	Check("skip pets: after the last player wraps to the top", Step(1), "player")
+	driver.attrs["fc-skipPets"] = nil
+	ClearSoft()
+	Check("party frames: pets back, top again", Step(1), "player")
+	-- Skip yourself: the player's frame is left out while others are in the party.
+	driver.attrs["fc-skipSelf"] = 1
+	ClearSoft()
+	Check("skip self: starts below the player", Step(1), "party3")
+	Check("skip self: moves on", Step(1), "party1")
+	ClearSoft()
+	Check("skip self: up from nothing starts at the top, below the player", Step(-1), "party3")
+	Check("skip self: up past the top wraps to the bottom, not to the player", Step(-1), "partypet3")
+	unitsThatExist.party1 = nil
+	ClearSoft()
+	Check("skip self: alone, the player is kept", Step(1), "player")
+	unitsThatExist.party1 = true
+	driver.attrs["fc-skipSelf"] = nil
+	ClearSoft()
 	for index = 1, 6 do
 		unitsThatExist[driver.refs["uf" .. index].attrs.unit] = nil
 		driver.refs["uf" .. index] = nil
 	end
 	driver.attrs["fc-ufCount"] = 0
+	-- Without frames, the unit list: skip yourself starts on party1.
+	unitsThatExist.party1, unitsThatExist.party2 = true, true
+	driver.attrs["fc-skipSelf"] = 1
+	driver.attrs["fc-cycle-party"] = nil
+	ClearSoft()
+	Check("skip self list: starts on party1", Step(1), "party1")
+	Check("skip self list: moves on", Step(1), "party2")
+	Check("skip self list: wraps past the player", Step(1), "party1")
+	unitsThatExist.pet = true
+	driver.attrs["fc-skipSelf"], driver.attrs["fc-skipPets"] = nil, 1
+	driver.attrs["fc-cycle-party"] = nil
+	ClearSoft()
+	Check("skip pets list: player", Step(1), "player")
+	Check("skip pets list: past the pet", Step(1), "party1")
+	unitsThatExist.pet, driver.attrs["fc-skipPets"] = nil, nil
+	driver.attrs["fc-skipSelf"] = nil
+	unitsThatExist.party1, unitsThatExist.party2 = nil, nil
+	driver.attrs["fc-cycle-party"] = nil
+	ClearSoft()
 	driver.attrs["fc-ufCursor"] = nil
 	driver.attrs["fc-cycleFrame"] = nil
 	ClearSoft()

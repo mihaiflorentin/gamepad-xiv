@@ -156,6 +156,8 @@ The addon has its own settings window, with the settings on tabs in a column on 
 | Pair A / B: bottom row, top row | the sets of the two pairs | A: 1 and 2 (the default layout), B: 4 and 5 |
 | Form 1-4 uses | the game's stance bar or one of the 8 sets, for each form or stance | the game's stance bar |
 | L2 / R2 activation | Hold, Toggle or Mixed | Hold |
+| Skip pets in party targeting | D-pad up / down step through the players only, like FFXIV | off |
+| Skip yourself in party targeting | D-pad up / down step through the other party members only (in a party) | off |
 | D-pad left / right selection | Enemies only, Friendly only or Both: what D-pad left / right select | Friendly only |
 | D-pad party selection | Off, In a raid or Always: when the whole D-pad moves over the party and raid frames | In a raid |
 | Party targeting | Soft or Hard: whether party selection sets a temporary target or your real target | Hard |
