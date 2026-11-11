@@ -33,7 +33,7 @@ end
 -- Short on purpose: the rest is in the settings, a left click away.
 local ROW_HEIGHT = 22
 local DIVIDER_HEIGHT = 9
-local MENU_WIDTH = 210
+local MENU_WIDTH = 250
 local menu
 
 local function GetMenuRows()
@@ -54,6 +54,21 @@ local function GetMenuRows()
 				ns.AllowExperimentalCamera()
 				SetSetting("autoFace", not ns.db.autoFace)
 			end,
+		},
+		{ divider = true },
+		-- For bug reports: both are saved quietly and written by /reload.
+		{
+			text = "[Debug] Log this session",
+			isChecked = function() return ns.db.playLogOn end,
+			onClick = function() ns.TogglePlayLog() end,
+		},
+		{
+			text = "[Debug] Log UI",
+			onClick = function()
+				ns.PrintDebug(true)
+				ns.Print("Debug report saved quietly; /reload to write it.")
+			end,
+			closes = true,
 		},
 		{ divider = true },
 		{ text = "Hide minimap icon", onClick = function() SetMinimapShown(false) end, closes = true, dim = true },

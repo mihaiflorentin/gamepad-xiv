@@ -189,7 +189,8 @@ S.ApplyLayer = [[
 		local leftHeld = active == "L" or active == "WL"
 		self:SetBinding(priority, "PADRSHOULDER", (petChords and rightHeld) and "NONE" or "TARGETNEARESTENEMY")
 		self:SetBinding(priority, "PADLSHOULDER", (petChords and leftHeld) and "NONE" or "TARGETNEARESTENEMY")
-		self:SetBindingClick(priority, "PADBACK", "GamepadXIVEditToggle", "LeftButton")
+		-- Back is always bound at priority, like the base layer's, so one binding replaces the other.
+		self:SetBindingClick(true, "PADBACK", "GamepadXIVEditToggle", "LeftButton")
 		self:SetBindingClick(priority, "PADFORWARD", "GamepadXIVConfigToggle", "LeftButton")
 	elseif layer == "L1" then
 		-- FFXIV lands here while flying; dismounting in the air would drop the player.
@@ -202,7 +203,7 @@ S.ApplyLayer = [[
 		-- L1 + R1 does what is picked in the settings; by default the sheathe above.
 		self:SetBinding(priority, "PADRSHOULDER", self:GetAttribute("fc-l1r1") or sheathe)
 		self:SetBindingClick(priority, "PADLSHOULDER", "GamepadXIVL1", "LeftButton")
-		self:SetBinding(priority, "PADBACK", "TOGGLEUI")
+		self:SetBinding(true, "PADBACK", "TOGGLEUI")
 		self:SetBinding(priority, "PADFORWARD", "SCREENSHOT")
 	else
 		self:SetBindingClick(priority, "PADRSHOULDER", "GamepadXIVR1", "LeftButton")
@@ -212,12 +213,18 @@ S.ApplyLayer = [[
 		else
 			self:SetBindingClick(priority, "PADLSHOULDER", "GamepadXIVL1", "LeftButton")
 		end
-		-- Back cycles like FFXIV: open windows, else the quest tracker, then chat, then back to the game.
-		local backClick = self:GetAttribute("fc-backClick")
-		if backClick and backClick ~= "" then
-			self:SetBindingClick(priority, "PADBACK", backClick, "LeftButton")
+		-- Back cycles like FFXIV, as Input.lua decides each step: Forever's own Back focuses a window, then
+		-- each press is Forever's R2 to the next one, and once all were visited it opens chat to type in.
+		-- With nothing open it opens chat. Forever sets its own Back again after this addon's, so these
+		-- take priority.
+		local backAction = self:GetAttribute("fc-backAction")
+		if backAction == "chat" then
+			self:SetBinding(true, "PADBACK", "OPENCHAT")
+		elseif backAction == "next" then
+			-- Forever's own R2 while a window is focused: the next window.
+			self:SetBindingClick(true, "PADBACK", "InputFunctionBindingButton_PADRTRIGGER", "LeftButton")
 		else
-			self:SetBinding(priority, "PADBACK", "TOGGLEUIFOCUS")
+			self:ClearBinding("PADBACK")
 		end
 		self:SetBinding(priority, "PADFORWARD", "OPENRADIAL")
 	end

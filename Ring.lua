@@ -45,6 +45,9 @@ local BUILTINS = {
 	map = { label = Label("RADIAL_LABEL_QUEST_MAPS", "Quest & Maps"), atlas = "gamepad-radial-icon-quests", click = "QuestLogMicroButton" },
 	-- The Game Menu button only opens under the mouse, so A takes the game's own key binding instead.
 	menu = { label = Label("RADIAL_LABEL_GAME_MENU", "Game Menu"), atlas = "gamepad-radial-icon-gamemenu", binding = "TOGGLEGAMEMENU" },
+	-- Opens chat to type in, the game's own Open Chat key binding. Forever's own Chat entry focuses
+	-- chat for the controller instead, which addon code can't do without tainting it.
+	chat = { label = Label("RADIAL_LABEL_CHAT", "Chat"), atlas = "gamepad-radial-icon-chat", binding = "OPENCHAT" },
 	professions = { label = Label("RADIAL_LABEL_PROFESSIONS", "Professions"), atlas = "gamepad-radial-icon-professions", click = "ProfessionMicroButton" },
 	pvp = { label = Label("RADIAL_LABEL_PVP", "PvP"), atlas = "Crosshair_PVP_128", run = function() C_PvP.TogglePVP() end },
 	social = { label = Label("RADIAL_LABEL_SOCIAL", "Social"), atlas = "gamepad-radial-icon-social", click = { "QuickJoinToastButton", "FriendsMicroButton" } },
@@ -61,15 +64,15 @@ ns.RING_BUILTINS = BUILTINS
 -- The order the built-in entries are offered in when adding one.
 ns.RING_BUILTIN_ORDER = {
 	"character", "bags", "spellbook", "talents", "professions", "map", "collections", "lfd", "guild", "social",
-	"menu", "calendar", "time", "tracking", "pvp", "store", "legacy", "gxiv",
+	"chat", "menu", "calendar", "time", "tracking", "pvp", "store", "legacy", "gxiv",
 }
 
--- Forever's three main menu pages, counter-clockwise from east. Forever's Chat and Buffs entries
--- focus a frame for the controller, which addon code can't do without tainting it, so those
--- segments are free here. The settings entry takes a free segment of the third page.
+-- Forever's three main menu pages, counter-clockwise from east. Forever's Buffs entry focuses a
+-- frame for the controller, which addon code can't do without tainting it, so its segment is free
+-- here; Chat opens chat to type in. The settings entry takes a free segment of the third page.
 local DEFAULT_PAGES = {
 	{ "lfd", "legacy", { toybox = true }, "guild", "social", false, "tracking", "collections" },
-	{ "bags", "professions", "character", "talents", "map", false, "menu", "spellbook" },
+	{ "bags", "professions", "character", "talents", "map", "chat", "menu", "spellbook" },
 	{ "time", "calendar", "gxiv", false, "pvp", false, false, false },
 }
 ns.RING_DEFAULT_PAGES = #DEFAULT_PAGES
@@ -122,6 +125,22 @@ function ns.RingPages()
 			end
 		end
 		ns.db.ringSeeded = true
+		ns.db.ringChatSeeded = true
+	end
+	-- Chat came later: rings set up before it get it where Forever has it, when that segment is free.
+	if not ns.db.ringChatSeeded then
+		ns.db.ringChatSeeded = true
+		local found = false
+		for _, savedPage in ipairs(saved) do
+			for segment = 1, SEGMENTS do
+				local entry = savedPage.slots and savedPage.slots[segment]
+				found = found or (entry and entry.builtin == "chat")
+			end
+		end
+		local second = saved[2] and saved[2].slots
+		if not found and second and not second[6] then
+			second[6] = { builtin = "chat" }
+		end
 	end
 	if #saved == 0 then
 		saved[1] = { slots = {} }

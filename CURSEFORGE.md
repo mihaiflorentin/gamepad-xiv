@@ -184,28 +184,29 @@ Spells that open a list, such as Aspects, show a controller panel. Each choice g
 
 **R1 + R3** opens the addon's own ring, built like Forever's main menu ring. Forever's ring stays as it is.
 
-- It starts with Forever's three main menu pages and the same entries: Character, Bags, Spellbook, Talents, Professions, Quest & Maps, Game Menu, Group Finder, Guild, Social, Collections, Legacy, Tracking, Clock, Calendar and PvP, plus the Toy Box (in place of the Shop) and the Gamepad XIV settings. Chat and Buffs stay on Forever's own ring (Start).
+- It starts with Forever's three main menu pages and the same entries: Character, Bags, Spellbook, Talents, Professions, Quest & Maps, Game Menu, Group Finder, Guild, Social, Collections, Legacy, Tracking, Clock, Calendar and PvP, plus the Toy Box (in place of the Shop) and the Gamepad XIV settings. Chat opens chat to type in. Buffs stays on Forever's own ring (Start).
 - Point the right stick at an entry to highlight it, then press ✕ to use it. Letting go of the stick keeps the highlight. ○ closes the ring.
 - L1 / R1 (or D-pad ← / →) turn the pages. D-pad ↑ shows the emotes, D-pad ↓ sits or stands.
-- **In combat**, keep the stick pushed at the entry and press ✕: windows, abilities, items, macros, toys and equipment sets all work. Letting go of the stick doesn't use anything in combat, and the highlight goes away with it. The Game Menu and the Toy Box can't be opened in combat (Esc still opens the Game Menu); they show greyed out.
+- **In combat**, keep the stick pushed at the entry and press ✕: windows, abilities, items, macros, toys and equipment sets all work. Letting go of the stick doesn't use anything in combat, and the highlight goes away with it. The Game Menu, Chat and the Toy Box can't be opened from the ring in combat (Esc still opens the Game Menu, Enter still opens chat); they show greyed out.
 - The Gamepad XIV settings entry is always there, on the third page.
 - Under the wheel, the D-pad shows what up and down do: the emotes and sit / stand. The emotes open on Forever's eight; L1 / R1 page through every other emote in the game, A to Z.
-- The Game Menu entry opens with ✕ (it is the game's own Esc binding, which can't run on letting go of the stick).
+- The Game Menu and Chat entries open with ✕ (they are the game's own key bindings, which can't run on letting go of the stick).
 - **Use an entry by letting go of the stick** (Ring tab): point at an entry and let go to use it, like Forever's own ring. On by default; turned off, pointing only highlights and ✕ uses it. ✕ works either way.
 - Customize it in the **Ring** tab of the settings. Every segment of every page can be changed, Forever's entries included. Pick **+ Add** or **Change...** and choose from a list with a search box: the game's windows, your installed addons (found through their minimap button or their slash command), the Gamepad XIV settings, and **Select a toy**, **Select a macro**, **Select an item**, **Select an ability** (always the highest rank), **Select an emote** and **Select an equipment** (your Equipment Manager sets). Each opens a window of its own with a search box. Select a toy also has the **Toy Box**: one entry that opens all your toys on the ring, 8 a page. Searching the main list also finds what's inside them. Something you no longer have (an addon turned off, an item used up) stays on the ring, greyed out. For anything else, **Advanced: slash command** at the bottom takes a command of your own. Add, rename and remove as many pages as you like; **Reset the ring** brings back Forever's pages.
 - Start stays Forever's own menu; the game doesn't let addons take it over. You can move the ring to another button in the **Input** tab: pick **Gamepad XIV ring** for it.
 
 ### Back button
 
-- **Back** moves between open windows.
-- With **no windows open**, Back focuses the **quest tracker**, then **chat**, a bit like FFXIV's HUD cycling. **○** returns to the game.
+- **Back** cycles like FFXIV: it focuses the window you used last, then each open window in turn, then opens chat so you can type.
+- With **no windows open**, Back opens chat, instead of Forever's "No interface frame to focus".
+- Loot rolls, popups and combat keep Forever's own Back.
 
 ### Looking For Group
 
 With the Looking For Group window open (a hint under it shows the buttons):
 
 - **△** refreshes the list.
-- **✕** on a group whispers its leader. By default it asks first: **✕** sends, **△** cancels. The message is set in the settings (General tab, **Group finder message**), and `<level>`, `<class>`, `<name>`, `<leader>` and `<activity>` in it are filled in. The default is "Hello! Invite me for \<activity\> - \<level\> \<class\>." **Ask before whispering a group** turns the question off.
+- **✕** on a group whispers its leader. By default it asks first: **✕** sends, **△** cancels. The message is set in the settings (General tab, **Group finder message**), and `<level>`, `<class>`, `<name>`, `<leader>`, `<activity>` and `<roles>` in it are filled in. `<roles>` is the roles you ticked in Looking For Group, such as Healer/DPS, and nothing when none are ticked. The default is "Hello! Invite me for \<activity\> - \<level\> \<class\> \<roles\>." **Ask before whispering a group** turns the question off.
 - **□** opens the group's menu (Send Message, Group Invite, Report). It now shows next to the window, also when opened with a right click.
 
 These work out of combat; in combat the window works as usual.
@@ -264,7 +265,7 @@ Each theme also picks a **background**, **background border**, **slot background
 
 ### Party highlight
 
-Choose how the selected party or raid member's frame is marked (outline, thick outline, fill or pulse), its color, and an optional arrow beside party frames.
+Choose how the selected party or raid member's frame is marked (outline, thick outline, fill, pulse or none), its color, and an optional arrow beside party frames.
 
 ### L3 and R3
 
@@ -272,7 +273,7 @@ On the **Input** tab, choose what pressing each stick does: draw / sheathe weapo
 
 ### Layout
 
-- Drag each bar anywhere with **Move bars** (`/gxiv move`), or Shift + drag to move them all together. The interact prompt and the **loot roll window** can be moved the same way.
+- Drag the crossbar anywhere with **Move bars** (`/gxiv move`). The bars move together; turn on **Move bars separately** to drag each one on its own (Shift + drag still moves them all). The interact prompt and the **loot roll window** can be moved the same way.
 - Set the size, the gap between button groups, and how much the other bars dim.
 - Show your **controller's button art** on every slot.
 - Show abilities **in red when your target is out of range**.
@@ -295,7 +296,7 @@ Open it with **L2 + Start**, `/gxiv config`, the minimap icon, or **Options > Ad
 ## Minimap icon
 
 - **Left click:** settings
-- **Right click:** a short menu: Settings, Move bars, Tutorial, Enable layout, Face target and Hide minimap icon
+- **Right click:** a short menu: Settings, Move bars, Tutorial, Enable layout, Face target, [Debug] Log this session, [Debug] Log UI and Hide minimap icon
 - **Drag:** move it around the minimap
 
 Hidden it by mistake? Type `/gxiv minimap`.
@@ -317,7 +318,8 @@ Hidden it by mistake? Type `/gxiv minimap`.
 - `/gxiv exhb LR 5 R`: choose what Expanded Hold shows (here: L2 then R2 shows set 5, right side)
 - `/gxiv minimap`: show or hide the minimap icon
 - `/gxiv priority on`: use this if R2 does not change the bar
-- `/gxiv debug`: record button presses for 10 seconds, for bug reports
+- `/gxiv debug`: record button presses for 10 seconds, for bug reports (`/gxiv debug quiet` keeps it out of chat)
+- `/gxiv log`: a quiet log of a dungeon or raid (combat, casts, error messages, party selection) for bug reports; nothing goes to chat
 - `/gxiv lfglog`: record what the Looking For Group buttons and item moves do, for bug reports (run it again to stop)
 
 ---

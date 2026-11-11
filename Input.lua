@@ -470,6 +470,7 @@ local function CreateL1Release()
 		end
 		upCount = upCount + 1
 		if upCount >= 2 then
+			ns.PlayLog("L1 layer stuck with L1 up: released")
 			upCount = 0
 			SecureHandlerExecute(driver, [[
 				if self:GetAttribute("fc-layer") == "L1" then
@@ -574,69 +575,84 @@ local function FixEquipmentSetList()
 	end)
 end
 
--- Back cycles through the interface like FFXIV. Forever's Back only moves between open windows, and
--- chat and the quest tracker are not windows, so with nothing open it said "No interface frame to
--- focus". Forever's shortcut bar has buttons that focus the tracker and chat; this addon's crossbars
--- cover that bar, so Back is pointed at those buttons instead. The binding presses them, so they run
--- as Forever's own code and nothing of this addon touches the focus manager. In combat Back is
--- Forever's own again.
-local function CreateBackCycle()
-	local TRACKER_BUTTON, CHAT_BUTTON = "GamepadXIVShortcutTracker", "GamepadXIVShortcutChat"
-	local bar = GamepadMainActionBarFrame and GamepadMainActionBarFrame.PageUnit
-		and GamepadMainActionBarFrame.PageUnit.ShortcutsActionBar
-	if not (bar and bar.dpadTopButton and bar.dpadBottomButton) then
-		return
-	end
-	-- A binding clicks a button by its global name; these buttons have none of their own.
-	_G[TRACKER_BUTTON] = bar.dpadTopButton
-	_G[CHAT_BUTTON] = bar.dpadBottomButton
+-- Back cycles through the open windows, then chat, like FFXIV. Forever's Back only focuses the window
+-- used last, or lets go of it, and moves between windows with L2 / R2. So once a window is focused,
+-- Back is pointed at Forever's own R2 button until every open window was visited, then at the game's
+-- Open Chat binding. With nothing open, it opens chat; Forever only says "No interface frame to focus".
+-- Only bindings change: Forever's focus manager is only read, and its buttons run from the press.
+-- In combat Back is Forever's own, for loot rolls and popups.
+local BACK_POPUPS = { "GamepadGroupLootRollFrame", "GroupLootFrame1", "GroupLootFrame2", "GroupLootFrame3", "GroupLootFrame4",
+	"StaticPopup1", "StaticPopup2", "StaticPopup3", "StaticPopup4", "LFGDungeonReadyPopup", "LFGDungeonReadyDialog",
+	"LFGInvitePopup", "LFGListInviteDialog", "LFGListApplicationDialog", "ReadyCheckFrame", "RolePollPopup", "PVPReadyDialog" }
 
-	local function TrackerHasContents()
-		local tracker = ObjectiveTrackerFrame
-		return tracker and tracker:IsShown() and (not QuestObjectiveTracker or not QuestObjectiveTracker.HasContents
-			or QuestObjectiveTracker:HasContents())
-	end
-
-	local function GetBackClick()
+local function CreateBackChat()
+	local visited = {}
+	-- After chat, the next Back is Forever's own, which lets go of the windows: the end of the cycle.
+	local afterChat = false
+	local function BackAction()
 		local manager = GamepadMode and GamepadMode.FrameControlsManager
 		if not manager then
 			return ""
 		end
-		if manager.isUIFocused then
-			if manager.focusedFrame == ObjectiveTrackerFrame then
-				return CHAT_BUTTON
+		if ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow() then
+			wipe(visited)
+			afterChat = manager.isUIFocused and true or false
+			return ""
+		end
+		-- Forever shows loot rolls and popups without focus; its Back is what focuses them.
+		for _, name in ipairs(BACK_POPUPS) do
+			local frame = _G[name]
+			if frame and frame.IsVisible and frame:IsVisible() then
+				wipe(visited)
+				return ""
 			end
+		end
+		local shown = manager.shownFrames or {}
+		if not manager.isUIFocused then
+			wipe(visited)
+			afterChat = false
+			return #shown == 0 and "chat" or ""
+		end
+		if afterChat then
 			return ""
 		end
-		if manager.shownFrames and #manager.shownFrames > 0 then
+		local focused = manager.focusedFrame
+		if not focused or not tContains(shown, focused) then
 			return ""
 		end
-		return TrackerHasContents() and TRACKER_BUTTON or CHAT_BUTTON
+		visited[focused] = true
+		for _, frame in ipairs(shown) do
+			if not visited[frame] then
+				return "next"
+			end
+		end
+		return "chat"
 	end
-
-	local watcher = CreateFrame("Frame")
-	local elapsedSince = 0
-	local function SetBackClick(click)
-		if click ~= (driver:GetAttribute("fc-backClick") or "") then
-			driver:SetAttribute("fc-backClick", click)
+	local function Set(value)
+		if driver:GetAttribute("fc-backAction") ~= value then
+			ns.PlayLog("Back:", value == "" and "Forever's" or value)
+			driver:SetAttribute("fc-backAction", value)
 			if ns.IsActive() then
 				SecureHandlerExecute(driver, [[ self:RunAttribute("ApplyLayer") ]])
 			end
 		end
 	end
-	-- Bindings freeze in combat, and loot rolls and popups need Forever's own Back there, so it gets
-	-- Back for the whole fight. Bindings can still change while this event runs.
+	local watcher = CreateFrame("Frame")
+	-- Bindings freeze in combat; they can still change while this event runs.
 	watcher:RegisterEvent("PLAYER_REGEN_DISABLED")
 	watcher:SetScript("OnEvent", function()
-		SetBackClick("")
+		wipe(visited)
+		afterChat = false
+		Set("")
 	end)
+	local elapsedSince = 0
 	watcher:SetScript("OnUpdate", function(_, elapsed)
 		elapsedSince = elapsedSince + elapsed
 		if elapsedSince < 0.1 or InCombatLockdown() then
 			return
 		end
 		elapsedSince = 0
-		SetBackClick(GetBackClick())
+		Set(BackAction())
 	end)
 end
 
@@ -873,13 +889,16 @@ local function CreateZoomWatcher()
 
 	watcher:SetScript("OnUpdate", function(_, elapsed)
 		local mode = ns.db.l1RightStick
-		local active = ns.l1Held and ns.IsActive() and mode ~= "camera"
+		local state = GetPadState()
+		-- The layer can outlive L1 (a window took its release; in combat it can't be reset), so the
+		-- camera only stays frozen while L1 is really down.
+		local active = ns.l1Held and ns.IsActive() and mode ~= "camera" and not (state and not PadDown(state, "PADLSHOULDER"))
 		-- The addon's ring uses the right stick too, so the camera holds still while it is open.
 		SetFrozen((active or ns.ringOpen) and true or false)
 		if not active then
 			return
 		end
-		local y = GetCameraStickY(GetPadState())
+		local y = GetCameraStickY(state)
 		local push = (math.abs(y) - DEAD_ZONE) / (1 - DEAD_ZONE)
 		if push <= 0 then
 			return
@@ -913,10 +932,12 @@ function ns.FormConditions()
 	return conditions .. "0"
 end
 
-function ns.PrintDebug()
+function ns.PrintDebug(quiet)
 	ns.db.debugLog = {}
 	local function Report(...)
-		ns.Print(...)
+		if not quiet then
+			ns.Print(...)
+		end
 		local parts = {}
 		for i = 1, select("#", ...) do
 			parts[i] = tostring(select(i, ...))
@@ -1636,8 +1657,8 @@ function ns.CreateInput()
 	EnableChatLinks()
 	FixEquipmentSetList()
 	CreateMapPinChord()
+	CreateBackChat()
 	CreateL1Release()
-	CreateBackCycle()
 	KeepChatOpenForLinks()
 	HookInteractPrompt()
 	CreateInteractHud()
@@ -1754,15 +1775,27 @@ function ns.CreateInput()
 	end
 	-- The Game Menu opened from the ring (A pressed its key binding): the ring closes and gives its
 	-- keys back. Only out of combat, as A only takes the binding then.
+	-- The chat box, opened by the ring's Chat entry, does the same.
+	local function CloseRingOnShow()
+		if ns.ringOpen and not InCombatLockdown() then
+			driver:SetAttribute("fc-ring", 0)
+			driver:SetAttribute("fc-ringPickBinding", nil)
+			SecureHandlerExecute(driver, [[ self:RunAttribute("ApplyLayer") ]])
+			ns.OnRing("close")
+		end
+	end
 	if GameMenuFrame then
-		GameMenuFrame:HookScript("OnShow", function()
-			if ns.ringOpen and not InCombatLockdown() then
-				driver:SetAttribute("fc-ring", 0)
-				driver:SetAttribute("fc-ringPickBinding", nil)
-				SecureHandlerExecute(driver, [[ self:RunAttribute("ApplyLayer") ]])
-				ns.OnRing("close")
-			end
-		end)
+		GameMenuFrame:HookScript("OnShow", CloseRingOnShow)
+	end
+	-- The chat box can stay shown between messages, so it is its typing focus that counts.
+	if ChatEdit_ActivateChat then
+		hooksecurefunc("ChatEdit_ActivateChat", CloseRingOnShow)
+	end
+	for i = 1, NUM_CHAT_WINDOWS or 10 do
+		local editBox = _G["ChatFrame" .. i .. "EditBox"]
+		if editBox then
+			editBox:HookScript("OnEditFocusGained", CloseRingOnShow)
+		end
 	end
 	local ringKeys = {
 		PAD2 = "close", PADRSTICK = "close", PADDLEFT = "prev", PADDRIGHT = "next", PADLSHOULDER = "prev", PADRSHOULDER = "next", PADDUP = "emotes",

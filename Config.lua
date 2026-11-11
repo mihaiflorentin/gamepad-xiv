@@ -24,6 +24,7 @@ local function HighlightChoices()
 		{ "thick", "Thick outline" },
 		{ "fill", "Fill" },
 		{ "pulse", "Pulse" },
+		{ "none", "None" },
 	}
 end
 
@@ -123,7 +124,9 @@ local function BuildTabs()
 				{ type = "check", key = "enabled", label = "Enable layout",
 					tip = "Replaces Forever's action bar with the cross hotbars. Turn off to get Forever's bar back. Only works with the game's gamepad UI on." },
 				{ type = "action", label = "Bar positions", button = "Move bars", run = CloseAnd(function() ns.ToggleMove() end),
-					tip = "Unlocks the bars so you can drag each one anywhere on the screen with the mouse." },
+					tip = "Unlocks the bars so you can drag them anywhere on the screen with the mouse." },
+				{ type = "check", key = "moveBarsSeparately", label = "Move bars separately",
+					tip = "Off: Move bars carries all four bars together. On: each bar is dragged on its own; Shift + drag still moves them all." },
 				{ type = "action", label = "Tutorial", button = "Start the tutorial", run = CloseAnd(function() ns.StartTutorial() end),
 					tip = "A short tutorial of the buttons, with a controller showing what to press. It shows once by itself after installing." },
 				{ type = "spacer", label = "" },
@@ -151,7 +154,7 @@ local function BuildTabs()
 				{ type = "action", label = "Group finder message", button = "Edit message",
 					run = function()
 						OpenTextDialog("Group finder message", "The whisper {PAD1} sends to a group's leader in Looking For Group", ns.db.lfgMessage,
-							"Filled in when sent: <level>, <class>, <name> (yours), <leader> and <activity>. A keyboard or the on-screen keyboard is needed to type.",
+							"Filled in when sent: <level>, <class>, <name> (yours), <leader>, <activity> and <roles> (the roles ticked in Looking For Group, or nothing). A keyboard or the on-screen keyboard is needed to type.",
 							function(text) ns.db.lfgMessage = text; UpdateRows() end)
 					end,
 					tip = function() return "In Looking For Group, {PAD1} on a group whispers this to its leader:\n" .. ns.db.lfgMessage end },
@@ -180,7 +183,7 @@ local function BuildTabs()
 				{ type = "spacer", label = "" },
 				{ type = "header", label = "PARTY AND RAID FRAMES" },
 				{ type = "choice", key = "partyHighlight", label = "Party highlight", choices = HighlightChoices,
-					tip = "How the selected party member's frame is marked. Outline: a thin gold border. Thick outline: a wide one. Fill: a gold tint with a border. Pulse: a border that fades in and out." },
+					tip = "How the selected party member's frame is marked. Outline: a thin gold border. Thick outline: a wide one. Fill: a gold tint with a border. Pulse: a border that fades in and out. None: no mark on the frame; the party marker still shows if it is on." },
 				{ type = "choice", key = "partyMarker", label = "Party marker",
 					choices = function() return { { "left", "Left" }, { "right", "Right" }, { "off", "Off" } } end,
 					tip = "A gold arrow outside the selected party frame, on the side you choose, pointing at it." },

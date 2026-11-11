@@ -125,8 +125,34 @@ local function ActivityName(info)
 	return (activity.shortName and activity.shortName ~= "" and activity.shortName) or activity.fullName or ""
 end
 
--- The saved message with <level>, <class>, <name>, <leader> and <activity> filled in. Other <words>
--- stay as typed.
+-- The roles ticked in Looking For Group, such as "Healer/DPS"; empty with none ticked.
+local function RolesText()
+	local tank, healer, dps
+	if C_LFGList and C_LFGList.GetRoles then
+		local roles = C_LFGList.GetRoles()
+		if type(roles) == "table" then
+			tank, healer, dps = roles.tank, roles.healer, roles.dps
+		end
+	elseif GetLFGRoles then
+		local _
+		_, tank, healer, dps = GetLFGRoles()
+	end
+	local names = {}
+	if tank then
+		tinsert(names, "Tank")
+	end
+	if healer then
+		tinsert(names, "Healer")
+	end
+	if dps then
+		tinsert(names, "DPS")
+	end
+	return table.concat(names, "/")
+end
+
+-- The saved message with <level>, <class>, <name>, <leader>, <activity> and <roles> filled in. Other
+-- <words> stay as typed. A token that comes out empty, such as <roles> with none ticked, leaves no
+-- stray space before punctuation or doubled spaces behind.
 function ns.LfgMessage(info)
 	local values = {
 		level = UnitLevel("player"),
@@ -134,11 +160,18 @@ function ns.LfgMessage(info)
 		name = UnitName("player"),
 		leader = info and info.leaderName and Ambiguate(info.leaderName, "short") or "",
 		activity = info and ActivityName(info) or "",
+		roles = RolesText(),
 	}
 	local text = (ns.db.lfgMessage or ""):gsub("<(%a+)>", function(token)
 		local value = values[token:lower()]
-		return value ~= nil and tostring(value) or nil
+		if value == nil then
+			return nil
+		end
+		value = tostring(value)
+		-- An empty token is marked, so only the space it leaves is removed below.
+		return value == "" and "\001" or value
 	end)
+	text = text:gsub("%s*\001", "")
 	return strtrim(text):sub(1, 255)
 end
 

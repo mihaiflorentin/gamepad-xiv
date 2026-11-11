@@ -618,7 +618,7 @@ local function FindUnitFrame(unit)
 end
 
 -- Highlight on the selected party or raid member's frame. Styles: "outline" (thin gold border), "thick"
--- (wide border), "fill" (gold tint with a border) and "pulse" (a border that fades in and out).
+-- (wide border), "fill" (gold tint with a border), "pulse" (a border that fades in and out) and "none".
 -- Party frames can also get a bobbing arrow outside them, on the left or the right.
 function ns.CreateSelectionHighlight()
 	local highlight = CreateFrame("Frame", nil, UIParent)
@@ -711,6 +711,7 @@ local function ApplyHighlight(highlight, frame, style, side)
 	highlight.marker.arrow:SetVertexColor(red, green, blue)
 	local thickness = (style == "thick") and 4 or (style == "pulse") and 3 or 2
 	for _, line in ipairs(highlight.edges) do
+		line:SetShown(style ~= "none")
 		if line.horizontal then
 			line:SetHeight(thickness)
 		else
@@ -747,6 +748,9 @@ end
 
 -- Called from the secure driver: unit is "" when no temporary target is set.
 function ns.ShowSoftTarget(unit)
+	if ns.PlayLog then
+		ns.PlayLog("soft target:", unit == "" and "cleared" or unit)
+	end
 	local root = ns.root
 	ns.softUnit = unit
 	root.softBorder:Hide()
@@ -827,8 +831,8 @@ function ns.SetBarShown(shown)
 	end
 end
 
--- Move mode: a handle over each side, and one in the middle that carries all of them.
--- Shift + drag on any handle also carries all of them.
+-- Move mode: a handle over each side, and one in the middle that carries all of them. The bars move
+-- together unless "Move bars separately" is on; Shift + drag on a bar's handle carries all of them too.
 local function GetWholePosition()
 	return ns.db.x, ns.db.y
 end
@@ -837,7 +841,7 @@ local function SetWholePosition(x, y)
 	ns.db.x, ns.db.y = x, y
 end
 
-local function CreateMover(anchor, width, height, labelText, strata, getPosition, setPosition, scaleFrame)
+local function CreateMover(anchor, width, height, labelText, strata, getPosition, setPosition, scaleFrame, isBar)
 	local mover = CreateFrame("Frame", nil, UIParent)
 	mover:SetFrameStrata(strata)
 	mover:SetSize(width, height)
@@ -862,7 +866,7 @@ local function CreateMover(anchor, width, height, labelText, strata, getPosition
 		if InCombatLockdown() then
 			return
 		end
-		local carryAll = IsShiftKeyDown()
+		local carryAll = IsShiftKeyDown() or (isBar and not ns.db.moveBarsSeparately)
 		local get, set = carryAll and GetWholePosition or getPosition, carryAll and SetWholePosition or setPosition
 		local startCursorX, startCursorY = GetCursorPosition()
 		local startX, startY = get()
@@ -893,7 +897,7 @@ local function CreateMovers()
 		local side = ns.root.sides[row]
 		movers[row] = CreateMover(side, side:GetWidth(), side:GetHeight(), NAMES[row], "DIALOG",
 			function() return db[keyX], db[keyY] end,
-			function(x, y) db[keyX], db[keyY] = x, y end)
+			function(x, y) db[keyX], db[keyY] = x, y end, nil, true)
 	end
 	if ns.interactHud then
 		movers.prompt = CreateMover(ns.interactHud, 280, 46, "INTERACT PROMPT", "DIALOG",

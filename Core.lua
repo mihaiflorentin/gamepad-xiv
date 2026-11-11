@@ -76,7 +76,7 @@ ns.DEFAULTS = {
 	dpadTarget = "friend", -- "enemy", "friend" or "both": what D-pad left and right select
 	dpadParty = "raid", -- "off", "raid" or "always": when the whole D-pad selects party members
 	partyTargeting = "hard", -- "soft" or "hard": party selection sets a soft target or the real one
-	lfgMessage = "Hello! Invite me for <activity> - <level> <class>.", -- whispered to a group's leader with A in Looking For Group
+	lfgMessage = "Hello! Invite me for <activity> - <level> <class> <roles>.", -- whispered to a group's leader with A in Looking For Group
 	lfgConfirm = true, -- ask before that whisper is sent
 	r1Tap = true, -- a tap of R1 swaps the bottom and top rows between two pairs of sets, like FFXIV
 	r1TapTop = true, -- the tap also swaps the top row
@@ -85,7 +85,7 @@ ns.DEFAULTS = {
 	r1TapBottomB = 4, -- pair B: sets no other default uses (3 is the L2 + R2 bars)
 	r1TapTopB = 5,
 	openBagsWhenNeeded = false, -- experimental: open the bags for a spell that targets an item, and at the mailbox
-	partyHighlight = "fill", -- "outline", "thick", "fill" or "pulse": how the selected party member's frame is marked
+	partyHighlight = "fill", -- "outline", "thick", "fill", "pulse" or "none": how the selected party member's frame is marked
 	raidHighlight = "thick", -- the same, for raid frames
 	partyMarker = "left", -- "off", "left" or "right": an arrow outside the selected party frame
 	highlightColor = "gold", -- a key of ns.HIGHLIGHT_COLORS: the color of the highlight and the marker
@@ -95,11 +95,13 @@ ns.DEFAULTS = {
 	formSet2 = 6,
 	formSet3 = 7,
 	formSet4 = 8,
-	-- Each side's centre relative to the whole crossbar, moved with /gxiv move.
-	posLx = -158, posLy = 0,
-	posRx = 158, posRy = 0,
-	posWLx = -243, posWLy = 124,
-	posWRx = 243, posWRy = 124,
+	-- Each side's centre relative to the whole crossbar, moved with /gxiv move: the top bars sit
+	-- closer in and lower than they used to, overlapping the bottom bars' outer groups.
+	posLx = -108, posLy = 0,
+	posRx = 108, posRy = 0,
+	posWLx = -164, posWLy = 72,
+	posWRx = 164, posWRy = 72,
+	moveBarsSeparately = false, -- Move bars carries all four bars together; on, each bar has its own handle
 }
 
 function ns.SideOf(set, isRight)
@@ -223,7 +225,7 @@ local function LogError(message, tainted)
 	for _, entry in ipairs(log) do
 		if entry.message == message then
 			entry.count = entry.count + 1
-			entry.time = date("%H:%M:%S")
+			entry.time = date("%Y-%m-%d %H:%M:%S")
 			entry.stack = debugstack(3, 30, 0)
 			entry.tainted = tainted or entry.tainted
 			return
@@ -232,7 +234,7 @@ local function LogError(message, tainted)
 	if #log >= MAX_LOGGED_ERRORS then
 		tremove(log, 1)
 	end
-	tinsert(log, { message = message, count = 1, time = date("%H:%M:%S"), stack = debugstack(3, 30, 0), tainted = tainted })
+	tinsert(log, { message = message, count = 1, time = date("%Y-%m-%d %H:%M:%S"), stack = debugstack(3, 30, 0), tainted = tainted })
 end
 
 -- Names the values on Forever's chat and binding path that addon code has written, so a blocked
@@ -286,6 +288,98 @@ do
 			pcall(LogError, event .. ": " .. tostring(action), scanned and tainted or "scan failed: " .. tostring(tainted))
 		end
 	end)
+end
+
+-- /gxiv log: a quiet log of play, saved to playLog and never printed, for finding what went wrong in
+-- a dungeon or raid. Unit names can be secret values in combat, so only unit tokens and spell IDs
+-- go in. Every write is protected: the log must never break play.
+local MAX_PLAY_LOG = 2000
+
+function ns.PlayLog(...)
+	local db = ns.db
+	if not (db and db.playLogOn) then
+		return
+	end
+	local count = select("#", ...)
+	local parts = { (date("%H:%M:%S")) }
+	for i = 1, count do
+		local ok, text = pcall(tostring, (select(i, ...)))
+		parts[#parts + 1] = ok and text or "?"
+	end
+	local ok, line = pcall(table.concat, parts, " ")
+	db.playLog = db.playLog or {}
+	if #db.playLog >= MAX_PLAY_LOG then
+		tremove(db.playLog, 1)
+	end
+	tinsert(db.playLog, ok and line or "?")
+end
+
+local function LayerState()
+	local driver = _G.GamepadXIVDriver
+	if not driver then
+		return "no driver"
+	end
+	return "layer " .. tostring(driver:GetAttribute("fc-layer")) .. " soft '" .. tostring(driver:GetAttribute("fc-soft"))
+		.. "' back '" .. tostring(driver:GetAttribute("fc-backAction")) .. "' ring " .. tostring(driver:GetAttribute("fc-ring"))
+		.. " clear " .. tostring(driver:GetAttribute("fc-clear")) .. " yield " .. tostring(driver:GetAttribute("fc-yield"))
+end
+
+do
+	local events = CreateFrame("Frame")
+	for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "UI_ERROR_MESSAGE", "UNIT_SPELLCAST_FAILED",
+			"UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_INTERRUPTED", "GROUP_ROSTER_UPDATE", "START_LOOT_ROLL",
+			"PLAYER_TARGET_CHANGED", "PLAYER_DEAD", "PLAYER_UNGHOST", "ZONE_CHANGED_NEW_AREA" }) do
+		pcall(events.RegisterEvent, events, event)
+	end
+	events:SetScript("OnEvent", function(_, event, ...)
+		if not (ns.db and ns.db.playLogOn) then
+			return
+		end
+		pcall(function(...)
+			if event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_DEAD" then
+				ns.PlayLog(event, LayerState())
+			elseif event == "UI_ERROR_MESSAGE" then
+				local _, message = ...
+				ns.PlayLog("error message:", message, "|", LayerState())
+			elseif event == "UNIT_SPELLCAST_FAILED" or event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_SUCCEEDED" then
+				local unit, _, spellID = ...
+				if unit == "player" then
+					local target = UnitExists("target") and (UnitIsUnit("target", "player") and "self" or UnitCanAttack("player", "target")
+						and "enemy" or "friend") or "none"
+					ns.PlayLog(event == "UNIT_SPELLCAST_SUCCEEDED" and "cast" or event, spellID, "target", target, "|", LayerState())
+				end
+			elseif event == "GROUP_ROSTER_UPDATE" then
+				ns.PlayLog("group:", GetNumGroupMembers(), IsInRaid() and "raid" or "party")
+			elseif event == "PLAYER_TARGET_CHANGED" then
+				local kind = not UnitExists("target") and "none" or UnitIsUnit("target", "player") and "self"
+					or UnitCanAttack("player", "target") and "enemy" or "friend"
+				-- Which group member, as party selection on Hard sets the real target.
+				local member = ""
+				if kind == "friend" then
+					local prefix, count = IsInRaid() and "raid" or "party", IsInRaid() and 40 or 4
+					for i = 1, count do
+						for _, unit in ipairs({ prefix .. i, prefix .. "pet" .. i }) do
+							if member == "" and UnitExists(unit) and UnitIsUnit(unit, "target") then
+								member = unit
+							end
+						end
+					end
+				end
+				ns.PlayLog("target:", kind, member)
+			else
+				ns.PlayLog(event, ...)
+			end
+		end, ...)
+	end)
+end
+
+function ns.TogglePlayLog()
+	ns.db.playLogOn = not ns.db.playLogOn
+	if ns.db.playLogOn then
+		ns.db.playLog = {}
+		ns.PlayLog("log on", GetZoneText and GetZoneText(), LayerState())
+	end
+	ns.Print("Play log", ns.db.playLogOn and "on, quietly. /gxiv log again stops it; /reload writes it." or "off.")
 end
 
 function ns.Print(...)
@@ -370,6 +464,21 @@ local MIGRATIONS = {
 	function(db)
 		db.r1Tap = true
 	end,
+	-- 10: the bars' default layout is closer together. Bars still where the old default put them move.
+	function(db)
+		if db.posLx == -158 and db.posLy == 0 and db.posRx == 158 and db.posRy == 0
+				and db.posWLx == -243 and db.posWLy == 124 and db.posWRx == 243 and db.posWRy == 124 then
+			for _, key in ipairs({ "posLx", "posLy", "posRx", "posRy", "posWLx", "posWLy", "posWRx", "posWRy" }) do
+				db[key] = ns.DEFAULTS[key]
+			end
+		end
+	end,
+	-- 11: the group finder message also names the roles ticked in Looking For Group.
+	function(db)
+		if db.lfgMessage == "Hello! Invite me for <activity> - <level> <class>." then
+			db.lfgMessage = "Hello! Invite me for <activity> - <level> <class> <roles>."
+		end
+	end,
 }
 
 local function RunMigrations(db)
@@ -392,6 +501,7 @@ local function InitDB()
 	GamepadXIVDB.startKey = nil -- left by the menu button experiment
 	GamepadXIVDB.startKeyLog = nil
 	GamepadXIVDB.formLog = nil -- left by a temporary debug session
+	GamepadXIVDB.backLog = nil -- left by the Back button debug sessions
 	-- Themes that were removed fall back to Round.
 	local removed = { sleek = true, rounded = true, slate = true, halo = true, neon = true, glass = true }
 	if removed[GamepadXIVDB.theme] then
@@ -418,7 +528,8 @@ local SLASH_HELP = {
 	"/gxiv tutorial - a short tutorial of the buttons",
 	"/gxiv move - drag the bars around the screen (Shift + drag moves all of them; also L2/R2 + Back)",
 	"/gxiv minimap - shows or hides the minimap icon",
-	"/gxiv debug - reports bindings, L1 and the right stick",
+	"/gxiv debug - reports bindings, L1 and the right stick (/gxiv debug quiet: saved only, not printed)",
+	"/gxiv log - a quiet log of combat, casts, error messages and party selection, for bug reports",
 	"/gxiv reset - put the bars back in their default place",
 	"/gxiv wxhb <L|R> <set> <L|R> - side shown by a double tap, e.g. /gxiv wxhb R 4 L",
 	"/gxiv exhb <LR|RL> <set> <L|R> - side shown by L2>R2 or R2>L2",
@@ -461,9 +572,16 @@ local function HandleSlash(message)
 		ns.db.minimapShown = not ns.db.minimapShown
 		ns.UpdateMinimapButton()
 	elseif command == "debug" then
-		ns.PrintDebug()
+		-- "/gxiv debug quiet" only saves the report, for when chat should stay clean (a dungeon).
+		local quiet = a == "quiet"
+		ns.PrintDebug(quiet)
+		if quiet then
+			ns.Print("Debug report saved quietly; /reload to write it.")
+		end
 	elseif command == "ringlog" then
 		ns.ToggleRingLog()
+	elseif command == "log" then
+		ns.TogglePlayLog()
 	elseif command == "lfglog" then
 		ns.ToggleLfgLog()
 	elseif command == "wxhb" then
