@@ -277,7 +277,7 @@ On the **Input** tab, choose what pressing each stick does: draw / sheathe weapo
 - Set the size, the gap between button groups, and how much the other bars dim.
 - Show your **controller's button art** on every slot.
 - Show abilities **in red when your target is out of range**.
-- Keep the top bars always visible, or only show them when selected.
+- Keep the top bars always visible, only show them when selected, or turn each one off so a double tap never selects it.
 
 ---
 

@@ -268,6 +268,19 @@ Wait(R2, 3)
 driver.attrs["fc-hide-WR"] = 0
 driver:RunAttribute("ApplyLayer")
 
+-- A top bar turned off: a double tap is two plain presses of the bottom bar.
+driver.attrs["fc-noDouble-R"] = 1
+R2.press(); R2.release(); R2.press()
+Check("top bar off: double tap stays on the bottom bar", Layer(), "R")
+R2.release()
+Check("top bar off: release back to base", Layer(), "BASE")
+Wait(R2, 3)
+L2.press(); L2.release(); L2.press()
+Check("top bar off: the other trigger still double taps", Layer(), "WL")
+L2.release()
+Wait(L2, 3)
+driver.attrs["fc-noDouble-R"] = nil
+
 L2.press(); L2.release(); L2.press()
 Check("double tap L2 hold: WXHB left", Layer(), "WL")
 Check("WXHB left: top left bar", driver.bindings.PAD1, "CLICK GamepadXIVCastWL8:LeftButton")

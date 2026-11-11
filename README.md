@@ -146,6 +146,7 @@ The addon has its own settings window, with the settings on tabs in a column on 
 | Inactive side opacity | how visible the other bars are while one is selected | 0.55 |
 | Show controller buttons on slots | your controller's button art on each slot | off |
 | Show out of range abilities in red | tints an ability red while your target is out of its range | on |
+| Show the set picker | the CHANGE SET box above the crossbar while R1 is held, with the button for each set | on |
 | Show set labels | each bar's set, with its trigger (below the bottom bars, above the top bars), and the `SET` label | on |
 | Double tap L2 / R2 shows | which set and side each top bar shows | set 2 left / right |
 | L2 then R2 / R2 then L2 shows | which set and side Expanded Hold shows | set 3 left / right |
@@ -174,7 +175,7 @@ The addon has its own settings window, with the settings on tabs in a column on 
 | Combo color | highlight color while L2 then R2 or R2 then L2 is held | Green |
 | Selected bar brightness | how bright that highlight is | 0.7 |
 | Marks in the middle of the selected bar | the small cross and dots between its slots | on |
-| Top left bar / Top right bar | Always shown, or Only when selected: the double tap bars on top stay hidden until you double tap L2 or R2 | Always shown |
+| Top left bar / Top right bar | Always shown, Only when selected (the double tap bars on top stay hidden until you double tap L2 or R2), or Off (hidden, and a double tap selects only the bottom bar) | Always shown |
 | Highlight color | Gold, White, Green, Cyan, Blue, Purple, Pink, Red or Orange, for the highlight and the marker | Gold |
 | L3 (press left stick) / R3 (press right stick) | dropdowns: Draw / sheathe weapon, First / third person, Auto-run, Walk / run, Sit / stand, Target nearest enemy, Assist target, Follow target, World map, Bags, Screenshot, the game's ping bindings (read from its key binding list: `TOGGLEPINGLISTENER` and the `PING*` commands, with the game's own names), Pet commands / forms menu, Pet spells / stances menu, your class's stance and form spells (highest rank known) or Nothing. Long lists have a search box | Draw / sheathe weapon / First / third person |
 | L1 + R3 / R1 + L3 | the same choices as L3 / R3. A class menu the class does not have falls back to the stick's own action | Pet commands / forms menu / Pet spells / stances menu |

@@ -503,6 +503,7 @@ local function BuildSteps()
 	})
 	Add({
 		title = "The top crossbar",
+		skip = db.showTopLeft == "off",
 		holds = { true },
 		checks = {
 			function() return Layer() == "WL" or Layer() == "WR" end,
@@ -1740,7 +1741,7 @@ function PlaceCallout()
 		-- Also the R1 set picker, which shows above the top row (Bar.lua), and the set labels under
 		-- the bottom row, even while they're hidden.
 		local picker = ns.root and ns.root.setPicker
-		bt = bt + 24 + (picker and picker.GetHeight and picker:GetHeight() or 130)
+		bt = bt + 16 + (picker and picker.GetHeight and picker:GetHeight() or 92)
 		bb = bb - 28
 	end
 	if left and bl then

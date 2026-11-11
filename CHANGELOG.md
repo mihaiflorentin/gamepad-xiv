@@ -1,5 +1,16 @@
 # Gamepad XIV
 
+## v0.1.10
+
+### New
+
+- **Top bars can be turned off:** set Top left bar or Top right bar to Off and a double tap of that trigger selects only its bottom bar.
+- **Set picker option:** the CHANGE SET box shown while R1 is held can be turned off.
+
+### Changes
+
+- **Set picker:** smaller and transparent, and drawn above other windows so nothing covers it.
+
 ## v0.1.9
 
 ### New

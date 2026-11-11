@@ -654,7 +654,9 @@ S.TriggerClick = [[
 	end
 	if down then
 		if self:GetAttribute("fc-ready") == 0 then
-			isDoubleTap = 1
+			if driver:GetAttribute("fc-noDouble-" .. self:GetAttribute("fc-side")) ~= 1 then
+				isDoubleTap = 1
+			end
 			self:SetAttribute("fc-ticks", 0)
 		else
 			self:SetAttribute("fc-ticks", driver:GetAttribute("fc-tapTicks"))

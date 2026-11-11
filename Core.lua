@@ -44,6 +44,7 @@ ns.DEFAULTS = {
 	lootMoved = false, lootX = 0, lootY = 0, -- the loot roll window: Forever's place, or moved here from the middle
 	keyIconSize = 32, -- the art has wide empty margins, so this is larger than it looks
 	showSetLabels = true,
+	showSetPicker = true, -- the CHANGE SET overlay while R1 is held
 	theme = "hex", -- a key of ns.THEMES: how the crossbar slots look
 	-- The next four are "theme" to use the theme's choice, or a key of their list in Theme.lua.
 	background = "vignette", -- ns.BACKGROUNDS: what is drawn behind each group of four slots
@@ -67,7 +68,7 @@ ns.DEFAULTS = {
 	backgroundAlpha = 0.7, -- opacity of that background
 	backgroundBorder = "none", -- ns.BACKGROUND_BORDERS: a ring around each group of four slots
 	slotBorder = "theme", -- ns.SLOT_BORDERS: a border around each slot
-	showTopLeft = "always", -- "always" or "selected": the double tap L2 bar (top left) shows always or only while selected
+	showTopLeft = "always", -- "always", "selected" or "off": the double tap L2 bar (top left) shows always, only while selected, or never (no double tap)
 	showTopRight = "always", -- the same for the double tap R2 bar (top right)
 	scale = 1,
 	x = 0,

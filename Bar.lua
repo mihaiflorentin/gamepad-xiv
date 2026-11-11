@@ -207,29 +207,27 @@ local function CreateSide(root, row)
 end
 
 -- The R1 overlay: which button picks which set, laid out like the buttons themselves, each number
--- with its button's icon. It sits above the top row, where no bar covers it (placed in ShowLayer).
+-- with its button's icon. It sits above the top row (placed in ShowLayer), on the DIALOG strata so
+-- other windows and addons' frames don't cover it, compact and transparent.
 local function CreateSetPicker(root)
 	local picker = CreateFrame("Frame", nil, root)
-	picker:SetSize(380, 130)
-	picker:SetFrameLevel(root:GetFrameLevel() + 20)
+	picker:SetSize(260, 92)
+	picker:SetFrameStrata("DIALOG")
 	picker:Hide()
 
-	local back = picker:CreateTexture(nil, "BACKGROUND")
-	back:SetAllPoints()
-	back:SetColorTexture(0, 0, 0, 0.55)
-
-	local title = picker:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	title:SetPoint("TOP", 0, -6)
+	-- No background: the text's shadow keeps it readable over the world.
+	local title = picker:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	title:SetPoint("TOP", 0, -4)
 	title:SetText("CHANGE SET")
 
 	-- Offsets around each cluster's centre: up, right, down, left.
-	local AROUND = { { 0, 30 }, { 46, 0 }, { 0, -30 }, { -46, 0 } }
+	local AROUND = { { 0, 21 }, { 32, 0 }, { 0, -21 }, { -32, 0 } }
 	picker.numbers = {}
 	for set = 1, ns.NUM_SETS do
-		local number = picker:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+		local number = picker:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 		local around = AROUND[(set - 1) % 4 + 1]
-		local clusterX = (set <= 4) and 100 or -100
-		number:SetPoint("CENTER", picker, "CENTER", clusterX + around[1], -10 + around[2])
+		local clusterX = (set <= 4) and 68 or -68
+		number:SetPoint("CENTER", picker, "CENTER", clusterX + around[1], -7 + around[2])
 		picker.numbers[set] = number
 	end
 	root.setPicker = picker
@@ -247,7 +245,7 @@ end
 local function DrawSetPicker()
 	local keys = SetPickerKeys()
 	for set, number in ipairs(ns.root.setPicker.numbers) do
-		number:SetText(ns.ButtonText("{" .. (keys[set] or "") .. "}", 26) .. " " .. set)
+		number:SetText(ns.ButtonText("{" .. (keys[set] or "") .. "}", 18) .. " " .. set)
 	end
 end
 
@@ -551,10 +549,10 @@ function ns.ShowLayer(layer, leftSide, rightSide, set, form)
 		local scale = sides.WL:GetEffectiveScale() / root:GetEffectiveScale()
 		local center = select(2, root:GetCenter()) or 0
 		picker:ClearAllPoints()
-		picker:SetPoint("BOTTOM", root, "CENTER", 0, top * scale - center + 24)
+		picker:SetPoint("BOTTOM", root, "CENTER", 0, top * scale - center + 16)
 		DrawSetPicker()
 	end
-	picker:SetShown(layer == "SET")
+	picker:SetShown(layer == "SET" and ns.db.showSetPicker)
 	for index, number in ipairs(root.setPicker.numbers) do
 		if index == set then
 			number:SetTextColor(GOLD[1], GOLD[2], GOLD[3])

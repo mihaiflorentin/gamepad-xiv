@@ -2291,8 +2291,11 @@ function ns.Sync()
 	local on = db.enabled and ns.IsGamepadUI() and not ns.foreverEditorOpen
 
 	driver:SetAttribute("fc-priority", db.priorityBindings and 1 or 0)
-	driver:SetAttribute("fc-hide-WL", db.showTopLeft == "selected" and 1 or 0)
-	driver:SetAttribute("fc-hide-WR", db.showTopRight == "selected" and 1 or 0)
+	driver:SetAttribute("fc-hide-WL", db.showTopLeft ~= "always" and 1 or 0)
+	driver:SetAttribute("fc-hide-WR", db.showTopRight ~= "always" and 1 or 0)
+	-- Off: a double tap is two plain presses, for players who never use the top bars.
+	driver:SetAttribute("fc-noDouble-L", db.showTopLeft == "off" and 1 or 0)
+	driver:SetAttribute("fc-noDouble-R", db.showTopRight == "off" and 1 or 0)
 	driver:SetAttribute("fc-dpadParty", db.dpadParty)
 	driver:SetAttribute("fc-dpadTarget", db.dpadTarget)
 	local l3 = StickBinding(db.l3Action, "TOGGLESHEATH")
