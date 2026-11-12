@@ -38,6 +38,7 @@ ns.DEFAULTS = {
 	showKeyLabels = false,
 	rangeIndicator = true,
 	showInteractPrompt = true,
+	promptStrata = "HIGH", -- the interact prompt's layer: BACKGROUND, LOW, MEDIUM or HIGH
 	promptX = 0, promptY = 170, -- over the character, from the middle of the screen
 	lootDetails = true, -- the roll item and the equipped item beside the loot roll window
 	alwaysCompareItems = true, -- WoW's alwaysCompareItems: item tooltips compare with what you wear

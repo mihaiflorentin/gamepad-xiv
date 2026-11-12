@@ -166,7 +166,7 @@ FFXIV turns your character toward the enemy when you attack. Turn on **Face targ
 
 ### Interact prompt
 
-When you can use something with **✕**, a large prompt appears over your character. It shows the button, an icon for the action (loot, talk, skinning, mining, herbalism, quest objects) and the target's name. You can move it or turn it off.
+When you can use something with **✕**, a large prompt appears over your character. It shows the button, an icon for the action (loot, talk, skinning, mining, herbalism, quest objects) and the target's name. You can move it, turn it off, or put it under game windows such as a vendor.
 
 ### Spell choices (flyouts)
 

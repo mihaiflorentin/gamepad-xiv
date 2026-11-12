@@ -351,6 +351,7 @@ function ns.ApplyLayout()
 	if ns.interactHud then
 		ns.interactHud:ClearAllPoints()
 		ns.interactHud:SetPoint("CENTER", UIParent, "CENTER", db.promptX, db.promptY)
+		ns.interactHud:SetFrameStrata(db.promptStrata or "HIGH")
 	end
 	root:SetScale(db.scale)
 	root:ClearAllPoints()

@@ -1,5 +1,11 @@
 # Gamepad XIV
 
+## v0.1.13
+
+### New
+
+- **Interact prompt layer:** draw the interact prompt above game windows (as before), at their level, under them or in the background, so it doesn't cover a vendor or quest window.
+
 ## v0.1.12
 
 ### New

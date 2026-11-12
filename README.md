@@ -143,6 +143,7 @@ The addon has its own settings window, with the settings on tabs in a column on 
 | Padding between button groups | gap between the D-pad and face button groups (0-80) | 16 |
 | Controller button size | size of the button art on the slots (16-60) | 32 |
 | Show interact prompt | the button, action icon and target name over your character | on |
+| Interact prompt layer | Above windows, Same as windows, Below windows or Background: whether game windows such as a vendor draw over the prompt | Above windows |
 | Inactive side opacity | how visible the other bars are while one is selected | 0.55 |
 | Show controller buttons on slots | your controller's button art on each slot | off |
 | Show out of range abilities in red | tints an ability red while your target is out of its range | on |
