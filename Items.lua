@@ -25,8 +25,14 @@ local function Log(...)
 	end
 end
 
+-- Forbidden frames (the trade window's secure money input, for one) throw on any method but
+-- IsForbidden, so they count as not there.
+local function Usable(frame)
+	return frame and not (frame.IsForbidden and frame:IsForbidden())
+end
+
 local function Visible(frame)
-	return frame and frame.IsVisible and frame:IsVisible()
+	return Usable(frame) and frame.IsVisible and frame:IsVisible()
 end
 
 local function NameOf(frame)
@@ -89,7 +95,7 @@ local function FocusedAction()
 	-- Forever's cursor is in use: it keeps its last button when control goes back to the player.
 	local nav = SmartNavigation
 	local button = service and nav and nav.activeInfo and nav.currentButton
-	if not (button and button.IsVisible and button:IsVisible()) then
+	if not (Usable(button) and button.IsVisible and button:IsVisible()) then
 		return nil
 	end
 	if IsBagItem(button) then

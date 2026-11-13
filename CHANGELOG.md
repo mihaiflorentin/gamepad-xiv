@@ -1,5 +1,11 @@
 # Gamepad XIV
 
+## v0.1.15
+
+### Fixes
+
+- **Trading:** Lua errors when the controller cursor or the mouse was on the trade window's gold, silver or copper boxes.
+
 ## v0.1.14
 
 ### Fixes

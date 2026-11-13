@@ -76,6 +76,9 @@ local function FrameName(frame)
 	if not frame then
 		return "none"
 	end
+	if frame.IsForbidden and frame:IsForbidden() then
+		return "forbidden"
+	end
 	return (frame.GetName and frame:GetName()) or (frame.GetObjectType and frame:GetObjectType()) or tostring(frame)
 end
 
@@ -84,7 +87,8 @@ local function FocusedEntry()
 	local frame = SmartNavigation and SmartNavigation.currentButton
 	local scrollBox = LFGBrowseFrame and LFGBrowseFrame.ScrollBox
 	for _ = 1, 4 do
-		if not frame then
+		-- A forbidden frame (the trade window's secure money input) throws on any method but IsForbidden.
+		if not frame or (frame.IsForbidden and frame:IsForbidden()) then
 			return nil
 		end
 		if frame.resultID then

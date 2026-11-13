@@ -766,7 +766,8 @@ local function EnableChatLinks()
 
 	local function GetChatLine()
 		local focus = GetMouseFoci and GetMouseFoci()[1]
-		if not focus or focus:GetObjectType() ~= "FontString" then
+		-- A forbidden frame (the trade window's secure money input) throws on any method but IsForbidden.
+		if not focus or focus:IsForbidden() or focus:GetObjectType() ~= "FontString" then
 			return
 		end
 		local container = focus:GetParent()
