@@ -4,7 +4,7 @@
 
 ### Fixes
 
-- **Trading:** Lua errors when the controller cursor or the mouse was on the trade window's gold, silver or copper boxes.
+- Fixed a Lua error when trading.
 
 ## v0.1.14
 
