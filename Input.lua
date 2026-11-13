@@ -147,6 +147,19 @@ local function ApplyInputCVars(apply)
 	pcall(C_GamePad.ApplyConfigs)
 end
 
+-- These CVars are account-wide and saved by the client, so the player's own values go back at
+-- logout (a /reload included): a character without the addon must not keep them, or its stick
+-- tilts close Forever's pet and stance menus. The next login applies them again.
+do
+	local logout = CreateFrame("Frame")
+	logout:RegisterEvent("PLAYER_LOGOUT")
+	logout:SetScript("OnEvent", function()
+		if ns.db and ns.db.savedCVars then
+			ApplyInputCVars(false)
+		end
+	end)
+end
+
 -- Forever's class menus close on any button press. With stick axis buttons on, every tilt of the
 -- right stick is a button press too, so the menu closed the moment the stick moved. They are
 -- turned off while one is open.

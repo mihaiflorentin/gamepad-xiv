@@ -1,5 +1,11 @@
 # Gamepad XIV
 
+## v0.1.14
+
+### Fixes
+
+- **Characters without Gamepad XIV:** the controller settings Gamepad XIV changes are shared by the whole account, and they stayed changed on characters where the addon is turned off, which broke Forever's pet and aspect menus there. They now go back to your own at logout and are set again when you log in with the addon.
+
 ## v0.1.13
 
 ### New
