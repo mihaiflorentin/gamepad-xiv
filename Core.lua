@@ -332,7 +332,7 @@ do
 	local events = CreateFrame("Frame")
 	for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "UI_ERROR_MESSAGE", "UNIT_SPELLCAST_FAILED",
 			"UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_INTERRUPTED", "GROUP_ROSTER_UPDATE", "START_LOOT_ROLL",
-			"PLAYER_TARGET_CHANGED", "PLAYER_DEAD", "PLAYER_UNGHOST", "ZONE_CHANGED_NEW_AREA" }) do
+			"PLAYER_TARGET_CHANGED", "PLAYER_DEAD", "PLAYER_UNGHOST", "ZONE_CHANGED_NEW_AREA", "PLAYER_ENTERING_WORLD" }) do
 		pcall(events.RegisterEvent, events, event)
 	end
 	events:SetScript("OnEvent", function(_, event, ...)
@@ -375,6 +375,40 @@ do
 			end
 		end, ...)
 	end)
+end
+
+-- Running speed, for "my character runs slowly until I /reload": each change of the speed while
+-- moving is written with the run threshold (Hold to walk raises it above 1) and the walk toggle.
+do
+	local last
+	local function MoveState()
+		if not (ns.db and ns.db.playLogOn and GetUnitSpeed) then
+			last = nil
+			return
+		end
+		pcall(function()
+			local speed = GetUnitSpeed("player") or 0
+			if speed == 0 then
+				return
+			end
+			local threshold = GetCVar and GetCVar("GamePadRunThreshold") or "?"
+			local state = string.format("%.1f %s %s", speed, tostring(threshold),
+				IsMounted and IsMounted() and "mounted" or "")
+			if state ~= last then
+				last = state
+				ns.PlayLog("move: speed", string.format("%.1f", speed), "run threshold", threshold,
+					IsMounted and IsMounted() and "mounted" or "", "|", LayerState())
+			end
+		end)
+	end
+	if C_Timer and C_Timer.NewTicker then
+		C_Timer.NewTicker(1, MoveState)
+	end
+	if hooksecurefunc and ToggleRun then
+		hooksecurefunc("ToggleRun", function()
+			ns.PlayLog("walk / run toggled")
+		end)
+	end
 end
 
 function ns.TogglePlayLog()

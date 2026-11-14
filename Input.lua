@@ -241,8 +241,10 @@ local function SetupBaseBindings()
 		backButton:HookScript("OnClick", function(_, _, down)
 			if down and ns.IsActive() and ns.db.holdToWalk then
 				SetTemp("GamePadRunThreshold", "1.1")
+				ns.PlayLog("hold to walk: on")
 			elseif not down then
 				RemoveTemp("GamePadRunThreshold")
+				ns.PlayLog("hold to walk: off")
 			end
 		end)
 	end
@@ -1701,6 +1703,7 @@ function ns.CreateInput()
 		if ns.cvarsApplied ~= not yielded then
 			ns.cvarsApplied = not yielded
 			ApplyTempCVars(not yielded)
+			ns.PlayLog("yield:", yielded and "on" or "off")
 			if yielded then
 				RemoveTemp("GamePadRunThreshold")
 				SetCameraLock(false)

@@ -1,5 +1,11 @@
 # Gamepad XIV
 
+## v0.1.16
+
+### Changes
+
+- The play log (`/gxiv log`) also records walking and running speed.
+
 ## v0.1.15
 
 ### Fixes
