@@ -254,7 +254,7 @@ local function UseMask(button, mask)
 			tinsert(masks, button[shape.maskKey])
 		end
 	end
-	local regions = { icon, button.rangeTint }
+	local regions = { icon, button.rangeTint, button.pressShade, button.failFlash }
 	for _, existing in ipairs(masks) do
 		for _, region in pairs(regions) do
 			region:RemoveMaskTexture(existing)

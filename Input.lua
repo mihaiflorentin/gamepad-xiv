@@ -1765,6 +1765,10 @@ function ns.CreateInput()
 			SecureHandlerSetFrameRef(driver, "cast" .. row .. i, cast)
 			SecureHandlerWrapScript(cast, "OnClick", cast, S.ActionPre, S.ActionPost)
 			cast:HookScript("OnClick", OnClearSlotPressed)
+			local index = i
+			cast:HookScript("OnClick", function(_, _, down)
+				ns.ShowPress(row, index, down)
+			end)
 		end
 	end
 

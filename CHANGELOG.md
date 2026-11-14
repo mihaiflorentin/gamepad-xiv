@@ -1,5 +1,13 @@
 # Gamepad XIV
 
+## v0.1.17
+
+### New
+
+- **Combo brightness:** the L2 then R2 / R2 then L2 highlight has its own brightness setting, in the Appearance tab.
+- **Button press feedback:** added a visual feedback when pressing an ability. It can be turned off in the Appearance tab.
+- **Set change flash:** set how bright the flash is when a bar's set changes, or turn it off with 0.
+
 ## v0.1.16
 
 ### Changes

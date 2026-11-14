@@ -65,6 +65,9 @@ ns.DEFAULTS = {
 	activeColorTopRight = "blue", -- the top right bar (double tap R2)
 	activeColorCombo = "green", -- the combos (L2 then R2, R2 then L2)
 	activeStrength = 0.7, -- how bright that highlight is
+	activeStrengthCombo = 0.7, -- the same for the combos
+	flashStrength = 0.85, -- the flash over a bar whose set changes; 0 turns it off
+	pressFeedback = true, -- a slot looks pressed while its button is held
 	activeMarks = true, -- the cross and dots in the middle of the selected bar's groups
 	backgroundAlpha = 0.7, -- opacity of that background
 	backgroundBorder = "none", -- ns.BACKGROUND_BORDERS: a ring around each group of four slots
@@ -515,6 +518,12 @@ local MIGRATIONS = {
 	function(db)
 		if db.lfgMessage == "Hello! Invite me for <activity> - <level> <class>." then
 			db.lfgMessage = "Hello! Invite me for <activity> - <level> <class> <roles>."
+		end
+	end,
+	-- 12: the combos have their own brightness, which starts at what the selected bar brightness was.
+	function(db)
+		if db.activeStrength then
+			db.activeStrengthCombo = db.activeStrength
 		end
 	end,
 }

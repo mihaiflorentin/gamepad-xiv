@@ -140,6 +140,7 @@ local function CreateSide(root, row)
 	fall:SetOrder(1)
 	flashAnim:SetToFinalAlpha(true)
 	side.flash = flashAnim
+	side.flashRise, side.flashFall = rise, fall
 
 	-- The bar's set, outside it so its buttons never cover it: above a top bar, below a bottom one.
 	side.label = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -181,6 +182,35 @@ local function CreateSide(root, row)
 		rangeTint:AddMaskTexture(button.IconMask)
 		rangeTint:Hide()
 		button.rangeTint = rangeTint
+
+		-- Press feedback: the icon darkens while its button is held, like Blizzard's pressed slots.
+		local pressShade = button:CreateTexture(nil, "ARTWORK", nil, 7)
+		pressShade:SetAllPoints(button.icon)
+		pressShade:SetColorTexture(0, 0, 0, 0.45)
+		pressShade:AddMaskTexture(button.IconMask)
+		pressShade:Hide()
+		button.pressShade = pressShade
+
+		-- A red flash when the press could not be used (no target, not enough power, on cooldown...).
+		local failFlash = button:CreateTexture(nil, "ARTWORK", nil, 6)
+		failFlash:SetAllPoints(button.icon)
+		failFlash:SetColorTexture(1, 0.1, 0.05, 1)
+		failFlash:AddMaskTexture(button.IconMask)
+		failFlash:SetAlpha(0)
+		local failAnim = failFlash:CreateAnimationGroup()
+		local failIn = failAnim:CreateAnimation("Alpha")
+		failIn:SetFromAlpha(0)
+		failIn:SetToAlpha(0.6)
+		failIn:SetDuration(0.06)
+		failIn:SetOrder(1)
+		local failOut = failAnim:CreateAnimation("Alpha")
+		failOut:SetFromAlpha(0.6)
+		failOut:SetToAlpha(0)
+		failOut:SetDuration(0.3)
+		failOut:SetOrder(2)
+		failAnim:SetToFinalAlpha(true)
+		button.failFlash = failFlash
+		button.failAnim = failAnim
 
 		local slotGlow = content:CreateTexture(nil, "BACKGROUND", nil, 2)
 		slotGlow:SetTexture(MEDIA .. "ring_glow")
@@ -503,7 +533,9 @@ function ns.ShowLayer(layer, leftSide, rightSide, set, form)
 			for _, texture in ipairs(textures) do
 				if row == activeRow and key == style then
 					texture:SetVertexColor(r, g, b)
-					texture.anim.fade:SetToAlpha(ns.db.activeStrength or 0.9)
+					local strength = ACTIVE_COLOR_KEYS[layer] == "activeColorCombo" and ns.db.activeStrengthCombo
+						or ns.db.activeStrength
+					texture.anim.fade:SetToAlpha(strength or 0.9)
 					if ns.lastLayer ~= layer then
 						texture.anim:Stop()
 						texture.anim:Play()
@@ -531,10 +563,15 @@ function ns.ShowLayer(layer, leftSide, rightSide, set, form)
 		-- A bar whose set changed flashes; nothing on the first show or after Move bars.
 		local now = { L = leftSide, R = rightSide, WL = ns.db.sideWL, WR = ns.db.sideWR }
 		local before = root.barSides
+		local flashStrength = ns.db.flashStrength or 0.85
 		for row, sideIndex in pairs(now) do
 			if before and before[row] and before[row] ~= sideIndex then
 				sides[row].flash:Stop()
-				sides[row].flash:Play()
+				if flashStrength > 0 then
+					sides[row].flashRise:SetToAlpha(flashStrength)
+					sides[row].flashFall:SetFromAlpha(flashStrength)
+					sides[row].flash:Play()
+				end
 				sides[row].labelPop:Stop()
 				sides[row].labelPop:Play()
 			end
@@ -679,6 +716,44 @@ function ns.ColorByKey(key)
 		end
 	end
 	return GOLD[1], GOLD[2], GOLD[3]
+end
+
+-- Press feedback, from the hidden cast buttons the keys press (Input.lua): the slot shown for that
+-- key looks pressed while the key is held. Only visual, so it also works in combat.
+local lastPress -- { button, time } of the last key press, for the failed-press flash
+local FAIL_WINDOW = 0.3 -- seconds after a press in which an error counts as that press failing
+
+function ns.ShowPress(row, index, down)
+	local side = ns.root and ns.root.sides[row]
+	local button = side and side.buttons[index]
+	if not button then
+		return
+	end
+	if down then
+		lastPress = { button, GetTime() }
+	end
+	local pressed = down and ns.db.pressFeedback and true or false
+	if button.pressShade:IsShown() == pressed then
+		return
+	end
+	button.pressShade:SetShown(pressed)
+	pcall(button.SetButtonState, button, pressed and "PUSHED" or "NORMAL")
+end
+
+-- The game answers a press it can't use with an error message or a failed cast, right after the press.
+do
+	local watcher = CreateFrame("Frame")
+	watcher:RegisterEvent("UI_ERROR_MESSAGE")
+	watcher:RegisterUnitEvent("UNIT_SPELLCAST_FAILED", "player")
+	watcher:SetScript("OnEvent", function()
+		if not (lastPress and ns.db and ns.db.pressFeedback) or GetTime() - lastPress[2] > FAIL_WINDOW then
+			return
+		end
+		local button = lastPress[1]
+		lastPress = nil
+		button.failAnim:Stop()
+		button.failAnim:Play()
+	end)
 end
 
 -- Shows the selected bar's highlight again, after its settings change.
