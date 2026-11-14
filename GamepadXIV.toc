@@ -9,6 +9,7 @@
 ## OptionalDeps: Blizzard_Gamepad, Blizzard_GamepadActionBars
 
 Core.lua
+Profiles.lua
 Snippets.lua
 Bar.lua
 Theme.lua

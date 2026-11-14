@@ -34,6 +34,7 @@ ns.DEFAULTS = {
 	ringPages = {}, -- the ring pages: the player's entries in each, and the pages they added
 	holdToWalk = true,
 	triggerMode = "hold", -- hold, toggle or mixed, like FFXIV's cross hotbar activation
+	wxhbReturn = false, -- using a top bar (WXHB) button goes back to the bottom bar, like FFXIV's option
 	dimAlpha = 0.55,
 	showKeyLabels = false,
 	rangeIndicator = true,
@@ -94,6 +95,7 @@ ns.DEFAULTS = {
 	openBagsWhenNeeded = false, -- experimental: open the bags for a spell that targets an item, and at the mailbox
 	partyHighlight = "fill", -- "outline", "thick", "fill", "pulse" or "none": how the selected party member's frame is marked
 	raidHighlight = "thick", -- the same, for raid frames
+	partyPrompt = "bottom", -- "bottom", "top" or "off": the button prompt with the party frames
 	partyMarker = "left", -- "off", "left" or "right": an arrow outside the selected party frame
 	highlightColor = "gold", -- a key of ns.HIGHLIGHT_COLORS: the color of the highlight and the marker
 	formsChangeBar = true,
@@ -222,26 +224,113 @@ function ns.ButtonText(text, size)
 	end))
 end
 
+-- Breadcrumbs: the last things this addon did that run the game's own code (CVar changes, calls
+-- into Blizzard frames, slash commands, ring entries), kept in memory only. A taint error names the
+-- addon but shows the stack of the Blizzard code that failed, often long after the call that tainted
+-- it; the breadcrumbs before the error are saved with it to show what that call may have been.
+local MAX_TRAIL = 40
+local trail = {}
+
+function ns.Trail(text)
+	local now = GetTime()
+	local last = trail[#trail]
+	if last and last.text == text then
+		last.count = last.count + 1
+		last.time = now
+		return
+	end
+	if #trail >= MAX_TRAIL then
+		tremove(trail, 1)
+	end
+	trail[#trail + 1] = { text = text, time = now, combat = InCombatLockdown(), count = 1 }
+end
+
+-- The breadcrumbs as lines, oldest first, with how long before now each happened.
+local function TrailLines()
+	local now, lines = GetTime(), {}
+	for _, crumb in ipairs(trail) do
+		lines[#lines + 1] = format("-%.1fs%s %s%s", now - crumb.time, crumb.combat and " [combat]" or "", crumb.text,
+			crumb.count > 1 and (" x" .. crumb.count) or "")
+	end
+	return lines
+end
+
+do
+	local context = CreateFrame("Frame")
+	for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }) do
+		context:RegisterEvent(event)
+	end
+	context:SetScript("OnEvent", function(_, event)
+		ns.Trail(event)
+	end)
+end
+
+-- What was going on when an error first happened: versions, character, place and the addon's state.
+-- Unit names can be secret values in combat, so none go in. Each part is protected: the log must
+-- never fail on a missing API.
+local function ErrorContext()
+	local parts = {}
+	local function Add(label, getter)
+		local ok, value = pcall(getter)
+		if ok and value ~= nil then
+			parts[#parts + 1] = label .. ": " .. tostring(value)
+		end
+	end
+	Add("addon", function() return (C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata)(ADDON, "Version") end)
+	Add("client", function() local version, build = GetBuildInfo() return version .. " (" .. build .. ")" end)
+	Add("class", function() local _, class = UnitClass("player") return class .. " level " .. UnitLevel("player") end)
+	Add("form", function() return GetShapeshiftForm() end)
+	Add("zone", function() return GetZoneText() .. (IsInInstance() and " (instance)" or "") end)
+	Add("combat", function() return InCombatLockdown() and "yes" or "no" end)
+	Add("group", function() return IsInRaid() and "raid" or IsInGroup() and "party" or "none" end)
+	Add("mounted", function() return IsMounted() and "yes" or "no" end)
+	Add("vehicle", function() return UnitInVehicle("player") and "yes" or "no" end)
+	Add("gamepad UI", function() return ns.IsGamepadUI() and "on" or "off" end)
+	Add("crossbar", function() return ns.IsActive and (ns.IsActive() and "active" or "off") end)
+	Add("driver", function()
+		local driver = _G.GamepadXIVDriver
+		return driver and ("layer " .. tostring(driver:GetAttribute("fc-layer")) .. ", yield " .. tostring(driver:GetAttribute("fc-yield")))
+	end)
+	Add("play log", function() return ns.db and (ns.db.playLogOn and "on" or "off") end)
+	return parts
+end
+
+-- Whether an error is this addon's: its taint, or its files in the message or the stack.
+local function IsOurs(message, stack)
+	local path = "AddOns/" .. ADDON .. "/"
+	return message:find("tainted by '" .. ADDON .. "'", 1, true) or message:find(path, 1, true)
+		or (stack and stack:find(path, 1, true)) and true or false
+end
+
 -- Keeps the latest errors in the saved variables, so a report does not depend on copying them by hand.
+-- The first time an error happens, it also keeps what was going on (context) and, for this addon's
+-- errors and blocked actions, the breadcrumbs before it (trail).
 local MAX_LOGGED_ERRORS = 40
 local pendingErrors = {}
 
 local function LogError(message, tainted)
 	local log = ns.db and ns.db.errorLog or pendingErrors
 	message = tostring(message)
+	local stack = debugstack(3, 30, 0)
+	local ours = tainted and true or IsOurs(message, stack)
 	for _, entry in ipairs(log) do
 		if entry.message == message then
 			entry.count = entry.count + 1
 			entry.time = date("%Y-%m-%d %H:%M:%S")
-			entry.stack = debugstack(3, 30, 0)
+			entry.stack = stack
 			entry.tainted = tainted or entry.tainted
+			if ours and not entry.trail then
+				entry.trail = TrailLines()
+			end
 			return
 		end
 	end
 	if #log >= MAX_LOGGED_ERRORS then
 		tremove(log, 1)
 	end
-	tinsert(log, { message = message, count = 1, time = date("%Y-%m-%d %H:%M:%S"), stack = debugstack(3, 30, 0), tainted = tainted })
+	local now = date("%Y-%m-%d %H:%M:%S")
+	tinsert(log, { message = message, count = 1, first = now, time = now, stack = stack, tainted = tainted,
+		context = ErrorContext(), trail = ours and TrailLines() or nil })
 end
 
 -- Names the values on Forever's chat and binding path that addon code has written, so a blocked
@@ -335,7 +424,7 @@ do
 	local events = CreateFrame("Frame")
 	for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "UI_ERROR_MESSAGE", "UNIT_SPELLCAST_FAILED",
 			"UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_INTERRUPTED", "GROUP_ROSTER_UPDATE", "START_LOOT_ROLL",
-			"PLAYER_TARGET_CHANGED", "PLAYER_DEAD", "PLAYER_UNGHOST", "ZONE_CHANGED_NEW_AREA", "PLAYER_ENTERING_WORLD" }) do
+			"PLAYER_TARGET_CHANGED", "PLAYER_DEAD", "PLAYER_UNGHOST", "ZONE_CHANGED_NEW_AREA" }) do
 		pcall(events.RegisterEvent, events, event)
 	end
 	events:SetScript("OnEvent", function(_, event, ...)
@@ -378,40 +467,6 @@ do
 			end
 		end, ...)
 	end)
-end
-
--- Running speed, for "my character runs slowly until I /reload": each change of the speed while
--- moving is written with the run threshold (Hold to walk raises it above 1) and the walk toggle.
-do
-	local last
-	local function MoveState()
-		if not (ns.db and ns.db.playLogOn and GetUnitSpeed) then
-			last = nil
-			return
-		end
-		pcall(function()
-			local speed = GetUnitSpeed("player") or 0
-			if speed == 0 then
-				return
-			end
-			local threshold = GetCVar and GetCVar("GamePadRunThreshold") or "?"
-			local state = string.format("%.1f %s %s", speed, tostring(threshold),
-				IsMounted and IsMounted() and "mounted" or "")
-			if state ~= last then
-				last = state
-				ns.PlayLog("move: speed", string.format("%.1f", speed), "run threshold", threshold,
-					IsMounted and IsMounted() and "mounted" or "", "|", LayerState())
-			end
-		end)
-	end
-	if C_Timer and C_Timer.NewTicker then
-		C_Timer.NewTicker(1, MoveState)
-	end
-	if hooksecurefunc and ToggleRun then
-		hooksecurefunc("ToggleRun", function()
-			ns.PlayLog("walk / run toggled")
-		end)
-	end
 end
 
 function ns.TogglePlayLog()
@@ -535,6 +590,7 @@ local function RunMigrations(db)
 	end
 	db.migration = math.max(done, #MIGRATIONS)
 end
+ns.RunMigrations = RunMigrations
 
 local function InitDB()
 	GamepadXIVDB = GamepadXIVDB or {}
@@ -561,6 +617,9 @@ local function InitDB()
 	end
 	RunMigrations(GamepadXIVDB)
 	ns.db = GamepadXIVDB
+	if ns.LoadProfileAtStart then
+		pcall(ns.LoadProfileAtStart)
+	end
 	for _, entry in ipairs(pendingErrors) do
 		tinsert(ns.db.errorLog, entry)
 	end

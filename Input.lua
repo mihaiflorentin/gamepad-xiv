@@ -21,12 +21,14 @@ local INPUT_CVARS = {
 
 -- Not every CVar is guaranteed on this beta client, and one missing must not stop the others.
 local function SetTemp(name, value)
+	ns.Trail("temp CVar " .. name .. " = " .. tostring(value))
 	if not pcall(C_CVar.SetTempCVar, name, value) then
 		ns.Print("Could not set", name)
 	end
 end
 
 local function RemoveTemp(name)
+	ns.Trail("remove temp CVar " .. name)
 	pcall(C_CVar.RemoveTempCVar, name)
 end
 
@@ -131,6 +133,7 @@ local function ApplyInputCVars(apply)
 			if saved[name] == nil then
 				saved[name] = GetCVar(name) or false
 			end
+			ns.Trail("CVar " .. name .. " = " .. tostring(value))
 			if not pcall(C_CVar.SetCVar, name, value) then
 				ns.Print("Could not set", name)
 			end
@@ -138,12 +141,14 @@ local function ApplyInputCVars(apply)
 		else
 			RemoveTemp(name)
 			if saved[name] then
+				ns.Trail("CVar " .. name .. " back to the player's")
 				pcall(C_CVar.SetCVar, name, saved[name])
 			end
 			saved[name] = nil
 		end
 	end
 	-- Makes the client read the changed input settings now, instead of at the next start.
+	ns.Trail("C_GamePad.ApplyConfigs")
 	pcall(C_GamePad.ApplyConfigs)
 end
 
@@ -168,6 +173,7 @@ local function SetStickButtons(on)
 		return -- the addon is not running its input settings
 	end
 	local value = on and INPUT_CVARS.GamePadStickAxisButtons or "0"
+	ns.Trail("CVar GamePadStickAxisButtons = " .. value .. ", C_GamePad.ApplyConfigs")
 	pcall(C_CVar.SetCVar, "GamePadStickAxisButtons", value)
 	SetTemp("GamePadStickAxisButtons", value)
 	pcall(C_GamePad.ApplyConfigs)
@@ -212,6 +218,71 @@ local function ForeverButtonBinding(index, fallback)
 	return fallback
 end
 
+-- Walking ends when Cancel is let go. Forever's button only hears the release if the key is still
+-- bound to it; after a trigger or a soft target changed the binding, the release went elsewhere and
+-- the character kept walking until a /reload. So while walking, the controller itself is asked
+-- whether the button is still held.
+local walkWatcher
+local walkCheck -- how this client reports the button: "key", or the button index offset (0 or 1)
+
+local function StopWalking()
+	RemoveTemp("GamePadRunThreshold")
+	if walkWatcher then
+		walkWatcher:Hide()
+	end
+end
+
+local function CancelHeld(check)
+	if check == "key" then
+		local ok, held = pcall(IsKeyDown, "PAD2")
+		return ok and held
+	end
+	local ok, state = pcall(C_GamePad.GetDeviceMappedState)
+	if not ok or type(state) ~= "table" or type(state.buttons) ~= "table" then
+		return false
+	end
+	for i, pressed in ipairs(state.buttons) do
+		if pressed then
+			local okName, name = pcall(C_GamePad.ButtonIndexToBinding, i - check)
+			if okName and name == "PAD2" then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- Called while Cancel is pressed, so whichever way reports it held now can be trusted later.
+-- If none does, walking ends on the release only, as before.
+local function WatchWalkRelease()
+	walkCheck = nil
+	for _, check in ipairs({ "key", 0, 1 }) do
+		if (check == "key" and IsKeyDown or check ~= "key" and C_GamePad and C_GamePad.GetDeviceMappedState
+				and C_GamePad.ButtonIndexToBinding) and CancelHeld(check) then
+			walkCheck = check
+			break
+		end
+	end
+	if not walkCheck then
+		return
+	end
+	if not walkWatcher then
+		walkWatcher = CreateFrame("Frame")
+		local elapsed = 0
+		walkWatcher:SetScript("OnUpdate", function(self, delta)
+			elapsed = elapsed + delta
+			if elapsed < 0.1 then
+				return
+			end
+			elapsed = 0
+			if not CancelHeld(walkCheck) then
+				StopWalking()
+			end
+		end)
+	end
+	walkWatcher:Show()
+end
+
 local function SetupBaseBindings()
 	local interact = ForeverButtonBinding(1, "INTERACTTARGET")
 	local inspect = ForeverButtonBinding(2, "TOGGLEWORLDMAP")
@@ -241,10 +312,9 @@ local function SetupBaseBindings()
 		backButton:HookScript("OnClick", function(_, _, down)
 			if down and ns.IsActive() and ns.db.holdToWalk then
 				SetTemp("GamePadRunThreshold", "1.1")
-				ns.PlayLog("hold to walk: on")
+				WatchWalkRelease()
 			elseif not down then
-				RemoveTemp("GamePadRunThreshold")
-				ns.PlayLog("hold to walk: off")
+				StopWalking()
 			end
 		end)
 	end
@@ -914,6 +984,7 @@ local function CreateZoomWatcher()
 			return
 		end
 		local allRestored = true
+		ns.Trail("CVar camera speeds back")
 		for name, value in pairs(saved) do
 			if not pcall(SetCVar, name, value) then
 				allRestored = false
@@ -939,6 +1010,7 @@ local function CreateZoomWatcher()
 			end
 			ns.db.frozenCameraSpeeds = saved
 			-- 0.1 is the lowest speed the client accepts; lower values are silently ignored.
+			ns.Trail("CVar camera speeds = 0.1")
 			for _, name in ipairs(SPEED_CVARS) do
 				pcall(SetCVar, name, "0.1")
 			end
@@ -1611,6 +1683,7 @@ end
 -- WoW's own setting that compares an item with what you wear on every item tooltip, without holding Shift.
 function ns.ApplyAlwaysCompare()
 	if ns.db.alwaysCompareItems ~= nil and GetCVar("alwaysCompareItems") ~= nil then
+		ns.Trail("CVar alwaysCompareItems")
 		SetCVar("alwaysCompareItems", ns.db.alwaysCompareItems and "1" or "0")
 	end
 end
@@ -1624,6 +1697,8 @@ function ns.CreateInput()
 	driver:SetAttribute("UpdateTargetBindings", S.UpdateTargetBindings)
 	driver:SetAttribute("UpdateYield", S.UpdateYield)
 	driver:SetAttribute("OnTrigger", S.OnTrigger)
+	driver:SetAttribute("UpdateTriggerLayer", S.UpdateTriggerLayer)
+	driver:SetAttribute("ReturnFromTop", S.ReturnFromTop)
 	driver:SetAttribute("SetSoft", S.SetSoft)
 	driver:SetAttribute("ReturnToGroupUnit", S.ReturnToGroupUnit)
 	driver:SetAttribute("CycleGroup", S.CycleGroup)
@@ -1669,6 +1744,7 @@ function ns.CreateInput()
 	driver:SetAttribute("fc-latch", "")
 	driver:SetAttribute("fc-consumed", "")
 	driver:SetAttribute("fc-triggerMode", ns.db.triggerMode)
+	driver:SetAttribute("fc-wReturn", ns.db.wxhbReturn and 1 or 0)
 	driver:SetAttribute("fc-form", 0)
 	driver:SetAttribute("fc-rawForm", 0)
 
@@ -1699,13 +1775,13 @@ function ns.CreateInput()
 			ShowFlyoutPanel("")
 		end
 		ns.ApplyForeverBarVisibility(yielded)
+		ns.UpdatePartyPrompt()
 		-- Temp CVars have no combat restriction, so Forever gets its inputs back in vehicles too.
 		if ns.cvarsApplied ~= not yielded then
 			ns.cvarsApplied = not yielded
 			ApplyTempCVars(not yielded)
-			ns.PlayLog("yield:", yielded and "on" or "off")
 			if yielded then
-				RemoveTemp("GamePadRunThreshold")
+				StopWalking()
 				SetCameraLock(false)
 			end
 		end
@@ -1762,6 +1838,7 @@ function ns.CreateInput()
 			-- on key up, which is too late for the soft target and loses a cast if the trigger is released first.
 			local cast = CreateSecureButton("GamepadXIVCast" .. row .. i)
 			cast:SetAttribute("type", "action")
+			cast:SetAttribute("fc-topRow", (row == "WL" or row == "WR") and 1 or 0)
 			SecureHandlerSetFrameRef(driver, "cast" .. row .. i, cast)
 			SecureHandlerWrapScript(cast, "OnClick", cast, S.ActionPre, S.ActionPost)
 			cast:HookScript("OnClick", OnClearSlotPressed)
@@ -2098,6 +2175,7 @@ editorWatcher:SetScript("OnUpdate", ShowEditorPage)
 
 function ns.ApplyForeverBarVisibility(foreverShown)
 	if GamepadMainActionBarFrame then
+		ns.Trail("GamepadMainActionBarFrame:SetAlpha")
 		GamepadMainActionBarFrame:SetAlpha(foreverShown and 1 or 0)
 	end
 	local inBindFlow = foreverShown and ns.foreverEditorOpen
@@ -2322,6 +2400,89 @@ function ns.CreateClassMenuHints(pageUnit)
 	end
 end
 
+-- Forever's party frames show its own party select button (L1) in a prompt below the members. Party
+-- selection is on D-pad up / down here, so while the crossbar is in use Forever's prompt is faded
+-- and this addon draws its own in its place: D-pad up / down, below or above the party, or none.
+local partyPrompt
+
+local function FindPartyPrompt()
+	if not CompactPartyFrame then
+		return
+	end
+	for _, child in ipairs({ CompactPartyFrame:GetChildren() }) do
+		if child.promptContainerFrame then
+			return child.promptContainerFrame
+		end
+	end
+end
+
+-- A copy of one of Forever's textures, read only, for the same slot look.
+local function CopyArt(target, source)
+	if not source then
+		return
+	end
+	local atlas = source.GetAtlas and source:GetAtlas()
+	if atlas then
+		target:SetAtlas(atlas)
+	elseif source.GetTexture and source:GetTexture() then
+		target:SetTexture(source:GetTexture())
+	end
+	if source.GetVertexColor then
+		target:SetVertexColor(source:GetVertexColor())
+	end
+	target:SetAlpha(source:GetAlpha() or 1)
+end
+
+function ns.UpdatePartyPrompt()
+	if not partyPrompt then
+		local container = FindPartyPrompt()
+		if not container then
+			return
+		end
+		-- A child of Forever's prompt shows and hides with it, but keeps its own alpha.
+		local prompt = CreateFrame("Frame", nil, container)
+		prompt:SetIgnoreParentAlpha(true)
+		prompt.slot = prompt:CreateTexture(nil, "BACKGROUND")
+		prompt.slot:SetAllPoints()
+		prompt.border = prompt:CreateTexture(nil, "BORDER")
+		prompt.border:SetAllPoints()
+		CopyArt(prompt.slot, container.backgroundSlot)
+		CopyArt(prompt.border, container.backgroundBorder)
+		prompt.text = prompt:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		prompt.text:SetPoint("CENTER")
+		partyPrompt = { container = container, prompt = prompt }
+		if InputDeviceIconSetManager then
+			InputDeviceIconSetManager:RegisterActiveInputDeviceIconSetUpdatedCallback(ns.UpdatePartyPrompt, partyPrompt)
+		end
+	end
+	local container, prompt = partyPrompt.container, partyPrompt.prompt
+	local active = ns.IsActive() and true or false
+	local where = ns.db.partyPrompt or "bottom"
+	ns.Trail("party prompt SetAlpha")
+	container:SetAlpha(active and 0 or 1)
+	prompt:SetShown(active and where ~= "off")
+	prompt.text:SetText(ns.ButtonText("{PADDUP}{PADDDOWN}", 14))
+	prompt:ClearAllPoints()
+	if where == "top" then
+		local width, height = container:GetSize()
+		prompt:SetSize(width, height)
+		local offset = (container:GetLeft() and CompactPartyFrame:GetLeft()) and (container:GetLeft() - CompactPartyFrame:GetLeft()) or 0
+		prompt:SetPoint("BOTTOMLEFT", CompactPartyFrame, "TOPLEFT", offset, 4)
+	else
+		prompt:SetAllPoints(container)
+	end
+end
+
+do
+	local watcher = CreateFrame("Frame")
+	watcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+	watcher:RegisterEvent("GROUP_ROSTER_UPDATE")
+	-- Blizzard builds the party frames on its own roster update, which may run after this one.
+	watcher:SetScript("OnEvent", function()
+		C_Timer.After(0.5, ns.UpdatePartyPrompt)
+	end)
+end
+
 local function StickBinding(key, fallback)
 	for _, action in ipairs(ns.STICK_ACTIONS) do
 		if action[1] == key then
@@ -2340,6 +2501,7 @@ function ns.Sync()
 	if not driver then
 		return
 	end
+	ns.Trail("sync")
 	if InCombatLockdown() then
 		ns.syncPending = true
 		return
@@ -2347,6 +2509,7 @@ function ns.Sync()
 	ns.syncPending = false
 
 	ns.ApplyLayout()
+	ns.UpdatePartyPrompt()
 	if ns.softUnit and ns.softUnit ~= "" and ns.root then
 		ns.ShowSoftTarget(ns.softUnit) -- a changed highlight setting shows at once
 	end
@@ -2405,6 +2568,7 @@ function ns.Sync()
 		driver:SetAttribute("fc-cycleUnit", nil)
 		SecureHandlerExecute(driver, [[ self:RunAttribute("SetSoft", "") ]])
 	end
+	driver:SetAttribute("fc-wReturn", db.wxhbReturn and 1 or 0)
 	if driver:GetAttribute("fc-triggerMode") ~= db.triggerMode then
 		driver:SetAttribute("fc-triggerMode", db.triggerMode)
 		driver:SetAttribute("fc-latch", "")

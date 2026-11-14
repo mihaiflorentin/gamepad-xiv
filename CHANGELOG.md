@@ -1,5 +1,21 @@
 # Gamepad XIV
 
+## v0.1.18
+
+### New
+
+- The party frames show D-pad up / down instead of L1. The prompt can be moved above the party or hidden in the Targeting tab.
+- Profiles: characters can share settings or copy them from each other, and settings can be shared as text. In the new Profiles tab.
+- Return to the bottom bar after using the top bar, like FFXIV. In the Input tab.
+
+### Changes
+
+- Errors save more details, to help with bug reports.
+
+### Fixes
+
+- Fixed walking sometimes not stopping after letting go of the button.
+
 ## v0.1.17
 
 ### New

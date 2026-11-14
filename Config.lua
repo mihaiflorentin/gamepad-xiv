@@ -108,6 +108,117 @@ end
 -- Defined further down; the rows below call them.
 local UpdateRows, OpenTextDialog
 
+-- Profiles (Profiles.lua): the profile picked under Other profiles, and Copy / Delete waiting for a
+-- second press.
+local profilePick, profileArmed
+
+local function NoneChoice(list)
+	if #list == 0 then
+		list[1] = { false, "|cff8c8c8cNo other profiles yet|r" }
+	end
+	return list
+end
+
+local function OtherProfiles()
+	return NoneChoice(ns.ProfileChoices(ns.ProfileInUse()))
+end
+
+local function PickedProfile()
+	local list = OtherProfiles()
+	for _, choice in ipairs(list) do
+		if choice[1] == profilePick then
+			return profilePick
+		end
+	end
+	profilePick = list[1][1]
+	return profilePick
+end
+
+local profileButtons = {
+	{ text = "Copy to mine" },
+	{ text = "Delete", danger = true },
+}
+
+local function DisarmProfile()
+	profileArmed = nil
+	profileButtons[1].text, profileButtons[2].text = "Copy to mine", "Delete"
+end
+
+-- Copy and Delete act on the second press, within 5 seconds.
+local function Armed(which, index, label)
+	local name = PickedProfile()
+	if not name then
+		ns.Print("There is no other profile yet.")
+		return
+	end
+	if profileArmed == which .. name then
+		DisarmProfile()
+		return name
+	end
+	DisarmProfile()
+	profileArmed = which .. name
+	profileButtons[index].text = "Press again"
+	ns.Print("Press " .. label .. " again to " .. which .. " " .. name .. ".")
+	C_Timer.After(5, function()
+		if profileArmed == which .. name then
+			DisarmProfile()
+			if UpdateRows then UpdateRows() end
+		end
+	end)
+end
+
+profileButtons[1].run = function()
+	local name = Armed("copy the settings of", 1, "Copy to mine")
+	if name then
+		ns.CopyProfile(name)
+		ns.Print("Copied the settings of " .. name .. " into " .. ns.ProfileInUse() .. ".")
+	end
+	UpdateRows()
+end
+
+profileButtons[2].run = function()
+	local name = Armed("delete", 2, "Delete")
+	if name then
+		ns.DeleteProfile(name)
+		ns.Print("Deleted the profile " .. name .. ".")
+	end
+	UpdateRows()
+end
+
+local function NewProfile()
+	DisarmProfile()
+	OpenTextDialog("New profile", "Profile name", "",
+		"A new profile with your current settings, which this character then uses. Other characters can use it too.",
+		function(name)
+			if ns.NewProfile(name) then
+				ns.Print("This character now uses the new profile " .. name .. ".")
+			else
+				ns.Print("A profile named " .. name .. " already exists. Pick it in Profile in use instead.")
+			end
+			UpdateRows()
+		end, "Create")
+end
+
+local function ExportString()
+	OpenTextDialog("Export settings", "Settings string", ns.ExportSettings(),
+		"Selected: copy it with Ctrl+C and paste it anywhere. Import on another character or account uses it.",
+		Nothing, "Done", true)
+end
+
+local function ImportString()
+	OpenTextDialog("Import settings", "Paste a settings string", "",
+		"Paste with Ctrl+V. It replaces the settings it holds; the ring and the abilities on the bars stay as they are.",
+		function(text)
+			local count, problem = ns.ImportSettings(text)
+			if count then
+				ns.Print("Imported " .. count .. " settings.")
+			else
+				ns.Print(problem)
+			end
+			UpdateRows()
+		end, "Import")
+end
+
 local function BuildTabs()
 	local formRows = {}
 	for form = 1, ns.NUM_FORMS do
@@ -194,6 +305,10 @@ local function BuildTabs()
 				{ type = "choice", key = "partyMarker", label = "Party marker",
 					choices = function() return { { "left", "Left" }, { "right", "Right" }, { "off", "Off" } } end,
 					tip = "A gold arrow outside the selected party frame, on the side you choose, pointing at it." },
+				{ type = "choice", key = "partyPrompt", label = "Party button prompt",
+					choices = function() return { { "bottom", "Below the party" }, { "top", "Above the party" }, { "off", "Hidden" } } end,
+					onChange = function() ns.UpdatePartyPrompt() end,
+					tip = "Where the {PADDUP}{PADDDOWN} prompt shows with the party frames, or hide it." },
 				{ type = "choice", key = "raidHighlight", label = "Raid highlight", choices = HighlightChoices,
 					tip = "How the selected raid member's frame is marked, with the same choices as the party highlight." },
 				{ type = "choice", key = "highlightColor", label = "Highlight color",
@@ -376,6 +491,8 @@ local function BuildTabs()
 				{ type = "choice", key = "triggerMode", label = "{PADLTRIGGER} / {PADRTRIGGER} activation",
 					choices = function() return { { "hold", "Hold" }, { "toggle", "Toggle" }, { "mixed", "Mixed" } } end,
 					tip = "Hold: selected while the trigger is held. Toggle: stays selected until pressed again, also after a double tap. Mixed: a tap toggles and a hold holds." },
+				{ type = "check", key = "wxhbReturn", label = "Return to the bottom bar after using the top bar",
+					tip = "After using an ability on a top bar (double tap {PADLTRIGGER} or {PADRTRIGGER}), the bottom bar of that trigger comes back without letting go of the trigger, like FFXIV's \"Return to XHB after WXHB input\"." },
 				{ type = "number", key = "doubleTapTicks", label = "Double tap window", min = 2, max = 4, step = 1,
 					tip = "How long you have for the second tap of a double tap: 2 is about 0.3 seconds, each step adds 0.2. Raise it if double taps are missed." },
 				{ type = "spacer", label = "" },
@@ -412,6 +529,40 @@ local function BuildTabs()
 			icon = "Interface\\Icons\\INV_Misc_Map_01",
 			ring = true,
 			rows = {},
+		},
+		{
+			name = "Profiles",
+			icon = "Interface\\Icons\\INV_Misc_Book_09",
+			rows = {
+				{ type = "header", label = "PROFILE" },
+				{ type = "choice", label = "Profile in use",
+					choices = function() return ns.ProfileChoices() end, get = function() return ns.ProfileInUse() end,
+					set = function(name)
+						DisarmProfile()
+						if ns.UseProfile(name) then
+							ns.Print("This character now uses the profile " .. name .. ".")
+						end
+						UpdateRows()
+					end,
+					tip = "The profile whose settings this character uses. Each character starts with one named after it. Characters can share a profile: a change made on one reaches the others at their next login. Your current settings stay in the profile you switch away from." },
+				{ type = "action", label = "New profile", button = "Create", run = NewProfile,
+					tip = "Makes a new profile from your current settings and switches this character to it." },
+				{ type = "spacer", label = "" },
+				{ type = "header", label = "OTHER PROFILES" },
+				{ type = "choice", label = "Profile",
+					choices = OtherProfiles, get = PickedProfile,
+					set = function(value) profilePick = value; DisarmProfile(); UpdateRows() end,
+					tip = "Pick a profile to copy its settings into the one in use, or to delete it." },
+				{ type = "buttons", label = "", buttons = profileButtons,
+					tip = "Copy to mine replaces the settings of the profile in use with the picked one's; this character keeps its own profile. Delete removes the picked profile; a character still using it makes it again at its next login. Both ask for a second press." },
+				{ type = "spacer", label = "" },
+				{ type = "header", label = "SETTINGS STRING" },
+				{ type = "buttons", label = "Share settings", buttons = {
+						{ text = "Export", run = ExportString },
+						{ text = "Import", run = ImportString },
+					},
+					tip = "Export shows your settings as text to copy and share. Import pastes such text to use those settings. The ring and the abilities on the bars are not included." },
+			},
 		},
 	}
 	for _, tab in ipairs(tabs) do
@@ -1011,6 +1162,12 @@ function UpdateRows()
 	end
 	window.tip:SetText(tip)
 	window.defaults:SetText(RESET_ICON .. "  Reset to defaults")
+	-- Only where there is a setting to reset (not on the Profiles tab).
+	local resettable = false
+	for _, row in ipairs(rows) do
+		resettable = resettable or (row.key ~= nil and ns.DEFAULTS[row.key] ~= nil)
+	end
+	window.defaults:SetShown(resettable)
 	for index, button in ipairs(tabButtons) do
 		local selected = not searchRows and index == selectedTab
 		button.selected:SetShown(selected)
@@ -1590,7 +1747,7 @@ local function CreateDialog()
 				box:ClearFocus()
 			end
 		else
-			hint:SetText(ButtonText("{PAD1} " .. ((mode == "page" or mode == "text") and "save" or "add") .. "   {PAD2} " .. (mode == "command" and "back" or "cancel"), 18))
+			hint:SetText(ButtonText("{PAD1} " .. (mode == "text" and (dialog.textButton or "Save"):lower() or mode == "page" and "save" or "add") .. "   {PAD2} " .. (mode == "command" and "back" or "cancel"), 18))
 			search:ClearFocus()
 			if shownFields[1] and not (shownFields[1]:HasFocus() or (shownFields[2] and shownFields[2]:HasFocus()) or (shownFields[3] and shownFields[3]:HasFocus())) then
 				shownFields[1]:SetFocus()
@@ -1838,11 +1995,18 @@ local function CreateDialog()
 
 	-- A single line of text for a setting: title, the field's label, the current text, a help line
 	-- under it and what to do with the saved text.
-	function OpenTextDialog(title, label, value, help, onSave)
-		dialog.textLabel, dialog.textHelp, dialog.onTextSave = label, help, onSave
-		Open("text", title, "Save")
+	-- button names the save button; select highlights the text, for copying it.
+	function OpenTextDialog(title, label, value, help, onSave, button, select)
+		dialog.textLabel, dialog.textHelp, dialog.onTextSave, dialog.textButton = label, help, onSave, button
+		Open("text", title, button or "Save")
+		dialog.name:SetMaxLetters(0)
+		dialog.name:SetMaxBytes(0)
 		dialog.name:SetText(value or "")
 		dialog.name:SetCursorPosition(0)
+		if select then
+			dialog.name:SetFocus()
+			dialog.name:HighlightText()
+		end
 	end
 
 	function OpenPageDialog(pageIndex)
@@ -1852,6 +2016,40 @@ local function CreateDialog()
 			dialog.name:SetText(ns.RingPageName(pageIndex))
 		end
 	end
+end
+
+-- For profiles and settings strings: whether a value fits its setting's row, and the value to use.
+-- A choice must be one of the row's values; a number is kept inside the row's range, and whole for
+-- rows that step by 1. Settings without a row pass as they are.
+local rowsByKey
+function ns.ValidSetting(key, value)
+	if not rowsByKey then
+		rowsByKey = {}
+		for _, tab in ipairs(BuildTabs()) do
+			for _, row in ipairs(tab.rows) do
+				if row.key then
+					rowsByKey[row.key] = row
+				end
+			end
+		end
+	end
+	local row = rowsByKey[key]
+	if not row then
+		return true, value
+	elseif row.type == "choice" then
+		for _, choice in ipairs(row.choices()) do
+			if choice[1] == value then
+				return true, value
+			end
+		end
+		return false
+	elseif row.type == "number" then
+		if row.step == 1 then
+			value = math.floor(value + 0.5)
+		end
+		return true, math.max(row.min, math.min(row.max, value))
+	end
+	return true, value
 end
 
 local function CreateWindow()

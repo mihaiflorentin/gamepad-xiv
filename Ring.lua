@@ -210,6 +210,7 @@ function ns.RunSlashCommand(text)
 		ns.Print("No addon answers to", command .. ". Check that the addon is enabled.")
 		return
 	end
+	ns.Trail("slash command " .. command)
 	handler(rest, DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.editBox)
 end
 
@@ -563,6 +564,7 @@ end
 -- to the frame they get, so they get a real (hidden) one. A broken addon only prints a line.
 local launchAnchor
 local function RunAddOn(data)
+	ns.Trail("addon launcher " .. tostring(data.launcher or data.compartment or data.name or "?"))
 	launchAnchor = launchAnchor or CreateFrame("Frame", "GamepadXIVRingLaunchAnchor", UIParent)
 	launchAnchor:ClearAllPoints()
 	launchAnchor:SetPoint("CENTER")
@@ -1299,6 +1301,7 @@ function ns.OnRing(action)
 		elseif entry and not done then
 			if entry.run then
 				-- After this frame, so a window it opens is not caught by the press that closed the ring.
+				ns.Trail("ring entry " .. tostring(entry.label))
 				C_Timer.After(0, entry.run)
 			else
 				ns.Print(entry.label, "can't be opened from the ring in combat.")

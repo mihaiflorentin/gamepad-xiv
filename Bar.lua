@@ -737,6 +737,7 @@ function ns.ShowPress(row, index, down)
 		return
 	end
 	button.pressShade:SetShown(pressed)
+	ns.Trail("press feedback SetButtonState")
 	pcall(button.SetButtonState, button, pressed and "PUSHED" or "NORMAL")
 end
 

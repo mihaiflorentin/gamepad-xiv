@@ -506,9 +506,19 @@ S.SetSoft = [[
 	self:RunAttribute("ApplyLayer")
 ]]
 
--- Cast button: a press spends the soft target once the action has gone out.
+-- Cast button: a press spends the soft target once the action has gone out. With "Return after the
+-- top bar" on, letting go of a top bar (WXHB) button goes back to the bottom bar of that trigger,
+-- like FFXIV's "Return to XHB after WXHB input". On the release, so the key is already up when the
+-- bindings change.
 S.ActionPre = [[
 	if not down then
+		local driver = self:GetFrameRef("driver")
+		local w = driver:GetAttribute("fc-w")
+		if self:GetAttribute("fc-topRow") == 1 and driver:GetAttribute("fc-wReturn") == 1 and w and w ~= ""
+				and driver:GetAttribute("fc-layer") == "W" .. w and (driver:GetAttribute("fc-flyout") or "") == ""
+				and driver:GetAttribute("fc-clear") == 0 and driver:GetAttribute("fc-editing") ~= 1 then
+			driver:RunAttribute("ReturnFromTop")
+		end
 		return
 	end
 	local driver = self:GetFrameRef("driver")
@@ -610,6 +620,25 @@ S.OnTrigger = [[
 		rDown = down
 	end
 
+	self:SetAttribute("fc-lDown", lDown)
+	self:SetAttribute("fc-rDown", rDown)
+	self:SetAttribute("fc-w", w)
+	self:SetAttribute("fc-first", first)
+	self:SetAttribute("fc-latch", latch)
+	self:SetAttribute("fc-consumed", consumed)
+	self:RunAttribute("UpdateTriggerLayer")
+]]
+
+-- Driver: the layer from the trigger state that OnTrigger and ReturnFromTop keep.
+S.UpdateTriggerLayer = [[
+	local mode = self:GetAttribute("fc-triggerMode")
+	local latch = self:GetAttribute("fc-latch")
+	local consumed = self:GetAttribute("fc-consumed")
+	local lDown = self:GetAttribute("fc-lDown")
+	local rDown = self:GetAttribute("fc-rDown")
+	local w = self:GetAttribute("fc-w")
+	local first = self:GetAttribute("fc-first")
+
 	local lHeld = latch == "L" or (lDown == 1 and mode ~= "toggle" and consumed ~= "L")
 	local rHeld = latch == "R" or (rDown == 1 and mode ~= "toggle" and consumed ~= "R")
 
@@ -632,14 +661,29 @@ S.OnTrigger = [[
 		layer = "R"
 	end
 
-	self:SetAttribute("fc-lDown", lDown)
-	self:SetAttribute("fc-rDown", rDown)
-	self:SetAttribute("fc-w", w)
 	self:SetAttribute("fc-first", first)
-	self:SetAttribute("fc-latch", latch)
-	self:SetAttribute("fc-consumed", consumed)
 	self:SetAttribute("fc-layer", layer)
 	self:RunAttribute("ApplyLayer")
+]]
+
+-- Driver: leaves the top bar for the bottom bar of the same trigger. While the trigger is held that
+-- is the held side; in toggle mode, or with the trigger already let go, the side stays selected.
+S.ReturnFromTop = [[
+	local w = self:GetAttribute("fc-w")
+	if not w or w == "" then
+		return
+	end
+	self:SetAttribute("fc-w", "")
+	local held = self:GetAttribute(w == "L" and "fc-lDown" or "fc-rDown") == 1
+	-- A held trigger holds the side, and its release lets go even if a quick first tap in mixed mode
+	-- latched it; otherwise the side stays selected.
+	if self:GetAttribute("fc-triggerMode") == "toggle" or not held then
+		self:SetAttribute("fc-latch", w)
+	else
+		self:SetAttribute("fc-latch", "")
+	end
+	self:SetAttribute("fc-consumed", "")
+	self:RunAttribute("UpdateTriggerLayer")
 ]]
 
 -- Trigger button click. The double tap clock is adapted from CrossHotbar (BSD, ChainStratagem):

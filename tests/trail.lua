@@ -1,0 +1,89 @@
+-- Offline checks of the breadcrumbs saved with taint errors (Core.lua). Not loaded by the game.
+-- Run from the addon folder with: lua5.1 tests/trail.lua
+
+format = string.format
+tinsert, tremove = table.insert, table.remove
+date = os.date
+local stackText = "stack"
+function debugstack() return stackText end
+function GetBuildInfo() return "1.60.1", "12345" end
+function UnitClass() return "Druid", "DRUID" end
+function UnitLevel() return 60 end
+local clock, combat = 100, false
+function GetTime() return clock end
+function InCombatLockdown() return combat end
+local handler
+function geterrorhandler() return function() end end
+function seterrorhandler(fn) handler = fn end
+local function Frame()
+	return setmetatable({}, { __index = function() return function() end end })
+end
+function CreateFrame() return Frame() end
+
+local ns = {}
+assert(loadfile("Core.lua"))("GamepadXIV", ns)
+ns.db = { errorLog = {} }
+
+local failures = 0
+local function Check(label, actual, expected)
+	if actual ~= expected then
+		failures = failures + 1
+		print("FAIL " .. label .. ": expected " .. tostring(expected) .. ", got " .. tostring(actual))
+	end
+end
+
+ns.Trail("CVar alwaysCompareItems")
+clock = 101
+ns.Trail("press feedback SetButtonState")
+ns.Trail("press feedback SetButtonState")
+combat = true
+clock = 110.5
+
+-- An ordinary error keeps no breadcrumbs.
+handler("Interface/AddOns/Other/x.lua:1: boom")
+Check("ordinary error", ns.db.errorLog[1].trail, nil)
+
+-- A taint error naming this addon keeps them, oldest first, with the time before the error.
+local TAINT = "BuffFrame.lua:1234: attempt to perform arithmetic (a secret number value, while execution tainted by 'GamepadXIV')"
+handler(TAINT)
+local trail = ns.db.errorLog[2].trail
+Check("trail kept", type(trail), "table")
+Check("trail length", #trail, 2)
+Check("first crumb", trail[1], "-10.5s CVar alwaysCompareItems")
+Check("repeats collapse", trail[2], "-9.5s press feedback SetButtonState x2")
+
+-- The first time also keeps the context; a missing API is left out instead of failing.
+local context = table.concat(ns.db.errorLog[2].context, "; ")
+Check("context client", context:find("client: 1.60.1 (12345)", 1, true) ~= nil, true)
+Check("context class", context:find("class: DRUID level 60", 1, true) ~= nil, true)
+Check("context combat", context:find("combat: yes", 1, true) ~= nil, true)
+Check("context missing api", context:find("zone", 1, true), nil)
+
+-- An error with this addon's files in the stack keeps the breadcrumbs too.
+stackText = "[Interface/AddOns/GamepadXIV/Bar.lua]:12: in function"
+handler("attempt to index a nil value")
+Check("stack is ours", type(ns.db.errorLog[3].trail), "table")
+table.remove(ns.db.errorLog, 3)
+stackText = "stack"
+
+-- Later repeats keep the first trail.
+ns.Trail("sync")
+handler(TAINT)
+Check("count", ns.db.errorLog[2].count, 2)
+Check("first trail kept", #ns.db.errorLog[2].trail, 2)
+
+-- Only the last 40 are kept.
+for i = 1, 50 do
+	ns.Trail("crumb " .. i)
+end
+handler("x (while execution tainted by 'GamepadXIV') other")
+local long = ns.db.errorLog[3].trail
+Check("capped", #long, 40)
+Check("newest last", long[40]:match("crumb 50$") ~= nil, true)
+Check("combat marked", long[40]:find("[combat]", 1, true) ~= nil, true)
+
+if failures > 0 then
+	print(failures .. " failed")
+	os.exit(1)
+end
+print("trail: all passed")

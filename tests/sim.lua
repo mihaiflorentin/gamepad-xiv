@@ -107,7 +107,7 @@ local function NewFrame(name)
 end
 
 local driver = NewFrame("GamepadXIVDriver")
-for _, key in ipairs({ "ApplyLayer", "BindAll", "UpdateTargetBindings", "UpdateYield", "OnTrigger", "BeginEdit", "EndEdit", "SetSoft", "ReturnToGroupUnit", "UpdateForm", "CycleGroup", "PartyCycleUnit", "SelectGroupUnit", "MoveFrameCursor", "OpenFlyout", "CloseFlyout", "SetClear" }) do
+for _, key in ipairs({ "ApplyLayer", "BindAll", "UpdateTargetBindings", "UpdateYield", "OnTrigger", "UpdateTriggerLayer", "ReturnFromTop", "BeginEdit", "EndEdit", "SetSoft", "ReturnToGroupUnit", "UpdateForm", "CycleGroup", "PartyCycleUnit", "SelectGroupUnit", "MoveFrameCursor", "OpenFlyout", "CloseFlyout", "SetClear" }) do
 	driver.attrs[key] = S[key]
 end
 
@@ -888,6 +888,72 @@ R2.release()
 Check("mixed: WXHB release clears", Layer(), "BASE")
 driver.attrs["fc-triggerMode"] = "hold"
 Wait(R2, 3)
+
+-- Return to the bottom bar after using the top bar (FFXIV's "Return to XHB after WXHB input").
+do
+	driver.attrs["fc-clear"] = driver.attrs["fc-clear"] or 0
+	local topCast, topFn = RunButton(S.ActionPre, { action = 401, ["fc-topRow"] = 1 })
+	local bottomCast, bottomFn = RunButton(S.ActionPre, { action = 201, ["fc-topRow"] = 0 })
+	local function Use(cast, fn)
+		fn(cast, "LeftButton", true)
+		fn(cast, "LeftButton", false)
+	end
+
+	-- Off: the top bar stays.
+	driver.attrs["fc-wReturn"] = 0
+	R2.press(); R2.release(); R2.press()
+	Check("wxhb return off: top bar", Layer(), "WR")
+	Use(topCast, topFn)
+	Check("wxhb return off: stays on the top bar", Layer(), "WR")
+	R2.release()
+	Wait(R2, 3)
+
+	-- On, hold mode: back to the bottom bar while the trigger is held, then base on release.
+	driver.attrs["fc-wReturn"] = 1
+	R2.press(); R2.release(); R2.press()
+	Check("wxhb return: top bar", Layer(), "WR")
+	topFn(topCast, "LeftButton", true)
+	Check("wxhb return: not on the press", Layer(), "WR")
+	topFn(topCast, "LeftButton", false)
+	Check("wxhb return: bottom bar after the release", Layer(), "R")
+	Check("wxhb return: PAD1 on the bottom bar", driver.bindings.PAD1, "CLICK GamepadXIVCastR8:LeftButton")
+	Use(topCast, topFn)
+	Check("wxhb return: a second use changes nothing", Layer(), "R")
+	R2.release()
+	Check("wxhb return: trigger release goes to base", Layer(), "BASE")
+	Wait(R2, 3)
+
+	-- A bottom bar button never returns anything.
+	R2.press(); R2.release(); R2.press()
+	Use(bottomCast, bottomFn)
+	Check("wxhb return: bottom row buttons do not return", Layer(), "WR")
+	R2.release()
+	Wait(R2, 3)
+
+	-- Toggle mode: the top bar stays up after the double tap; using it keeps that side selected.
+	driver.attrs["fc-triggerMode"] = "toggle"
+	R2.press(); R2.release(); R2.press(); R2.release()
+	Check("wxhb return toggle: top bar stays", Layer(), "WR")
+	Use(topCast, topFn)
+	Check("wxhb return toggle: bottom bar stays selected", Layer(), "R")
+	Wait(R2, 3)
+	R2.press(); R2.release()
+	Check("wxhb return toggle: next press deselects", Layer(), "BASE")
+	Wait(R2, 3)
+
+	-- Mixed mode, held: like hold.
+	driver.attrs["fc-triggerMode"] = "mixed"
+	R2.press(); R2.release(); R2.press()
+	Wait(R2, 3)
+	Use(topCast, topFn)
+	Check("wxhb return mixed: bottom bar while held", Layer(), "R")
+	R2.release()
+	Check("wxhb return mixed: long hold release goes to base", Layer(), "BASE")
+	Wait(R2, 3)
+
+	driver.attrs["fc-triggerMode"] = "hold"
+	driver.attrs["fc-wReturn"] = 0
+end
 
 -- Hunters and warlocks keep Forever's pet chords free.
 driver.attrs["fc-petChords"] = 1

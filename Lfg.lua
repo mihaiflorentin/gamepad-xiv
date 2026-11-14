@@ -194,6 +194,7 @@ local function Send(info)
 	end
 	lastSent[leader] = now
 	local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
+	ns.Trail("group finder whisper")
 	local ok, err = pcall(send, text, "WHISPER", nil, leader)
 	ns.LfgLog(ok and "sent" or "send failed", leader, ok and text or tostring(err))
 end
