@@ -36,6 +36,7 @@ ns.DEFAULTS = {
 	triggerMode = "hold", -- hold, toggle or mixed, like FFXIV's cross hotbar activation
 	wxhbReturn = false, -- using a top bar (WXHB) button goes back to the bottom bar, like FFXIV's option
 	dimAlpha = 0.55,
+	idleAlpha = 1, -- bar opacity out of combat with no trigger held; 1 never fades
 	showKeyLabels = false,
 	rangeIndicator = true,
 	showInteractPrompt = true,
@@ -308,11 +309,28 @@ end
 local MAX_LOGGED_ERRORS = 40
 local pendingErrors = {}
 
+local MAX_GROUPED_ACTIONS = 30
+
 local function LogError(message, tainted)
 	local log = ns.db and ns.db.errorLog or pendingErrors
 	message = tostring(message)
 	local stack = debugstack(3, 30, 0)
 	local ours = tainted and true or IsOurs(message, stack)
+	local now = date("%Y-%m-%d %H:%M:%S")
+	-- One tainted call can get dozens of Forever's actions blocked at once, one event each. They go in
+	-- one entry, so they don't push every other error out of the log.
+	local event, action = message:match("^(ADDON_ACTION_%u+): (.+)$")
+	if event then
+		for _, entry in ipairs(log) do
+			if entry.event == event and entry.tainted == tainted and entry.time == now then
+				entry.count = entry.count + 1
+				if #entry.actions < MAX_GROUPED_ACTIONS and not tContains(entry.actions, action) then
+					tinsert(entry.actions, action)
+				end
+				return
+			end
+		end
+	end
 	for _, entry in ipairs(log) do
 		if entry.message == message then
 			entry.count = entry.count + 1
@@ -328,9 +346,8 @@ local function LogError(message, tainted)
 	if #log >= MAX_LOGGED_ERRORS then
 		tremove(log, 1)
 	end
-	local now = date("%Y-%m-%d %H:%M:%S")
 	tinsert(log, { message = message, count = 1, first = now, time = now, stack = stack, tainted = tainted,
-		context = ErrorContext(), trail = ours and TrailLines() or nil })
+		event = event, actions = event and { action } or nil, context = ErrorContext(), trail = ours and TrailLines() or nil })
 end
 
 -- Names the values on Forever's chat and binding path that addon code has written, so a blocked
@@ -479,6 +496,7 @@ function ns.TogglePlayLog()
 end
 
 function ns.Print(...)
+	ns.Trail("print")
 	print(ns.ICON_MARKUP .. " |cff66ccffGamepad XIV:|r", ...)
 end
 

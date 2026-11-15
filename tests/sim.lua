@@ -269,6 +269,31 @@ Wait(R2, 3)
 driver.attrs["fc-hide-WR"] = 0
 driver:RunAttribute("ApplyLayer")
 
+-- Idle opacity: the bars fade at rest out of combat and come back on a trigger or in combat.
+driver.attrs["fc-idleAlpha"] = 0.3
+driver:RunAttribute("ApplyLayer")
+Check("idle: bars fade at rest", contents.L.alpha, 0.3)
+Check("idle: top bars fade too", contents.WR.alpha, 0.3)
+R2.press()
+Check("idle: trigger held shows the selected bar", contents.R.alpha, 1)
+Check("idle: other bars keep the inactive dim", contents.L.alpha, 0.55)
+R2.release()
+Check("idle: fades again on release", contents.R.alpha, 0.3)
+Wait(R2, 3)
+unitsThatExist.combat = true
+driver:RunAttribute("ApplyLayer")
+Check("idle: full in combat", contents.L.alpha, 1)
+unitsThatExist.combat = nil
+driver:RunAttribute("ApplyLayer")
+Check("idle: fades after combat", contents.L.alpha, 0.3)
+driver.attrs["fc-hide-WR"] = 1
+driver:RunAttribute("ApplyLayer")
+Check("idle: hidden top bar stays hidden", contents.WR.alpha, 0)
+driver.attrs["fc-hide-WR"] = 0
+driver.attrs["fc-idleAlpha"] = 1
+driver:RunAttribute("ApplyLayer")
+Check("idle off: full at rest", contents.L.alpha, 1)
+
 -- A top bar turned off: a double tap is two plain presses of the bottom bar.
 driver.attrs["fc-noDouble-R"] = 1
 R2.press(); R2.release(); R2.press()
@@ -1657,6 +1682,49 @@ do
 	Check("top off: bottom row to pair A", driver.attrs["fc-formset-0"], 1)
 	Check("top off: top row kept", driver.attrs["fc-side-WL"], 9)
 	Check("top off: nothing saved", driver.calls.OnTapSwap, nil)
+
+	-- In a form (a druid's bear on set 7), a tap goes to pair B and the next one back to the form's
+	-- own set, never to pair A's bottom row.
+	driver.attrs["fc-tapTop"] = 1
+	local formStateFn = assert(loadstring("local self, stateid, newstate = ...\n" .. S.OnStateForm))
+	setfenv(formStateFn, setmetatable({}, { __index = ALLOWED }))
+	driver.attrs["fc-formset-3"] = 7
+	formStateFn(driver, "fcform", 3)
+	Check("form tap: bear shows set 7", driver.attrs["fc-formset-3"], 7)
+	Tap()
+	Check("form tap: to pair B", driver.attrs["fc-formset-3"], 2)
+	Check("form tap: own set kept aside", driver.attrs["fc-formhome-3"], 7)
+	Check("form tap: top row to pair B", driver.attrs["fc-side-WL"], 11)
+	Tap()
+	Check("form tap again: back to the bear set", driver.attrs["fc-formset-3"], 7)
+	Check("form tap again: nothing kept aside", driver.attrs["fc-formhome-3"], nil)
+	Check("form tap again: top row pair A", driver.attrs["fc-side-WL"], 9)
+	Tap()
+	Tap()
+	Check("form tap twice more: still the bear set", driver.attrs["fc-formset-3"], 7)
+	Check("form tap: caster set untouched", driver.attrs["fc-formset-0"], 1)
+
+	-- Leaving the form while on pair B gives it its own set back for next time.
+	Tap()
+	formStateFn(driver, "fcform", 0)
+	Check("form left on pair B: bear set restored", driver.attrs["fc-formset-3"], 7)
+	Check("form left on pair B: top row pair A", driver.attrs["fc-side-WL"], 9)
+	formStateFn(driver, "fcform", 3)
+	Check("form back: bear set", driver.attrs["fc-formset-3"], 7)
+
+	-- A set picked by hand while on pair B becomes the form's own set.
+	Tap()
+	tapFn(tapR1, "LeftButton", true)
+	local formPick, formPickFn = RunButton(S.SetClick, { ["fc-setIndex"] = 6 })
+	formPickFn(formPick, "LeftButton", true)
+	tapFn(tapR1, "LeftButton", false)
+	R1Tick(3)
+	Check("form pick: new own set", driver.attrs["fc-formset-3"], 6)
+	Check("form pick: nothing kept aside", driver.attrs["fc-formhome-3"], nil)
+	Tap()
+	Tap()
+	Check("form pick then taps: back to the picked set", driver.attrs["fc-formset-3"], 6)
+	formStateFn(driver, "fcform", 0)
 
 	driver.attrs["fc-r1Tap"] = 0
 	driver.attrs["fc-formset-0"] = 1

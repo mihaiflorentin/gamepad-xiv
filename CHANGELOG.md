@@ -1,5 +1,20 @@
 # Gamepad XIV
 
+## v0.1.20
+
+### New
+
+- Idle opacity: the bars can fade out of combat while no trigger is held.
+
+### Fixes
+
+- Fixed the quick set swap in a form or stance going to set 1 instead of back to the form's set.
+- Fewer "action blocked" errors when opening chat or a window.
+
+### Changes
+
+- Error reports keep more errors.
+
 ## v0.1.19
 
 ### Fixes

@@ -4,6 +4,7 @@
 format = string.format
 tinsert, tremove = table.insert, table.remove
 date = os.date
+function tContains(t, v) for _, x in ipairs(t) do if x == v then return true end end return false end
 local stackText = "stack"
 function debugstack() return stackText end
 function GetBuildInfo() return "1.60.1", "12345" end
@@ -81,6 +82,17 @@ local long = ns.db.errorLog[3].trail
 Check("capped", #long, 40)
 Check("newest last", long[40]:match("crumb 50$") ~= nil, true)
 Check("combat marked", long[40]:find("[combat]", 1, true) ~= nil, true)
+
+-- A burst of blocked actions from one tainted call is one entry, not one each.
+ns.db.errorLog = {}
+for i = 1, 39 do
+	handler("ADDON_ACTION_BLOCKED: Bar" .. (i % 8) .. ":SetSize()", "fields (GamepadXIV)")
+end
+Check("burst grouped", #ns.db.errorLog, 1)
+Check("burst count", ns.db.errorLog[1].count, 39)
+Check("burst actions", #ns.db.errorLog[1].actions, 8)
+handler("ADDON_ACTION_FORBIDDEN: SetPreferredGamepadInteractTarget()", "fields (GamepadXIV)")
+Check("other event apart", #ns.db.errorLog, 2)
 
 if failures > 0 then
 	print(failures .. " failed")

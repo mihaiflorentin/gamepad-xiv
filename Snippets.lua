@@ -148,6 +148,14 @@ S.ApplyLayer = [[
 		selected = nil
 	end
 	local dim = self:GetAttribute("fc-dim")
+	-- Out of combat with nothing selected or held, the bars can fade: the Idle opacity setting.
+	local rest = 1
+	local idleAlpha = self:GetAttribute("fc-idleAlpha") or 1
+	if idleAlpha < 1 and layer == "BASE" and not editing and not ringOpen and (flyout or "") == ""
+			and (clearStage or 0) == 0 and self:GetAttribute("fc-lDown") ~= 1 and self:GetAttribute("fc-rDown") ~= 1
+			and self:GetAttribute("state-fccombat") ~= 1 and not PlayerInCombat() then
+		rest = idleAlpha
+	end
 	for n = 1, 4 do
 		local row = self:GetAttribute("rowKey" .. n)
 		local content = self:GetFrameRef("content" .. row)
@@ -163,7 +171,7 @@ S.ApplyLayer = [[
 			content:SetAlpha(0)
 		else
 			content:SetScale(selected and 1.15 or 1)
-			content:SetAlpha(1)
+			content:SetAlpha(selected and 1 or rest)
 		end
 	end
 
@@ -377,6 +385,21 @@ S.UpdateForm = [[
 	if self:GetAttribute("fc-formLink") == 1 then
 		form = self:GetAttribute("fc-rawForm")
 	end
+	-- Leaving a form that a quick swap moved to pair B puts its own set back for next time.
+	local old = self:GetAttribute("fc-form")
+	if old and old > 0 and old ~= form then
+		local home = self:GetAttribute("fc-formhome-" .. old)
+		if home then
+			self:SetAttribute("fc-formset-" .. old, home)
+			self:SetAttribute("fc-formhome-" .. old, nil)
+			local top = self:GetAttribute("fc-tapTop") == 1 and self:GetAttribute("fc-tapA-top")
+			if top then
+				self:SetAttribute("fc-side-WL", top * 2 - 1)
+				self:SetAttribute("fc-side-WR", top * 2)
+				self:CallMethod("OnTapSwap", "A", top * 2 - 1, top * 2)
+			end
+		end
+	end
 	self:SetAttribute("fc-form", form)
 	self:RunAttribute("ApplyLayer")
 ]]
@@ -446,8 +469,8 @@ S.OnStateCombat = [[
 	if newstate == 1 and self:GetAttribute("fc-clear") ~= 0 then
 		self:RunAttribute("SetClear", 0)
 	end
-	-- The tutorial's buttons go back to their own actions in combat.
-	if self:GetAttribute("fc-tutorial") == 1 then
+	-- The tutorial's buttons go back to their own actions in combat, and faded bars come back.
+	if self:GetAttribute("fc-tutorial") == 1 or (self:GetAttribute("fc-idleAlpha") or 1) < 1 then
 		self:RunAttribute("ApplyLayer")
 	end
 ]]
@@ -748,11 +771,28 @@ S.R1Click = [[
 
 -- Driver: the R1 tap. The bottom row changes to pair B when it shows pair A's set, else to pair A.
 -- With the top row option on, the top row changes with it, to both halves of the pair's top set.
+-- In a form or stance, pair A's bottom row is the form's own set: a tap goes to pair B and the next
+-- one back to the form's set, which is kept in fc-formhome-<form> meanwhile and never replaced.
 S.SwapTapSets = [[
 	local form = self:GetAttribute("fc-form")
 	local current = self:GetAttribute("fc-formset-" .. form)
-	local pair = (current == self:GetAttribute("fc-tapA-bottom")) and "B" or "A"
-	local bottom = self:GetAttribute("fc-tap" .. pair .. "-bottom")
+	local pair, bottom
+	if form > 0 then
+		local home = self:GetAttribute("fc-formhome-" .. form)
+		if home then
+			pair, bottom = "A", home
+			self:SetAttribute("fc-formhome-" .. form, nil)
+		else
+			pair, bottom = "B", self:GetAttribute("fc-tapB-bottom")
+			if bottom == current then
+				bottom = self:GetAttribute("fc-tapA-bottom")
+			end
+			self:SetAttribute("fc-formhome-" .. form, current)
+		end
+	else
+		pair = (current == self:GetAttribute("fc-tapA-bottom")) and "B" or "A"
+		bottom = self:GetAttribute("fc-tap" .. pair .. "-bottom")
+	end
 	local top = self:GetAttribute("fc-tapTop") == 1 and self:GetAttribute("fc-tap" .. pair .. "-top")
 	if not bottom then
 		return
@@ -781,6 +821,10 @@ S.SetClick = [[
 	driver:SetAttribute("fc-r1Chord", 1)
 	local set = self:GetAttribute("fc-setIndex")
 	local form = driver:GetAttribute("fc-form")
+	-- A set picked by hand is the form's own set from now on, not a quick swap to undo.
+	if form > 0 then
+		driver:SetAttribute("fc-formhome-" .. form, nil)
+	end
 	-- In a form, picking the normal bar's own set gives the form its own set back, 4 + its number.
 	-- Otherwise that form would show the same set as the normal bar and never change it.
 	if form > 0 and set == driver:GetAttribute("fc-formset-0") then

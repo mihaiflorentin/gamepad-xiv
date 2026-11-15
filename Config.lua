@@ -435,6 +435,8 @@ local function BuildTabs()
 					tip = "The gap between the D-pad group and the face button group of each bar." },
 				{ type = "number", key = "dimAlpha", label = "Inactive side opacity", min = 0, max = 1, step = 0.05,
 					tip = "How visible the other bars stay while one is selected. 0 hides them." },
+				{ type = "number", key = "idleAlpha", label = "Idle opacity", min = 0.1, max = 1, step = 0.05,
+					tip = "How visible the bars are out of combat with no trigger held. They come back on a trigger or in combat. 1 never fades them." },
 				{ type = "spacer", label = "" },
 				{ type = "header", label = "SLOTS" },
 				{ type = "check", key = "showKeyLabels", label = "Show controller buttons on slots", onChange = Refresh,

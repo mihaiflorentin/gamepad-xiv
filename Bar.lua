@@ -603,7 +603,9 @@ function ns.ShowLayer(layer, leftSide, rightSide, set, form)
 	ns.lastLayer = not ns.editing and layer or nil
 
 	if form and form > 0 then
-		ns.db["formSet" .. form] = set
+		-- While a quick swap shows pair B, the form keeps its own set.
+		local driver = _G.GamepadXIVDriver
+		ns.db["formSet" .. form] = driver and driver:GetAttribute("fc-formhome-" .. form) or set
 	else
 		ns.db.set = set
 	end

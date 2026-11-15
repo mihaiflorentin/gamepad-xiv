@@ -1991,11 +1991,24 @@ function ns.CreateInput()
 	RegisterStateDriver(driver, "fcraid", "[group:raid] 1; 0")
 
 	-- Forever's window bindings are priority overrides, so they win while a window is focused.
-	-- Closing one writes empty overrides back, so bindings are reasserted afterwards.
+	-- Closing one writes empty overrides back, so bindings are reasserted afterwards: on the next
+	-- frame, once Forever's binding change (opening chat, focusing a window) is over, so none of this
+	-- runs inside it, and once for a burst of them.
 	local manager = GamepadSharedUtility and GamepadSharedUtility.InputBindingManager
 	if manager then
-		hooksecurefunc(manager, "RemoveSet", function() ns.Sync() end)
-		hooksecurefunc(manager, "ClearBindings", function() ns.Sync() end)
+		local queued = false
+		local function SyncSoon()
+			if queued then
+				return
+			end
+			queued = true
+			C_Timer.After(0, function()
+				queued = false
+				ns.Sync()
+			end)
+		end
+		hooksecurefunc(manager, "RemoveSet", SyncSoon)
+		hooksecurefunc(manager, "ClearBindings", SyncSoon)
 	end
 
 	-- A timer leaves Blizzard's popup code before anything here runs. The wait after one appears
@@ -2191,9 +2204,10 @@ editorWatcher:Hide()
 editorWatcher:SetScript("OnUpdate", ShowEditorPage)
 
 function ns.ApplyForeverBarVisibility(foreverShown)
-	if GamepadMainActionBarFrame then
-		ns.Trail("GamepadMainActionBarFrame:SetAlpha")
-		GamepadMainActionBarFrame:SetAlpha(foreverShown and 1 or 0)
+	local alpha = foreverShown and 1 or 0
+	if GamepadMainActionBarFrame and GamepadMainActionBarFrame:GetAlpha() ~= alpha then
+		ns.Trail("GamepadMainActionBarFrame:SetAlpha " .. alpha)
+		GamepadMainActionBarFrame:SetAlpha(alpha)
 	end
 	local inBindFlow = foreverShown and ns.foreverEditorOpen
 	SetEditorBarsShown(not inBindFlow)
@@ -2596,10 +2610,16 @@ function ns.Sync()
 	end
 	driver:SetAttribute("fc-formset-0", db.set)
 	for form = 1, ns.NUM_FORMS do
-		driver:SetAttribute("fc-formset-" .. form, db["formSet" .. form])
+		-- While a quick swap shows pair B, the saved set is the form's own set to come back to.
+		if driver:GetAttribute("fc-formhome-" .. form) then
+			driver:SetAttribute("fc-formhome-" .. form, db["formSet" .. form])
+		else
+			driver:SetAttribute("fc-formset-" .. form, db["formSet" .. form])
+		end
 	end
 	driver:SetAttribute("fc-formLink", db.formsChangeBar and 1 or 0)
 	driver:SetAttribute("fc-dim", db.dimAlpha)
+	driver:SetAttribute("fc-idleAlpha", db.idleAlpha)
 	driver:SetAttribute("fc-tapTicks", db.doubleTapTicks)
 	driver:SetAttribute("fc-side-WL", db.sideWL)
 	driver:SetAttribute("fc-side-WR", db.sideWR)
