@@ -167,16 +167,33 @@ end
 
 -- Forever's class menus close on any button press. With stick axis buttons on, every tilt of the
 -- right stick is a button press too, so the menu closed the moment the stick moved. They are
--- turned off while one is open.
+-- turned off while one is open. The client blocks C_GamePad.ApplyConfigs in combat (the game's
+-- "action blocked" popup), so a change in combat waits for the end of combat.
+local pendingStickButtons
 local function SetStickButtons(on)
 	if ns.db.savedCVars.GamePadStickAxisButtons == nil then
 		return -- the addon is not running its input settings
 	end
+	if InCombatLockdown() then
+		pendingStickButtons = on
+		return
+	end
+	pendingStickButtons = nil
 	local value = on and INPUT_CVARS.GamePadStickAxisButtons or "0"
 	ns.Trail("CVar GamePadStickAxisButtons = " .. value .. ", C_GamePad.ApplyConfigs")
 	pcall(C_CVar.SetCVar, "GamePadStickAxisButtons", value)
 	SetTemp("GamePadStickAxisButtons", value)
 	pcall(C_GamePad.ApplyConfigs)
+end
+
+do
+	local afterCombat = CreateFrame("Frame")
+	afterCombat:RegisterEvent("PLAYER_REGEN_ENABLED")
+	afterCombat:SetScript("OnEvent", function()
+		if pendingStickButtons ~= nil then
+			SetStickButtons(pendingStickButtons)
+		end
+	end)
 end
 
 local function ApplyTempCVars(apply)

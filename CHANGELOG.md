@@ -1,5 +1,12 @@
 # Gamepad XIV
 
+## v0.1.19
+
+### Fixes
+
+- Fixed an "action blocked" popup when a pet or stance menu closed in combat.
+- Fixed an error when resetting the bar positions.
+
 ## v0.1.18
 
 ### New

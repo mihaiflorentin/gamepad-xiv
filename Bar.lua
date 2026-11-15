@@ -325,8 +325,9 @@ function ns.PlaceLootFrame()
 	if InCombatLockdown() and frame:IsProtected() then
 		return
 	end
-	-- Forever's own anchors, read while the window is still where Forever put it.
-	if not db.lootMoved and not frame.gxivMovedOnce then
+	-- Forever's own anchors, read the first time, while the window is still where Forever put it
+	-- (also when it was moved in an earlier session, so a reset can put it back).
+	if not frame.gxivOriginalPoints or (not db.lootMoved and not frame.gxivMovedOnce) then
 		local points = {}
 		for i = 1, frame:GetNumPoints() do
 			points[i] = { frame:GetPoint(i) }
@@ -337,7 +338,7 @@ function ns.PlaceLootFrame()
 	if db.lootMoved then
 		frame:ClearAllPoints()
 		frame:SetPoint("CENTER", UIParent, "CENTER", db.lootX, db.lootY)
-	elseif frame.gxivMovedOnce then
+	elseif frame.gxivMovedOnce and frame.gxivOriginalPoints then
 		frame:ClearAllPoints()
 		for _, point in ipairs(frame.gxivOriginalPoints) do
 			frame:SetPoint(unpack(point))
