@@ -94,13 +94,23 @@ S.ApplyLayer = [[
 		elseif classMenuOpen and key == "PAD2" then
 			self:SetBinding(priority, key, "NONE")
 		elseif clearStage == 2 then
-			-- Only the choice answers now: move, remove or cancel.
+			-- Only the choice answers now: move, replace, remove or cancel.
 			if key == "PAD1" then
 				self:SetBindingClick(priority, key, "GamepadXIVSlotMove", "LeftButton")
+			elseif key == "PAD4" then
+				self:SetBindingClick(priority, key, "GamepadXIVSlotReplace", "LeftButton")
 			elseif key == "PAD3" then
 				self:SetBindingClick(priority, key, "GamepadXIVClearConfirm", "LeftButton")
 			elseif key == "PAD2" then
 				self:SetBindingClick(priority, key, "GamepadXIVClearCancel", "LeftButton")
+			else
+				self:ClearBinding(key)
+			end
+		elseif clearStage == 4 then
+			-- The list of what to put in the slot: the D-pad, A and B work it.
+			local listButton = self:GetAttribute("assignKey-" .. key)
+			if listButton then
+				self:SetBindingClick(priority, key, listButton, "LeftButton")
 			else
 				self:ClearBinding(key)
 			end
@@ -191,12 +201,15 @@ S.ApplyLayer = [[
 	end
 
 	if active then
-		-- Forever opens its pet menus from R1 + R2 and L1 + L2, so pet classes keep those two free.
+		-- Forever opens its pet menus from R1 + R2 and L1 + L2, so pet classes keep those two free,
+		-- unless the player turned that menu's button off.
 		local petChords = self:GetAttribute("fc-petChords") == 1
 		local rightHeld = active == "R" or active == "WR"
 		local leftHeld = active == "L" or active == "WL"
-		self:SetBinding(priority, "PADRSHOULDER", (petChords and rightHeld) and "NONE" or "TARGETNEARESTENEMY")
-		self:SetBinding(priority, "PADLSHOULDER", (petChords and leftHeld) and "NONE" or "TARGETNEARESTENEMY")
+		local rightFree = petChords and rightHeld and self:GetAttribute("fc-petOff-R") ~= 1
+		local leftFree = petChords and leftHeld and self:GetAttribute("fc-petOff-L") ~= 1
+		self:SetBinding(priority, "PADRSHOULDER", rightFree and "NONE" or "TARGETNEARESTENEMY")
+		self:SetBinding(priority, "PADLSHOULDER", leftFree and "NONE" or "TARGETNEARESTENEMY")
 		-- Back is always bound at priority, like the base layer's, so one binding replaces the other.
 		self:SetBindingClick(true, "PADBACK", "GamepadXIVEditToggle", "LeftButton")
 		self:SetBindingClick(priority, "PADFORWARD", "GamepadXIVConfigToggle", "LeftButton")
@@ -344,6 +357,13 @@ S.BindAll = [[
 S.UpdateTargetBindings = [[
 	local suffix = UnitExists("target") and "-target" or "-notarget"
 	self:SetAttribute("base-PAD3", self:GetAttribute("ctx-PAD3" .. suffix))
+	-- Cross on a living enemy target, with nothing else to interact with, can keep attacking or do nothing.
+	local crossEnemy = self:GetAttribute("fc-crossEnemy")
+	if crossEnemy and SecureCmdOptionParse("[@softinteract,exists] 0; [@target,harm,nodead] 1; 0") == "1" then
+		self:SetAttribute("base-PAD1", crossEnemy)
+	else
+		self:SetAttribute("base-PAD1", self:GetAttribute("ctx-PAD1"))
+	end
 	self:SetAttribute("base-PADLSTICK", self:GetAttribute("ctx-PADLSTICK" .. suffix))
 	-- Flying or swimming, B descends instead of cancelling.
 	self:SetAttribute("base-PAD2", (IsFlying() or IsSwimming()) and "SITORSTAND" or self:GetAttribute("ctx-PAD2-ground"))
@@ -476,7 +496,7 @@ S.OnStateCombat = [[
 ]]
 
 -- Driver: moving or removing an ability. 0 is off, 1 waits for a slot, 2 asks what to do with it,
--- 3 waits for the slot to move it to. Slots do not cast from 1 on, so pressing one only selects it.
+-- 3 waits for the slot to move it to, 4 shows the list of what to put in it. Slots do not cast from 1 on, so pressing one only selects it.
 S.SetClear = [[
 	local stage = ...
 	self:SetAttribute("fc-clear", stage)
@@ -885,6 +905,15 @@ S.ClassPopupShown = [[
 	control:RunAttribute("ApplyLayer")
 ]]
 
+-- After a pet menu opens (hunters and warlocks): a menu whose button is Disabled closes again at
+-- once. Forever opens it from its own chord, so this is the only way to keep it shut. The side
+-- (L for pet commands, R for pet spells) comes from the before part's return, as "local side = message".
+S.PetPopupShown = [[
+	if control:GetAttribute("fc-petChords") == 1 and control:GetAttribute("fc-petOff-" .. side) == 1 and self:IsShown() then
+		self:Hide()
+	end
+]]
+
 -- R1 + R3, or another button set to it: opens or closes the addon's ring.
 S.RingToggleClick = [[
 	if not down then
@@ -1089,6 +1118,11 @@ S.TargetCyclePreClick = [[
 	end
 	local driver = self:GetFrameRef("driver")
 	local mode = driver:GetAttribute("fc-dpadTarget")
+	-- In combat the D-pad can step through other targets than out of combat.
+	local combatMode = driver:GetAttribute("fc-dpadTargetCombat")
+	if PlayerInCombat() and combatMode and combatMode ~= "same" then
+		mode = combatMode
+	end
 	local command
 	if mode == "enemy" then
 		command = "/targetenemy"

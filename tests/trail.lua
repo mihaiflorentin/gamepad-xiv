@@ -94,6 +94,32 @@ Check("burst actions", #ns.db.errorLog[1].actions, 8)
 handler("ADDON_ACTION_FORBIDDEN: SetPreferredGamepadInteractTarget()", "fields (GamepadXIV)")
 Check("other event apart", #ns.db.errorLog, 2)
 
+-- The moment Forever's focus value is first written while this addon runs is kept apart, once.
+local manager = {}
+GamepadMode = { FrameControlsManager = manager }
+local secure = true
+function issecurevariable(t, key) if t == manager and key == "fallThroughCatcherActive" then return secure, not secure and "GamepadXIV" or nil end return true end
+local hooks = {}
+function hooksecurefunc(t, name, fn) hooks[name] = fn end
+function manager.SetFallThroughCatcherActive() end
+C_AddOns = { GetNumAddOns = function() return 2 end, IsAddOnLoaded = function(i) return true end,
+	GetAddOnInfo = function(i) return i == 1 and "GamepadXIV" or "Prat-3.0" end }
+ns.Trail("sync")
+assert(loadfile("Core.lua"))("GamepadXIV", ns)
+ns.db = { errorLog = {} }
+ns.CheckTaint("install")
+Check("no taint, nothing kept", ns.db.taintOrigin, nil)
+secure = false
+ns.CheckTaint("FrameControlsManager:SetFallThroughCatcherActive")
+local origin = ns.db.taintOrigin
+Check("taint origin kept", type(origin), "table")
+Check("taint origin field", origin and origin.field, "FrameControlsManager.fallThroughCatcherActive")
+Check("taint origin addons", origin and origin.addons, "GamepadXIV, Prat-3.0")
+Check("taint origin stack", origin and origin.stack, "stack")
+origin.where = "first"
+ns.CheckTaint("again")
+Check("taint origin once", ns.db.taintOrigin.where, "first")
+
 if failures > 0 then
 	print(failures .. " failed")
 	os.exit(1)

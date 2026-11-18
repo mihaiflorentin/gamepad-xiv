@@ -300,7 +300,7 @@ GamepadXIVTutorialClose.scripts.OnClick()
 ns.StartTutorial()
 GoToTitle("Move or remove an ability")
 local function Lines() return select(2, (GamepadXIVTutorial.how.text or ""):gsub("\n", "")) + 1 end
-check("no abilities: 9 steps", Lines() == 9 and GamepadXIVTutorial.how.text:match("spellbook") ~= nil)
+check("no abilities: 8 steps", Lines() == 8 and GamepadXIVTutorial.how.text:match("spellbook") ~= nil)
 ACTIONS[3 * 16 + 2] = true -- set 3, left side
 GoToTitle("Using an ability"); GoToTitle("Move or remove an ability")
 check("switches to the set with abilities", DRIVER_ATTR["fc-formset-0"] == 3)

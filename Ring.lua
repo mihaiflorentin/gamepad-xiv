@@ -438,10 +438,17 @@ end
 -- highest rank known.
 function ns.RingSpellChoices()
 	local list, seen = {}, {}
+	-- Ranks come in ascending order, so a name seen again is a higher rank: its ID replaces the
+	-- earlier one, for the bars, which place the exact spell.
 	local function Add(spellID, name, icon, tab)
-		if spellID and name and not seen[name] then
-			seen[name] = true
-			tinsert(list, { label = name, icon = icon, data = { spell = spellID }, detail = tab })
+		if not (spellID and name) then
+			return
+		end
+		if seen[name] then
+			seen[name].data.spell = spellID
+		else
+			seen[name] = { label = name, icon = icon, data = { spell = spellID }, detail = tab }
+			tinsert(list, seen[name])
 		end
 	end
 	local book = C_SpellBook

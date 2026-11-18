@@ -279,10 +279,15 @@ local function DrawSetPicker()
 	end
 end
 
--- Places the two diamonds of a side with the chosen gap between them.
-local function LayoutSide(side, row, padding)
-	local clusterX = CLUSTER_HALF_WIDTH + padding / 2
-	local width, height = (clusterX + CLUSTER_HALF_WIDTH) * 2, BUTTON_SIZE * 3
+-- Places the two diamonds of a side with the chosen gap between them and the chosen spacing
+-- inside each diamond (1 is the normal spacing).
+local function LayoutSide(side, row, padding, spreadX, spreadY)
+	spreadX, spreadY = spreadX or 1, spreadY or 1
+	local stepX, stepY = BUTTON_SIZE * 0.8 * spreadX, BUTTON_SIZE * 1.1 * spreadY
+	local halfWidth = CLUSTER_HALF_WIDTH + BUTTON_SIZE * 0.8 * (spreadX - 1)
+	local clusterX = halfWidth + padding / 2
+	local width = math.max((clusterX + halfWidth) * 2, BUTTON_SIZE * 2)
+	local height = BUTTON_SIZE * 3 + DIAMOND[2][2] * BUTTON_SIZE * 1.1 * (spreadY - 1) * 2
 	side:SetSize(width, height)
 	side.content:SetSize(width, height)
 	if movers[row] then
@@ -295,8 +300,8 @@ local function LayoutSide(side, row, padding)
 		local scale = button:GetScale()
 		button:ClearAllPoints()
 		button:SetPoint("CENTER", side.content, "CENTER",
-			(x + offset[1] * BUTTON_SIZE * 0.8) / scale,
-			(offset[2] * BUTTON_SIZE * 1.1) / scale)
+			(x + offset[1] * stepX) / scale,
+			(offset[2] * stepY) / scale)
 	end
 
 	for _, item in ipairs(side.marks.items) do
@@ -305,13 +310,14 @@ local function LayoutSide(side, row, padding)
 	end
 	for _, key in ipairs({ "soft", "ring" }) do
 		for _, texture in ipairs(side.highlights[key]) do
-			local size = key == "soft" and 140 or 116
+			local size = (key == "soft" and 140 or 116) * math.max(spreadX, spreadY)
 			texture:ClearAllPoints()
 			texture:SetPoint("CENTER", side.content, "CENTER", texture.sign * clusterX, 0)
 			texture:SetSize(size, size)
 		end
 	end
 	side.clusterX = clusterX
+	side.spread = math.max(spreadX, spreadY)
 	ns.ApplyBackground(side)
 end
 
@@ -389,7 +395,7 @@ function ns.ApplyLayout()
 	root:SetPoint("BOTTOM", UIParent, "BOTTOM", db.x, db.y)
 	for _, row in ipairs(ns.ROWS) do
 		local side = root.sides[row]
-		LayoutSide(side, row, db.clusterPadding)
+		LayoutSide(side, row, db.clusterPadding, db.buttonSpreadX, db.buttonSpreadY)
 		side:ClearAllPoints()
 		side:SetPoint("CENTER", root, "CENTER", db["pos" .. row .. "x"], db["pos" .. row .. "y"])
 	end

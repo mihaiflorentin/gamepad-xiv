@@ -856,7 +856,9 @@ end
 local function PlaceCluster(texture, side, scale)
 	texture:ClearAllPoints()
 	texture:SetPoint("CENTER", side.content, "CENTER", texture.sign * side.clusterX, 0)
-	texture:SetSize(CLUSTER_SIZE * scale, CLUSTER_SIZE * scale)
+	-- The background follows the button spacing.
+	local size = CLUSTER_SIZE * scale * (side.spread or 1)
+	texture:SetSize(size, size)
 end
 
 local function PaintCluster(texture, side, art, alpha)

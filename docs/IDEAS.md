@@ -6,13 +6,12 @@ Requests and ideas not built yet, with what was found about them. `docs/` is lef
 
 When a feature ships, reply to these players where they asked (all CurseForge comments unless noted).
 
-Built, reply still owed: FranchiFriars and werewolf_liker (combo brightness, set change flash, v0.1.17), bobajay (press feedback, v0.1.17), mighar (profiles and settings strings, next release), ruxley1 (return to the bottom bar after using the top bar, next release).
+Built, reply still owed: FranchiFriars and werewolf_liker (combo brightness, set change flash, v0.1.17), bobajay (press feedback, v0.1.17), mighar (profiles and settings strings, next release), ruxley1 (return to the bottom bar after using the top bar, v0.1.18; idle opacity, v0.1.20), werewolf_liker and andimustmask (D-pad left / right choice in combat, next release), IBNobody (button spacing and hiding the pet menu buttons, next release).
 
 | Feature | Asked by |
 |---|---|
 | Sheathed bar | Zinured |
 | Expanded controls select the top bars | BeanRad |
-| D-pad left / right "Both" in combat | werewolf_liker |
 | Top bar with 4 slots per side (also only A/B/X/Y on the expanded bars) | Manof_mayhem (issue form), Minty_F |
 | Bottom bar "Only when selected" | Spiralfruit |
 | Expanded Hold as its own bar, always shown | Minty_F |
@@ -35,12 +34,6 @@ FFXIV's Hotbar Settings > Custom option: L2 then R2 selects the top left bar (WX
 
 - A setting: "L2 then R2 / R2 then L2 select" Expanded Hold (as now) or the top bars.
 - With the top bars, the LR / RL layers would act like WL / WR (`OnTrigger` in `Snippets.lua`), and the double tap could be turned off (Top bar Off already exists).
-
-## D-pad left / right "Both" in combat (reported by werewolf_liker, CurseForge)
-
-"Both" alternates `/targetenemy` and `/targetfriend` on every press (`S.TargetCyclePreClick`), so in combat with no friendlies around every other press does nothing and it takes two taps to reach the next enemy.
-
-- Option: in combat, "Both" acts as "Enemies only" (`[combat]` in the macrotext), or keeps the kind of the current target (`[harm]` / `[help]`) and alternates only without a target.
 
 ## Top bar with 4 slots per side (requested by Manof_mayhem)
 

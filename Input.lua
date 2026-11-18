@@ -300,8 +300,23 @@ local function WatchWalkRelease()
 	walkWatcher:Show()
 end
 
+-- Cross is Forever's interact button, whose attack toggles: a second press on the enemy being
+-- attacked stopped the attack. crossEnemy picks what Cross does on a living enemy target instead:
+-- "attack" is /startattack, which never stops it, like FFXIV; "nothing" keeps the target without
+-- attacking. The driver swaps the binding (UpdateTargetBindings), so anything else (no target, a
+-- friend, a corpse or other thing to interact with) is Forever's own button, bound directly: reached
+-- through a macro's /click, loot opened without auto loot.
+local CROSS_ENEMY = { attack = "CLICK GamepadXIVCrossAttack:LeftButton", nothing = "NONE" }
+
 local function SetupBaseBindings()
 	local interact = ForeverButtonBinding(1, "INTERACTTARGET")
+	driver:SetAttribute("ctx-PAD1", interact)
+	local cross = CreateFrame("Button", "GamepadXIVCrossAttack", UIParent, "SecureActionButtonTemplate")
+	cross:RegisterForClicks("AnyDown", "AnyUp")
+	cross:SetAttribute("useOnKeyDown", true)
+	cross:SetAttribute("type", "macro")
+	cross:SetAttribute("macrotext", "/startattack [@target,harm,nodead]")
+	cross:Hide()
 	local inspect = ForeverButtonBinding(2, "TOGGLEWORLDMAP")
 	local back, backButton = ForeverButtonBinding(3, "TOGGLEGAMEMENU")
 
@@ -313,8 +328,7 @@ local function SetupBaseBindings()
 	driver:SetAttribute("ctx-PADDDOWN-target", "CLICK GamepadXIVPartyNext:LeftButton")
 	driver:SetAttribute("ctx-PADDUP-party", "CLICK GamepadXIVFrameUp:LeftButton")
 	driver:SetAttribute("ctx-PADDDOWN-party", "CLICK GamepadXIVFrameDown:LeftButton")
-	driver:SetAttribute("base-PAD1", interact)
-	driver:SetAttribute("ctx-PAD2-ground", back)
+		driver:SetAttribute("ctx-PAD2-ground", back)
 	driver:SetAttribute("soft-PAD1", "CLICK GamepadXIVSoftConfirm:LeftButton")
 	driver:SetAttribute("soft-PAD2", "CLICK GamepadXIVSoftCancel:LeftButton")
 	driver:SetAttribute("base-PAD4", "JUMP")
@@ -1464,8 +1478,10 @@ end
 -- Moving or removing an ability: the panel sits in one place and follows the steps.
 local clearPanel
 local clearSlot
+-- A spell picked in the spellbook (Spellbook.lua), waiting in stage 3 for the slot to go in.
+local pendingSpell
 
-local function GetActionName(slot)
+function ns.GetActionName(slot)
 	local actionType, id = GetActionInfo(slot)
 	if actionType == "spell" then
 		return C_Spell.GetSpellName(id)
@@ -1480,7 +1496,7 @@ end
 
 local function CreateClearPanel()
 	clearPanel = CreateFrame("Frame", "GamepadXIVClearPanel", UIParent, "BackdropTemplate")
-	clearPanel:SetSize(420, 118)
+	clearPanel:SetSize(440, 118)
 	clearPanel:SetFrameStrata("HIGH")
 	clearPanel:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
 	clearPanel:SetBackdrop({
@@ -1508,9 +1524,10 @@ local function CreateClearPanel()
 		text:SetText(label)
 		return button, text
 	end
-	clearPanel.moveButton, clearPanel.moveText = CreatePrompt(-190, "Move")
-	clearPanel.confirmButton, clearPanel.confirmText = CreatePrompt(-65, "Remove")
-	clearPanel.cancelButton = CreatePrompt(70, "Cancel")
+	clearPanel.moveButton, clearPanel.moveText = CreatePrompt(-205, "Move")
+	clearPanel.replaceButton, clearPanel.replaceText = CreatePrompt(-110, "Replace")
+	clearPanel.confirmButton, clearPanel.confirmText = CreatePrompt(0, "Remove")
+	clearPanel.cancelButton = CreatePrompt(105, "Cancel")
 end
 
 local function SetPromptAtlas(texture, key)
@@ -1524,26 +1541,52 @@ local function ShowClearStage(stage)
 	if not clearPanel then
 		CreateClearPanel()
 	end
+	if stage == 4 then
+		clearPanel:Hide()
+		local function EndClear()
+			SecureHandlerExecute(driver, [[ self:RunAttribute("SetClear", 0) ]])
+		end
+		-- A list that fails to open must not leave the D-pad, A and B bound to nothing.
+		local opened, err = pcall(ns.OpenAssign, clearSlot, EndClear)
+		if not opened then
+			ns.CloseAssign()
+			EndClear()
+			error(err, 0)
+		end
+		return
+	end
+	ns.CloseAssign()
+	if stage ~= 3 then
+		pendingSpell = nil
+	end
 	if stage == 0 then
 		clearSlot = nil
 		clearPanel:Hide()
 		return
 	end
 	SetPromptAtlas(clearPanel.moveButton, "PAD1")
+	SetPromptAtlas(clearPanel.replaceButton, "PAD4")
 	SetPromptAtlas(clearPanel.confirmButton, "PAD3")
 	SetPromptAtlas(clearPanel.cancelButton, "PAD2")
 	local choosing = stage == 2
 	clearPanel.moveButton:SetShown(choosing)
 	clearPanel.moveText:SetShown(choosing)
+	clearPanel.replaceButton:SetShown(choosing)
+	clearPanel.replaceText:SetShown(choosing)
 	clearPanel.confirmButton:SetShown(choosing)
 	clearPanel.confirmText:SetShown(choosing)
 	clearPanel.icon:SetShown(stage ~= 1)
-	if clearSlot then
+	if pendingSpell then
+		clearPanel.icon:SetTexture(C_Spell.GetSpellTexture(pendingSpell))
+	elseif clearSlot then
 		clearPanel.icon:SetTexture(C_ActionBar.GetActionTexture(clearSlot))
 	end
-	local name = clearSlot and GetActionName(clearSlot) or ""
-	if stage == 1 then
-		clearPanel.text:SetText(ns.ButtonText("Choose the ability to move or remove.\nHold {PADLTRIGGER} or {PADRTRIGGER}, or double tap for the top row, then press its button.", 18))
+	local name = clearSlot and ns.GetActionName(clearSlot) or ""
+	if pendingSpell then
+		clearPanel.text:SetText(ns.ButtonText("Put " .. (C_Spell.GetSpellName(pendingSpell) or "it") .. " where?\n"
+			.. "Choose the slot. {PADRSHOULDER} + a button changes the set.", 18))
+	elseif stage == 1 then
+		clearPanel.text:SetText(ns.ButtonText("Choose the ability to move or remove, or an empty slot to fill.\nHold {PADLTRIGGER} or {PADRTRIGGER}, or double tap for the top row, then press its button.", 18))
 	elseif stage == 2 then
 		clearPanel.text:SetText("What should happen to this ability?\n" .. name)
 	else
@@ -1581,20 +1624,50 @@ local function OnClearSlotPressed(cast, _, down)
 		return
 	end
 	local slot = cast:GetAttribute("action")
-	if stage == 3 then
+	if stage == 3 and pendingSpell then
+		ClearCursor()
+		C_Spell.PickupSpell(pendingSpell)
+		if GetCursorInfo() then
+			PlaceAction(slot)
+		else
+			ns.Print("That can't go on a bar.")
+		end
+		ClearCursor()
+		SecureHandlerExecute(driver, [[ self:RunAttribute("SetClear", 0) ]])
+	elseif stage == 3 then
 		MoveAction(clearSlot, slot)
 		SecureHandlerExecute(driver, [[ self:RunAttribute("SetClear", 0) ]])
-	elseif C_ActionBar.HasAction(slot) then
-		clearSlot = slot
-		SecureHandlerExecute(driver, [[ self:RunAttribute("SetClear", 2) ]])
 	else
-		ns.Print("That slot is empty.")
+		-- An empty slot goes straight to the list of what to put in it.
+		clearSlot = slot
+		local nextStage = C_ActionBar.HasAction(slot) and 2 or 4
+		SecureHandlerExecute(driver, ([[ self:RunAttribute("SetClear", %d) ]]):format(nextStage))
 	end
 end
 
 local function StartMove()
 	if clearSlot and not InCombatLockdown() and driver:GetAttribute("fc-clear") == 2 then
 		SecureHandlerExecute(driver, [[ self:RunAttribute("SetClear", 3) ]])
+	end
+end
+
+-- From the spellbook: the spell waits for a slot on the crossbar, chosen once the spellbook is closed.
+function ns.StartPlaceSpell(spellID)
+	if InCombatLockdown() or not driver then
+		return
+	end
+	ns.Trail("spellbook pick " .. tostring(spellID))
+	clearSlot = nil
+	if driver:GetAttribute("fc-clear") == 3 then
+		SecureHandlerExecute(driver, [[ self:RunAttribute("SetClear", 0) ]])
+	end
+	pendingSpell = spellID
+	SecureHandlerExecute(driver, [[ self:RunAttribute("SetClear", 3) ]])
+end
+
+local function StartReplace()
+	if clearSlot and not InCombatLockdown() and driver:GetAttribute("fc-clear") == 2 then
+		SecureHandlerExecute(driver, [[ self:RunAttribute("SetClear", 4) ]])
 	end
 end
 
@@ -1735,6 +1808,7 @@ function ns.CreateInput()
 	driver:SetAttribute("EndEdit", S.EndEdit)
 	driver:SetAttribute("_onstate-fccombat", S.OnStateCombat)
 	driver:SetAttribute("_onstate-fctarget", S.OnStateTarget)
+	driver:SetAttribute("_onstate-fcenemy", S.OnStateTarget)
 	driver:SetAttribute("_onstate-fcmounted", S.OnStateTarget)
 	driver:SetAttribute("_onstate-fcmove", S.OnStateTarget)
 	driver:SetAttribute("_onstate-fcvehicle", S.OnStateVehicle)
@@ -1875,11 +1949,7 @@ function ns.CreateInput()
 	local className = UnitClassBase("player")
 	if pageUnit and (className == "HUNTER" or className == "WARLOCK") then
 		driver:SetAttribute("fc-petChords", 1)
-		for _, key in ipairs({ "LeftClassAction", "RightClassAction", "LeftInputPrompt", "RightInputPrompt" }) do
-			if pageUnit[key] then
-				pageUnit[key]:SetIgnoreParentAlpha(true)
-			end
-		end
+		ns.ApplyPetButtons()
 	end
 
 	-- L1 + R3 and R1 + L3 click Forever's two class buttons, which open its pet menus for hunters and
@@ -1894,11 +1964,19 @@ function ns.CreateInput()
 	end
 	-- The open menu is watched through the secure wrapper, which leaves Forever's frames untainted.
 	local popupCount = 0
+	local PET_POPUP_SIDE = { [GamepadPetActionFlyout or false] = "L", [GamepadPetSpellFlyout or false] = "R" }
 	for _, popup in ipairs({ GamepadPetActionFlyout, GamepadPetSpellFlyout, GamepadSpellFlyout }) do
 		if popup and popup:IsProtected() then
 			popupCount = popupCount + 1
 			SecureHandlerSetFrameRef(driver, "classPopup" .. popupCount, popup)
-			SecureHandlerWrapScript(popup, "OnShow", driver, S.ClassPopupShown)
+			local side = PET_POPUP_SIDE[popup]
+			if side then
+				-- The after part runs only when the before part returns something for it.
+				SecureHandlerWrapScript(popup, "OnShow", driver, S.ClassPopupShown .. '\nreturn nil, "' .. side .. '"',
+					"local side = message\n" .. S.PetPopupShown)
+			else
+				SecureHandlerWrapScript(popup, "OnShow", driver, S.ClassPopupShown)
+			end
 			SecureHandlerWrapScript(popup, "OnHide", driver, S.ClassPopupShown)
 			popup:HookScript("OnShow", function() SetStickButtons(false) end)
 			popup:HookScript("OnHide", function() SetStickButtons(true) end)
@@ -1975,6 +2053,12 @@ function ns.CreateInput()
 	CreateSecureButton("GamepadXIVClearCancel", S.ClearCancelClick)
 	CreatePlainButton("GamepadXIVClearConfirm", ConfirmClear)
 	CreatePlainButton("GamepadXIVSlotMove", StartMove)
+	CreatePlainButton("GamepadXIVSlotReplace", StartReplace)
+	-- The list of what to put in a slot (Assign.lua) takes the D-pad, A and B.
+	for key, name in pairs({ PADDUP = "Up", PADDDOWN = "Down", PADDLEFT = "Left", PADDRIGHT = "Right", PAD1 = "Accept", PAD2 = "Back" }) do
+		CreatePlainButton("GamepadXIVAssign" .. name, function() ns.AssignNav(name) end)
+		driver:SetAttribute("assignKey-" .. key, "GamepadXIVAssign" .. name)
+	end
 
 	for i = 1, ns.NUM_SLOTS do
 		local button = CreateSecureButton("GamepadXIVSet" .. i, S.SetClick)
@@ -1983,6 +2067,8 @@ function ns.CreateInput()
 	end
 
 	RegisterStateDriver(driver, "fctarget", "[@target,exists] 1; 0")
+	-- Cross's binding follows whether the target is a living enemy and nothing else is to interact with.
+	RegisterStateDriver(driver, "fcenemy", "[@softinteract,exists] 0; [@target,harm,nodead] 1; 0")
 	RegisterStateDriver(driver, "fcmounted", "[mounted] 1; 0")
 	RegisterStateDriver(driver, "fccombat", "[combat] 1; 0")
 	RegisterStateDriver(driver, "fcmove", "[flying][swimming] 1; 0")
@@ -2400,6 +2486,43 @@ local function ClassMenuKeys(menu)
 	return { "PADRSHOULDER", "PADRTRIGGER" }
 end
 
+-- The pet menu buttons stay visible on Forever's hidden bar, unless the player hides them. Their
+-- chords open the menus either way. Out of combat only, since they are Forever's protected buttons.
+-- Each side has its own setting: the left one is the pet commands menu, the right one pet spells.
+-- "show", "hide", or "disable": hidden, and L1 / R1 with that trigger target enemies again.
+local PET_SIDES = {
+	classLeft = { setting = "petLeftButton", frames = { "LeftClassAction", "LeftInputPrompt" } },
+	classRight = { setting = "petRightButton", frames = { "RightClassAction", "RightInputPrompt" } },
+}
+local petButtonsShown = {}
+
+local function PetButtonShown(menu)
+	return (ns.db[PET_SIDES[menu].setting] or "show") == "show"
+end
+
+function ns.ApplyPetButtons()
+	if InCombatLockdown() or not (driver and driver:GetAttribute("fc-petChords") == 1) then
+		return
+	end
+	local pageUnit = GamepadMainActionBarFrame and GamepadMainActionBarFrame.PageUnit
+	for menu, side in pairs(PET_SIDES) do
+		local shown = PetButtonShown(menu)
+		if shown ~= petButtonsShown[menu] then
+			petButtonsShown[menu] = shown
+			ns.Trail(menu .. " pet button " .. (shown and "shown" or "hidden"))
+			for _, key in ipairs(side.frames) do
+				local button = pageUnit and pageUnit[key]
+				if button then
+					button:SetIgnoreParentAlpha(shown)
+				end
+			end
+			if classMenuHints[menu] then
+				classMenuHints[menu]:SetShown(shown)
+			end
+		end
+	end
+end
+
 function ns.UpdateClassMenuHints()
 	for menu, hint in pairs(classMenuHints) do
 		local parts = {}
@@ -2422,6 +2545,7 @@ function ns.CreateClassMenuHints(pageUnit)
 			hint:SetPoint("CENTER")
 			hint.text = hint:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
 			hint.text:SetPoint("CENTER")
+			hint:SetShown(PetButtonShown(menu))
 			classMenuHints[menu] = hint
 		end
 	end
@@ -2489,8 +2613,11 @@ function ns.UpdatePartyPrompt()
 	local container, prompt = partyPrompt.container, partyPrompt.prompt
 	local active = ns.IsActive() and true or false
 	local where = ns.db.partyPrompt or "bottom"
-	ns.Trail("party prompt SetAlpha")
-	container:SetAlpha(active and 0 or 1)
+	local alpha = active and 0 or 1
+	if container:GetAlpha() ~= alpha then
+		ns.Trail("party prompt SetAlpha " .. alpha)
+		container:SetAlpha(alpha)
+	end
 	prompt:SetShown(active and where ~= "off")
 	prompt.text:SetText(ns.ButtonText("{PADDUP}{PADDDOWN}", 14))
 	prompt:ClearAllPoints()
@@ -2559,6 +2686,10 @@ function ns.Sync()
 	driver:SetAttribute("fc-noDouble-R", db.showTopRight == "off" and 1 or 0)
 	driver:SetAttribute("fc-dpadParty", db.dpadParty)
 	driver:SetAttribute("fc-dpadTarget", db.dpadTarget)
+	driver:SetAttribute("fc-dpadTargetCombat", db.dpadTargetCombat)
+	driver:SetAttribute("fc-crossEnemy", CROSS_ENEMY[db.crossEnemy])
+	driver:SetAttribute("fc-petOff-L", db.petLeftButton == "disable" and 1 or 0)
+	driver:SetAttribute("fc-petOff-R", db.petRightButton == "disable" and 1 or 0)
 	driver:SetAttribute("fc-skipSelf", db.skipSelf and 1 or 0)
 	driver:SetAttribute("fc-skipPets", db.skipPets and 1 or 0)
 	local l3 = StickBinding(db.l3Action, "TOGGLESHEATH")
@@ -2584,6 +2715,7 @@ function ns.Sync()
 	driver:SetAttribute("fc-tapB-top", db.r1TapTopB)
 	driver:SetAttribute("fc-ringRelease", db.ringReleaseToUse and 1 or 0)
 	ns.UpdateClassMenuHints()
+	ns.ApplyPetButtons()
 	local answeredPopup, answeredPopupIndex = GetAnsweredPopup()
 	driver:SetAttribute("fc-answeredPopup", answeredPopupIndex or 0)
 	for _, key in ipairs(POPUP_KEY_ORDER) do

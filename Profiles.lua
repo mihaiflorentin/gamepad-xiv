@@ -13,7 +13,7 @@ local ADDON, ns = ...
 -- on the bars are Forever's own action slots and never come along.
 
 local EXCLUDED = {
-	errorLog = true, savedCVars = true, ringEntries = true, ringPages = true,
+	errorLog = true, taintOrigin = true, spellbookDebug = true, petMenuDebug = true, lootLog = true, taintWatchOff = true, savedCVars = true, ringEntries = true, ringPages = true,
 	experimentalAccepted = true, experimentalDeclined = true,
 	set = true, minimapAngle = true, formSet1 = true, formSet2 = true, formSet3 = true, formSet4 = true,
 }

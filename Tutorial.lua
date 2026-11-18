@@ -153,6 +153,14 @@ local function ClearStage()
 	return driver and driver.GetAttribute and driver:GetAttribute("fc-clear") or 0
 end
 
+-- Square in the spellbook: this addon's slot choice (spellbookAssign) or Forever's Bind to Action Bar.
+local function BindStepText()
+	if ns.db and ns.db.spellbookAssign then
+		return "Select an ability and press {PAD3}. The spellbook closes so you can choose its slot"
+	end
+	return "Select an ability and press {PAD3} to bring up the Bind to Action Bar menu"
+end
+
 local function Shown(name)
 	local frame = _G[name]
 	return frame ~= nil and frame.IsShown ~= nil and frame:IsShown() or false
@@ -474,16 +482,18 @@ local function BuildSteps()
 		-- Forever's Bind to Action Bar, which shows this addon's crossbar (Input.lua); the mouse works too.
 		checks = {
 			function(state) return SpellbookShown() or Since("slot", state.since) end,
-			function(state) return Shown("GamepadActionBarEditFrame") or Since("slot", state.since) end,
-			function(state) return Since("slot", state.since) end,
-			function() return not SpellbookShown() end,
+			function(state) return Shown("GamepadActionBarEditFrame") or ClearStage() == 3 or Since("slot", state.since) end,
+			-- The spellbook closes by itself once the ability is placed.
+			function(state) return Since("slot", state.since) and not SpellbookShown() end,
 		},
-		how = { "Hold {PADLSHOULDER} and press {PAD2} to open your spellbook", "Select an ability and press {PAD3} to bring up the Bind to Action Bar menu",
-			"Hold {PADLTRIGGER} or {PADRTRIGGER} and press a button to put it in that slot", "Press {PAD2} to close your spellbook" },
+		-- Square's text depends on a setting, so it is filled in when the page shows.
+		prepare = function(step) step.how[2] = BindStepText() end,
+		how = { "Hold {PADLSHOULDER} and press {PAD2} to open your spellbook", BindStepText(),
+			"Hold {PADLTRIGGER} or {PADRTRIGGER} and press a button to put it in that slot" },
 		free = { "PAD2" },
 		text = "Put abilities on your bars from the spellbook.\nYou can also drag abilities, items and macros onto any slot with the mouse.",
 		target = Sides("L", "R", "WL", "WR"),
-		lit = { S(1, Hold("PADLSHOULDER", 0, 1.0), Tap("PAD2", 0.4)), S(2, Tap("PAD3", 1.5)), S(3, Hold("PADLTRIGGER", 2.4, 0.9), Tap("PAD1", 2.8)), S(4, Tap("PAD2", 3.9)) },
+		lit = { S(1, Hold("PADLSHOULDER", 0, 1.0), Tap("PAD2", 0.4)), S(2, Tap("PAD3", 1.5)), S(3, Hold("PADLTRIGGER", 2.4, 0.9), Tap("PAD1", 2.8)) },
 	})
 	Add({
 		title = "Using an ability",
@@ -601,22 +611,22 @@ local function BuildSteps()
 			return
 		end
 		local how = { "Hold {PADLSHOULDER} and press {PAD2} to open your spellbook",
-			"Select an ability and press {PAD3} to bring up the Bind to Action Bar menu",
-			"Hold {PADRTRIGGER} and press a button to put it in that slot", "Press {PAD2} to close your spellbook" }
+			BindStepText(),
+			"Hold {PADRTRIGGER} and press a button to put it in that slot" }
 		local checks = {
 			function(state) return SpellbookShown() or Since("slot", state.since) end,
-			function(state) return Shown("GamepadActionBarEditFrame") or Since("slot", state.since) end,
-			function(state) return Since("slot", state.since) end,
-			-- The ability may have gone to another set; the bottom row then shows that one.
-			function() return not SpellbookShown() and ShowFilledSet() end,
+			function(state) return Shown("GamepadActionBarEditFrame") or ClearStage() == 3 or Since("slot", state.since) end,
+			-- The spellbook closes by itself. The ability may have gone to another set; the bottom row
+			-- then shows that one.
+			function(state) return Since("slot", state.since) and not SpellbookShown() and ShowFilledSet() end,
 		}
 		for index = 1, #MOVE_HOW do
 			tinsert(how, MOVE_HOW[index])
 			tinsert(checks, MOVE_CHECKS[index])
 		end
-		step.how, step.checks, step.holds, step.free = how, checks, { [5] = true }, { "PAD2" }
+		step.how, step.checks, step.holds, step.free = how, checks, { [4] = true }, { "PAD2" }
 		step.lit = { S(1, Hold("PADLSHOULDER", 0, 1.0), Tap("PAD2", 0.4)), S(2, Tap("PAD3", 1.5)),
-			S(3, Hold("PADRTRIGGER", 2.4, 0.9), Tap("PAD1", 2.8)), S(4, Tap("PAD2", 3.9)), MoveLit(5, 4.9) }
+			S(3, Hold("PADRTRIGGER", 2.4, 0.9), Tap("PAD1", 2.8)), MoveLit(4, 3.9) }
 	end
 	moveStep.prepare(moveStep)
 	Add(moveStep)

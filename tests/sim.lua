@@ -30,6 +30,11 @@ local ALLOWED = {
 		-- Like the game: a missing unit satisfies nodead, but never harm.
 		local plate = unitsThatExist[unit]
 		if conditions:find("harm", 1, true) and plate ~= "enemy" then return nil end
+		-- Cross's check: the soft interact target, then a living enemy target.
+		if unit == "softinteract" then
+			if unitsThatExist.softinteract then return "0" end
+			if unitsThatExist.target ~= "enemy" or unitsThatExist["dead-target"] then return "0" end
+		end
 		return "1"
 	end,
 }
@@ -153,6 +158,7 @@ driver.attrs["ctx-PADDLEFT-party"] = "FRAME_LEFT"
 driver.attrs["ctx-PADDRIGHT-party"] = "FRAME_RIGHT"
 driver.attrs["ctx-PADDUP-party"] = "FRAME_UP"
 driver.attrs["ctx-PADDDOWN-party"] = "FRAME_DOWN"
+driver.attrs["ctx-PAD1"] = "BASE_PAD1"
 driver.attrs["soft-PAD1"] = "SOFT_CONFIRM"
 driver.attrs["soft-PAD2"] = "SOFT_CANCEL"
 driver.attrs["fc-soft"] = ""
@@ -772,7 +778,23 @@ do
 	Check("clear choice: A moves", driver.bindings.PAD1, "CLICK GamepadXIVSlotMove:LeftButton")
 	Check("clear choice: X removes", driver.bindings.PAD3, "CLICK GamepadXIVClearConfirm:LeftButton")
 	Check("clear choice: B cancels", driver.bindings.PAD2, "CLICK GamepadXIVClearCancel:LeftButton")
-	Check("clear choice: other keys free", driver.bindings.PAD4, nil)
+	Check("clear choice: Y replaces", driver.bindings.PAD4, "CLICK GamepadXIVSlotReplace:LeftButton")
+	Check("clear choice: other keys free", driver.bindings.PADDUP, nil)
+	-- Replace, or an empty slot: the list of what to put there takes the D-pad, A and B.
+	for key, name in pairs({ PADDUP = "Up", PADDDOWN = "Down", PADDLEFT = "Left", PADDRIGHT = "Right", PAD1 = "Accept", PAD2 = "Back" }) do
+		driver.attrs["assignKey-" .. key] = "GamepadXIVAssign" .. name
+	end
+	driver:RunAttribute("SetClear", 4)
+	Check("assign list: up", driver.bindings.PADDUP, "CLICK GamepadXIVAssignUp:LeftButton")
+	Check("assign list: A selects", driver.bindings.PAD1, "CLICK GamepadXIVAssignAccept:LeftButton")
+	Check("assign list: B goes back", driver.bindings.PAD2, "CLICK GamepadXIVAssignBack:LeftButton")
+	Check("assign list: X free", driver.bindings.PAD3, nil)
+	Check("assign list: slots do not cast", castButtons.R8.attrs.type, nil)
+	R2.press()
+	Check("assign list: a trigger changes nothing", driver.bindings.PAD1, "CLICK GamepadXIVAssignAccept:LeftButton")
+	R2.release()
+	Wait(R2, 3)
+	driver:RunAttribute("SetClear", 2)
 	Wait(R2, 3)
 	R2.press()
 	Check("clear choice: a trigger changes nothing", driver.bindings.PAD1, "CLICK GamepadXIVSlotMove:LeftButton")
@@ -980,6 +1002,26 @@ do
 	driver.attrs["fc-wReturn"] = 0
 end
 
+-- Cross on an enemy target: the chosen action only on a living enemy with nothing to interact
+-- with; otherwise Forever's interact, bound directly so loot keeps auto loot.
+driver.attrs["fc-crossEnemy"] = "CLICK GamepadXIVCrossAttack:LeftButton"
+unitsThatExist.target = "enemy"
+driver:RunAttribute("UpdateTargetBindings"); driver:RunAttribute("ApplyLayer")
+Check("cross: living enemy keeps attacking", driver.bindings.PAD1, "CLICK GamepadXIVCrossAttack:LeftButton")
+unitsThatExist["dead-target"] = true
+driver:RunAttribute("UpdateTargetBindings"); driver:RunAttribute("ApplyLayer")
+Check("cross: corpse interacts directly", driver.bindings.PAD1, "BASE_PAD1")
+unitsThatExist["dead-target"] = nil
+unitsThatExist.softinteract = true
+driver:RunAttribute("UpdateTargetBindings"); driver:RunAttribute("ApplyLayer")
+Check("cross: something to interact with wins", driver.bindings.PAD1, "BASE_PAD1")
+unitsThatExist.softinteract = nil
+driver.attrs["fc-crossEnemy"] = nil
+driver:RunAttribute("UpdateTargetBindings"); driver:RunAttribute("ApplyLayer")
+Check("cross: default is Forever's", driver.bindings.PAD1, "BASE_PAD1")
+unitsThatExist.target = nil
+driver:RunAttribute("UpdateTargetBindings"); driver:RunAttribute("ApplyLayer")
+
 -- Hunters and warlocks keep Forever's pet chords free.
 driver.attrs["fc-petChords"] = 1
 R2.press()
@@ -992,6 +1034,31 @@ Check("pet chords: L2 leaves L1 free", driver.bindings.PADLSHOULDER, "NONE")
 Check("pet chords: L2 + R1 still targets", driver.bindings.PADRSHOULDER, "TARGETNEARESTENEMY")
 L2.release()
 Wait(L2, 3)
+-- A disabled pet menu gives its shoulder back to targeting; the other side stays free.
+driver.attrs["fc-petOff-R"] = 1
+R2.press()
+Check("pet chord disabled: R2 + R1 targets", driver.bindings.PADRSHOULDER, "TARGETNEARESTENEMY")
+R2.release()
+Wait(R2, 3)
+L2.press()
+Check("pet chord disabled: other side still free", driver.bindings.PADLSHOULDER, "NONE")
+L2.release()
+Wait(L2, 3)
+-- A Disabled pet menu closes as soon as Forever opens it; the other one stays.
+do
+	local petShown = assert(loadstring("local self, message, control = ...\nlocal side = message\n" .. S.PetPopupShown))
+	setfenv(petShown, setmetatable({}, { __index = ALLOWED }))
+	local popup = { shown = true }
+	function popup:IsShown() return self.shown end
+	function popup:Hide() self.shown = false end
+	petShown(popup, "R", driver)
+	Check("pet menu disabled: closed again", popup.shown, false)
+	driver.attrs["fc-petOff-R"] = 0
+	popup.shown = true
+	petShown(popup, "R", driver)
+	Check("pet menu not disabled: stays open", popup.shown, true)
+end
+driver.attrs["fc-petOff-R"] = nil
 driver.attrs["fc-petChords"] = 0
 
 -- D-pad party selection: Off, In a raid and Always.
@@ -1045,6 +1112,16 @@ do
 	driver.attrs["fc-targetCycle"] = nil
 	Check("target both: turns again", nextTarget(), "/targetenemy")
 	Check("target both: friend turn", nextTarget(), "/targetfriend")
+	-- A separate choice in combat.
+	driver.attrs["fc-dpadTargetCombat"] = "enemy"
+	Check("target combat choice: unused out of combat", nextTarget(), "/targetenemy")
+	unitsThatExist.combat = true
+	Check("target combat choice: enemies in combat", nextTarget(), "/targetenemy")
+	Check("target combat choice: stays on enemies", nextTarget(), "/targetenemy")
+	driver.attrs["fc-dpadTargetCombat"] = "same"
+	Check("target combat same: keeps both", nextTarget(), "/targetfriend")
+	unitsThatExist.combat = nil
+	driver.attrs["fc-dpadTargetCombat"] = nil
 end
 
 -- D-pad party selection: moving over the frames, two columns of three and two.

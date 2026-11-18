@@ -80,7 +80,14 @@ ns.DEFAULTS = {
 	x = 0,
 	y = 90,
 	clusterPadding = 16, -- gap between the D-pad and face button diamonds of a side
+	buttonSpreadX = 1, -- left / right spacing of the buttons inside a diamond, 1 is normal
+	buttonSpreadY = 1, -- up / down spacing of the buttons inside a diamond
 	dpadTarget = "friend", -- "enemy", "friend" or "both": what D-pad left and right select
+	spellbookAssign = true, -- Square in the spellbook puts the spell on a slot chosen on the crossbar
+	petLeftButton = "show", -- hunters and warlocks: Forever's pet commands button, "show", "hide" or "disable"
+	petRightButton = "show", -- and its pet spells button
+	dpadTargetCombat = "same",
+	crossEnemy = "forever", -- Cross on a living enemy target: "forever" (its attack toggle), "attack" (never stops) or "nothing" -- the same choices for combat, or "same" to keep dpadTarget
 	dpadParty = "raid", -- "off", "raid" or "always": when the whole D-pad selects party members
 	partyTargeting = "hard", -- "soft" or "hard": party selection sets a soft target or the real one
 	skipPets = false, -- party selection leaves pets out, like FFXIV
@@ -403,6 +410,211 @@ do
 	end)
 end
 
+-- Catches the moment a value on Forever's chat and binding path is first written while this addon's
+-- code is running, which an error later only shows as "tainted by GamepadXIV". The first time each
+-- session, it saves what called it, the breadcrumbs and the loaded addons in taintOrigin, apart from
+-- the error log so nothing pushes it out. Only reads; the hooks run after Forever's own functions.
+local WATCHED = {
+	{ "FrameControlsManager", function() return GamepadMode and GamepadMode.FrameControlsManager end,
+		{ "SetFallThroughCatcherActive" }, { "fallThroughCatcherActive" } },
+	{ "InputBindingManager", function() return GamepadSharedUtility and GamepadSharedUtility.InputBindingManager end,
+		{ "AddBindingSet", "RemoveSet", "ClearBindings" }, { "currentCoreBindingActive" } },
+	-- The chat box the game opened last, a global; reports showed it written while this addon ran.
+	{ "ChatFrameUtil", function() return ChatFrameUtil end, { "ActivateChat", "DeactivateChat" }, {}, { "LAST_ACTIVE_CHAT_EDIT_BOX" } },
+}
+
+local function LoadedAddons()
+	local names = {}
+	local count = (C_AddOns and C_AddOns.GetNumAddOns or GetNumAddOns)()
+	for i = 1, count do
+		local loaded = (C_AddOns and C_AddOns.IsAddOnLoaded or IsAddOnLoaded)(i)
+		if loaded then
+			local name = (C_AddOns and C_AddOns.GetAddOnInfo or GetAddOnInfo)(i)
+			names[#names + 1] = tostring(name)
+		end
+	end
+	return table.concat(names, ", ")
+end
+
+local taintCaught = false
+
+local function CheckTaint(where)
+	if taintCaught or not (issecurevariable and ns.db) then
+		return
+	end
+	for _, watch in ipairs(WATCHED) do
+		local target = watch[2]()
+		if type(target) == "table" then
+			local checks = {}
+			for _, field in ipairs(watch[4]) do
+				tinsert(checks, { watch[1] .. "." .. field, issecurevariable(target, field) })
+			end
+			for _, global in ipairs(watch[5] or {}) do
+				tinsert(checks, { global, issecurevariable(global) })
+			end
+			for _, check in ipairs(checks) do
+				local name, isSecure, owner = check[1], check[2], check[3]
+				if not isSecure and owner == ADDON then
+					taintCaught = true
+					ns.Trail("taint " .. name)
+					local origin = { time = date("%Y-%m-%d %H:%M:%S"), field = name, where = where,
+						stack = debugstack(3, 30, 0), trail = TrailLines(), context = ErrorContext() }
+					local ok, addons = pcall(LoadedAddons)
+					origin.addons = ok and addons or nil
+					ns.db.taintOrigin = origin
+					return
+				end
+			end
+		end
+	end
+end
+ns.CheckTaint = CheckTaint
+
+-- /gxiv taint: whether each watched value is clean now, and what was caught this session.
+function ns.TaintStatus()
+	for _, watch in ipairs(WATCHED) do
+		local target = watch[2]()
+		for _, field in ipairs(watch[4]) do
+			local isSecure, owner = issecurevariable(target or {}, field)
+			ns.Print(watch[1] .. "." .. field .. ": " .. (isSecure and "clean" or ("tainted by " .. tostring(owner))))
+		end
+		for _, global in ipairs(watch[5] or {}) do
+			local isSecure, owner = issecurevariable(global)
+			ns.Print(global .. ": " .. (isSecure and "clean" or ("tainted by " .. tostring(owner))))
+		end
+	end
+	local origin = ns.db.taintOrigin
+	ns.Print(origin and ("Caught: " .. tostring(origin.field) .. " at " .. tostring(origin.time) .. " (" .. tostring(origin.where) .. ")")
+		or "Nothing caught yet.")
+end
+
+do
+	local hooked = {}
+	local function Install()
+		-- /gxiv taintwatch off leaves Forever's functions unhooked, to test whether the hooks matter.
+		if ns.db and ns.db.taintWatchOff then
+			return
+		end
+		for _, watch in ipairs(WATCHED) do
+			local target = watch[2]()
+			if type(target) == "table" and not hooked[watch[1]] then
+				hooked[watch[1]] = true
+				for _, method in ipairs(watch[3]) do
+					if type(target[method]) == "function" then
+						hooksecurefunc(target, method, function()
+							if watch[1] == "ChatFrameUtil" then
+								ns.Trail(method == "ActivateChat" and "chat opened" or "chat closed")
+							end
+							pcall(CheckTaint, watch[1] .. ":" .. method)
+						end)
+					end
+				end
+			end
+		end
+		-- Already written before the hooks were in place.
+		pcall(CheckTaint, "install")
+	end
+	local watcher = CreateFrame("Frame")
+	watcher:RegisterEvent("ADDON_LOADED")
+	watcher:RegisterEvent("PLAYER_LOGIN")
+	watcher:SetScript("OnEvent", function()
+		pcall(Install)
+	end)
+	-- A value written by a path none of the hooks see is still caught within a second; its stack is
+	-- only the timer's then, but the breadcrumbs show what came just before.
+	local elapsed = 0
+	watcher:SetScript("OnUpdate", function(_, delta)
+		elapsed = elapsed + delta
+		if elapsed >= 1 and not taintCaught and not (ns.db and ns.db.taintWatchOff) then
+			elapsed = 0
+			pcall(CheckTaint, "timer")
+		end
+	end)
+end
+
+-- What the game decides when loot opens, saved in lootLog (the last 30), for finding why auto loot
+-- did not happen: the event's own autoLoot flag, the setting, the modifier, and what came just before.
+do
+	local MAX_LOOT_LOG = 30
+	local function Bool(value)
+		return value and "yes" or "no"
+	end
+	local loot = CreateFrame("Frame")
+	for _, event in ipairs({ "LOOT_READY", "LOOT_OPENED", "LOOT_CLOSED" }) do
+		pcall(loot.RegisterEvent, loot, event)
+	end
+	loot:SetScript("OnEvent", function(_, event, autoLoot, isFromItem)
+		pcall(function()
+			local db = ns.db
+			if not db then
+				return
+			end
+			local cvar = C_CVar and C_CVar.GetCVar and C_CVar.GetCVar("autoLootDefault")
+			local parts = { date("%H:%M:%S"), event }
+			if event ~= "LOOT_CLOSED" then
+				tinsert(parts, "autoLoot " .. tostring(autoLoot))
+				tinsert(parts, "fromItem " .. tostring(isFromItem))
+				tinsert(parts, "items " .. tostring(GetNumLootItems and GetNumLootItems()))
+			end
+			tinsert(parts, "cvar " .. tostring(cvar))
+			tinsert(parts, "toggle " .. Bool(IsModifiedClick and IsModifiedClick("AUTOLOOTTOGGLE")))
+			tinsert(parts, "shift " .. Bool(IsShiftKeyDown()) .. " ctrl " .. Bool(IsControlKeyDown()) .. " alt " .. Bool(IsAltKeyDown()))
+			tinsert(parts, "A " .. tostring(GetBindingAction and GetBindingAction("PAD1", true)))
+			local trail = TrailLines()
+			tinsert(parts, "last: " .. table.concat(trail, " / ", math.max(1, #trail - 2)))
+			db.lootLog = db.lootLog or {}
+			if #db.lootLog >= MAX_LOOT_LOG then
+				tremove(db.lootLog, 1)
+			end
+			tinsert(db.lootLog, table.concat(parts, " | "))
+		end)
+	end)
+end
+
+-- /gxiv petmenu: for 6 seconds, notes every named frame that shows and was hidden before, so the
+-- frame Forever opens for its pet menus can be found. Printed and saved in petMenuDebug.
+function ns.WatchPetMenu()
+	local function VisibleNames()
+		local names = {}
+		local frame = EnumerateFrames()
+		while frame do
+			local ok, name = pcall(frame.GetName, frame)
+			if ok and name and not (frame.IsForbidden and frame:IsForbidden()) and frame:IsVisible() then
+				names[name] = true
+			end
+			frame = EnumerateFrames(frame)
+		end
+		return names
+	end
+	local before, seen, found = VisibleNames(), {}, {}
+	local popups = {}
+	for _, name in ipairs({ "GamepadPetActionFlyout", "GamepadPetSpellFlyout", "GamepadSpellFlyout" }) do
+		local popup = _G[name]
+		tinsert(popups, name .. (popup and (popup:IsProtected() and " protected" or " not protected") or " missing"))
+	end
+	ns.Print("Open the pet menu now (6 seconds).")
+	local ticks = 0
+	local ticker
+	ticker = C_Timer.NewTicker(0.2, function()
+		ticks = ticks + 1
+		for name in pairs(VisibleNames()) do
+			if not before[name] and not seen[name] then
+				seen[name] = true
+				tinsert(found, name)
+			end
+		end
+		if ticks >= 30 then
+			ticker:Cancel()
+			local driver = _G.GamepadXIVDriver
+			local text = "shown: " .. (#found > 0 and table.concat(found, ", ") or "nothing new") .. " | " .. table.concat(popups, ", ")
+				.. " | petChords " .. tostring(driver and driver:GetAttribute("fc-petChords"))
+				.. " off L " .. tostring(driver and driver:GetAttribute("fc-petOff-L")) .. " R " .. tostring(driver and driver:GetAttribute("fc-petOff-R"))
+			ns.db.petMenuDebug = text
+			ns.Print(text)
+		end
+	end)
+end
+
 -- /gxiv log: a quiet log of play, saved to playLog and never printed, for finding what went wrong in
 -- a dungeon or raid. Unit names can be secret values in combat, so only unit tokens and spell IDs
 -- go in. Every write is protected: the log must never break play.
@@ -648,7 +860,7 @@ local SLASH_HELP = {
 	"/gxiv status - shows what is active",
 	"/gxiv on | off - turns the layout on or off",
 	"/gxiv config - settings (also L2/R2 + Start)",
-	"/gxiv clear - move or remove an ability (also L2/R2 + R3)",
+	"/gxiv clear - move, remove or add an ability (also L2/R2 + R3)",
 	"/gxiv tutorial - a short tutorial of the buttons",
 	"/gxiv move - drag the bars around the screen (Shift + drag moves all of them; also L2/R2 + Back)",
 	"/gxiv minimap - shows or hides the minimap icon",
@@ -706,6 +918,13 @@ local function HandleSlash(message)
 		ns.ToggleRingLog()
 	elseif command == "log" then
 		ns.TogglePlayLog()
+	elseif command == "taint" then
+		ns.TaintStatus()
+	elseif command == "taintwatch" then
+		ns.db.taintWatchOff = a == "off" or nil
+		ns.Print("Taint watch " .. (ns.db.taintWatchOff and "off" or "on") .. " after a /reload.")
+	elseif command == "petmenu" then
+		ns.WatchPetMenu()
 	elseif command == "lfglog" then
 		ns.ToggleLfgLog()
 	elseif command == "wxhb" then

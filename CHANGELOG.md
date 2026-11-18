@@ -1,5 +1,20 @@
 # Gamepad XIV
 
+## v0.1.21
+
+### New
+
+- D-pad left / right can step through other targets in combat. In the Targeting tab.
+- Choose what Cross does on an enemy target: toggle the attack, keep attacking, or nothing. In the Targeting tab.
+- Button spacing settings for the button groups, and closer group padding. In the Crossbars tab.
+- Hunters and warlocks can hide or disable each pet menu button under the crossbar. In the General tab.
+- Put abilities, items and macros on the bars without the spellbook: L2 / R2 + R3, then an empty slot or Replace.
+- Square in the spellbook closes it and puts the ability on any set of the crossbar. Can be turned off in the General tab.
+
+### Changes
+
+- Error reports record where an "action blocked" problem starts.
+
 ## v0.1.20
 
 ### New
