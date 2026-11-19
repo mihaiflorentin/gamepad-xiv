@@ -662,10 +662,18 @@ do
 			end
 		end
 	end
+	-- Off (the default): a double tap is two plain presses, nothing targeted.
 	ClearSoft()
 	driver.attrs["fc-cycle-party"] = 0
+	driver.attrs["fc-l1Party"] = 0
+	Tap(); Tap()
+	Check("L1 party off: double tap selects nothing", driver.attrs["fc-soft"], "")
+	Check("L1 party off: the button targets nothing", l1.attrs.type, nil)
+	L1Wait(4)
+	driver.attrs["fc-l1Party"] = 1
 	Tap()
 	Check("L1 single tap: nothing selected", driver.attrs["fc-soft"], "")
+	Check("L1 single tap: the button targets nothing", l1.attrs.type, nil)
 	Tap()
 	Check("L1 double tap: starts on the player", driver.attrs["fc-soft"], "player")
 	L1Wait(4)
@@ -1351,6 +1359,7 @@ do
 	local l1Fn = assert(loadstring("local self, button, down = ...\n" .. S.L1Click))
 	setfenv(l1Fn, setmetatable({}, { __index = ALLOWED }))
 	driver.attrs["fc-cycle-party"], driver.attrs["fc-cycleUnit"] = nil, nil
+	driver.attrs["fc-l1Party"] = 1
 	l1Fn(l1, "LeftButton", true)
 	Check("party targeting hard: double tap L1 targets", l1.attrs.unit, "player")
 	l1Fn(l1, "LeftButton", false)

@@ -386,7 +386,6 @@ end
 
 local function CreateL1()
 	local button = CreateSecureButton("GamepadXIVL1", S.L1Click)
-	button:SetAttribute("type", "target")
 	button:SetAttribute("fc-ready", 1)
 	button:SetAttribute("fc-ticks", 0)
 	button:SetAttribute("_onattributechanged", S.TriggerAttribute)
@@ -2722,6 +2721,7 @@ function ns.Sync()
 		local button = GetPopupButton(answeredPopup, key)
 		driver:SetAttribute("popup-" .. key, button and button:GetName() or nil)
 	end
+	driver:SetAttribute("fc-l1Party", db.l1DoubleTapParty and 1 or 0)
 	local partyTargeting = driver:GetAttribute("fc-partyTargeting")
 	driver:SetAttribute("fc-partyTargeting", db.partyTargeting)
 	if partyTargeting and partyTargeting ~= db.partyTargeting then

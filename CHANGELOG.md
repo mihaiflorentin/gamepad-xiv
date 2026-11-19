@@ -1,5 +1,12 @@
 # Gamepad XIV
 
+## v0.1.22
+
+### Fixes
+
+- Fixed "action blocked" errors after closing chat or a window.
+- L1 no longer changes your target. Party selection with a double tap of L1 is now off by default, in the Targeting tab.
+
 ## v0.1.21
 
 ### New

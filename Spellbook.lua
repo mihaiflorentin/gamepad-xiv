@@ -92,8 +92,16 @@ local function Note(book, button, spellID, close)
 	if not db then
 		return
 	end
+	-- Some names come back as secret values, which can't even be compared; those are left out.
 	local function Name(frame)
-		return frame and tostring(frame.GetName and frame:GetName() or frame.GetDebugName and frame:GetDebugName()) or "none"
+		if not frame then
+			return "none"
+		end
+		local name = frame.GetName and frame:GetName() or frame.GetDebugName and frame:GetDebugName()
+		if issecretvalue and issecretvalue(name) then
+			return "secret"
+		end
+		return tostring(name)
 	end
 	local text = Name(book) .. " | " .. Name(button) .. " | spell " .. tostring(spellID) .. " | close " .. Name(close)
 	if db.spellbookDebug ~= text then
@@ -116,9 +124,6 @@ local function Update()
 	end
 	if book then
 		Note(book, button, focusedSpell, close)
-	elseif ns.db and ns.db.spellbookAssign and nav and nav.activeInfo and Visible(nav.activeInfo.frame) then
-		-- Another window has the cursor: noted in case Forever's spellbook has a name not checked here.
-		Note(nav.activeInfo.frame, nav.currentButton, nil, nil)
 	end
 	if not focusedSpell then
 		ClearBinding()
@@ -161,7 +166,9 @@ watcher:SetScript("OnUpdate", function(_, elapsed)
 		focusedSpell = nil
 		return
 	end
-	Update()
+	-- An error here would open the game's error window from this addon's code, and Forever's
+	-- controls would carry this addon's taint from that window on, so none is let out.
+	pcall(Update)
 end)
 -- Combat: bindings freeze, so Square is Forever's again until it ends.
 watcher:RegisterEvent("PLAYER_REGEN_DISABLED")

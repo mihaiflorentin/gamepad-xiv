@@ -1068,6 +1068,8 @@ S.FlyoutCancelClick = [[
 -- L1 held is a layer, like the triggers; a double tap steps through the party or raid.
 S.L1Click = [[
 	local driver = self:GetFrameRef("driver")
+	-- Only a double tap with party selection on targets anything; a plain press is only the layer.
+	self:SetAttribute("type", nil)
 	self:SetAttribute("unit", nil)
 	if not down then
 		if driver:GetAttribute("fc-layer") == "L1" then
@@ -1082,9 +1084,12 @@ S.L1Click = [[
 	end
 	if self:GetAttribute("fc-ready") == 0 then
 		self:SetAttribute("fc-ticks", 0)
-		driver:RunAttribute("CycleGroup", 1, 1)
-		self:SetAttribute("unit", driver:GetAttribute("fc-realPick"))
-		driver:SetAttribute("fc-realPick", nil)
+		if driver:GetAttribute("fc-l1Party") == 1 then
+			self:SetAttribute("type", "target")
+			driver:RunAttribute("CycleGroup", 1, 1)
+			self:SetAttribute("unit", driver:GetAttribute("fc-realPick"))
+			driver:SetAttribute("fc-realPick", nil)
+		end
 	else
 		self:SetAttribute("fc-ticks", driver:GetAttribute("fc-tapTicks"))
 	end

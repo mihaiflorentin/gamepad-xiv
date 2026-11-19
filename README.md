@@ -16,7 +16,7 @@ Its double tap timing is adapted from [CrossHotbar](https://github.com/ChainStra
 - **Range indicator:** an ability turns red while your target is out of its range. Abilities with no range stay as they are.
 - **Controller button art:** optional button icons on every slot, in the style of your controller, plus an original addon icon.
 - **Targeting:** enemies and friendlies in turn on D-pad left/right, tab target on R1 + L2 and L1 + R2, in either order; a soft target for party and raid members.
-- **Party selection:** double tap L1 or use the D-pad, pets included, with the name above the crossbar and a highlight on the member's frame (outline, thick outline, fill or pulse, set separately for party and raid, plus an optional arrow beside party frames).
+- **Party selection:** use the D-pad (or double tap L1, if turned on in the Targeting tab), pets included, with the name above the crossbar and a highlight on the member's frame (outline, thick outline, fill or pulse, set separately for party and raid, plus an optional arrow beside party frames).
 - **Face target:** an optional, experimental setting that turns your character toward the enemy when casting.
 - **Camera and movement:** L3 and R3 set in the settings, L1 + right stick zoom (from a light push, with the camera held still), L1 + left stick forward auto-run (in either order), hold B to walk, Y / B to ascend and descend, first / third person on R3.
 - **Interact prompt:** A / Cross in your controller's art, with the action's icon (loot, talk, skinning, mining, herbalism) and the target's name, over your character (movable) and on nameplates.
@@ -283,7 +283,7 @@ The client asks you to confirm experimental camera features the first time. The 
 | L1 + R3 | hunters and warlocks: Forever's pet commands (attack, follow and so on); druids, paladins: forms or auras |
 | R1 + L3 | hunters and warlocks: Forever's pet spells; warriors: stances |
 | L1 + left stick forward | auto-run, whichever you press first; set under `L1 + left stick forward` |
-| Double tap L1 | party selection: starts with yourself, and the next double tap moves to the next member |
+| Double tap L1 | party selection, if turned on in the Targeting tab: starts with yourself, and the next double tap moves to the next member |
 | L1 + right stick up / down | zoom in / zoom out; set under `L1 + right stick` |
 | L1 + R1 | draw / sheathe weapon; on a mount, dismount; while flying, descend. Set under `L1 + R1` |
 | L1 + D-pad up / down | tab target: previous / next enemy |
@@ -304,7 +304,7 @@ FFXIV reference: [Controls](https://ffxiv.consolegameswiki.com/wiki/Controls) an
 
 **The temporary target (soft target)** is used for party and raid, as in FFXIV: the next ability goes to it, your real target stays unchanged, and after the ability you return to your real target. A confirms it and B cancels it.
 
-**Party targeting:** `Hard` (the default) means party selection (D-pad and double tap L1) changes your real target instead, with no temporary target. The name above the crossbar does not appear, and the frame highlight follows your real target while it is a party or raid member or their pet, and every press moves on from the last frame or member, even if you have targeted something else since.
+**Party targeting:** `Hard` (the default) means party selection (the D-pad, and double tap L1 when turned on) changes your real target instead, with no temporary target. The name above the crossbar does not appear, and the frame highlight follows your real target while it is a party or raid member or their pet, and every press moves on from the last frame or member, even if you have targeted something else since.
 
 **Death, resurrection and party invite popups:** this includes the group finder's invite (`LFGInvitePopup`, where A accepts and B declines). Forever does not focus these by itself, so about a second after one appears, the face buttons press its buttons directly, as shown below the popup in your controller's art. For example, A / Cross releases your spirit and Y / Triangle opens the recap. The wait keeps a button press meant for the fight from answering it. Anything that shows up in combat gets this when combat ends.
 
@@ -363,7 +363,7 @@ If you see "Gamepad XIV has been blocked from an action", choose `Ignore`, and r
 7. Open and close the inventory out of combat, then repeat 4. Window navigation must work, and the bars must stay functional.
 8. Press D-pad up, then use a heal: it lands on you and your real target does not change. Try D-pad left/right on enemies and friendlies, and tab target on R1 + L2 and L1 + R2.
    Enter a form or stance, including in combat: the bottom row changes, and R1 + a button changes that form's set.
-9. L1 alone does nothing. Try L1 + left stick forward (auto-run), L1 + right stick (zoom), double tap L1 (party) and L1 + R1. If something does not work, run `/gxiv debug` and include its output in your report.
+9. L1 alone does nothing. Try L1 + left stick forward (auto-run), L1 + right stick (zoom), double tap L1 (party, if turned on) and L1 + R1. If something does not work, run `/gxiv debug` and include its output in your report.
 10. Enter combat with Move bars open: the panel closes, slots cast again, and L2 and R2 stop acting as clicks.
 11. Hold R2, press L1, and release R2 before L1; then hold R1, press L2, and release R1 before L2. The bars must return to normal. If a bar stays selected, please report it: the client is sending the release to a different key.
 12. If a key does nothing, run `/gxiv status` and include the error message in your report.

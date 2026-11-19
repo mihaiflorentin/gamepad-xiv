@@ -307,6 +307,8 @@ local function BuildTabs()
 				{ type = "choice", key = "dpadParty", label = "D-pad party selection",
 					choices = function() return { { "off", "Off" }, { "raid", "In a raid" }, { "always", "Always" } } end,
 					tip = "When the whole D-pad moves over the party and raid frames, each direction to the frame that way. Off: the D-pad works as usual, {PADDLEFT} / {PADDRIGHT} as set above." },
+				{ type = "check", key = "l1DoubleTapParty", label = "Double tap {PADLSHOULDER} selects party members",
+					tip = "A double tap of {PADLSHOULDER} steps through the party or raid. Off: {PADLSHOULDER} only shows its bar, so it never changes your target when you tab target with {PADLTRIGGER} / {PADRTRIGGER} + {PADLSHOULDER}." },
 				{ type = "choice", key = "partyTargeting", label = "Party targeting",
 					choices = function() return { { "soft", "Soft" }, { "hard", "Hard" } } end,
 					tip = "Hard: selecting a party or raid member makes them your target. Soft (like FFXIV): they get only your next ability, and your enemy target stays." },

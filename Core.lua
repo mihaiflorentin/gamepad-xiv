@@ -89,6 +89,7 @@ ns.DEFAULTS = {
 	dpadTargetCombat = "same",
 	crossEnemy = "forever", -- Cross on a living enemy target: "forever" (its attack toggle), "attack" (never stops) or "nothing" -- the same choices for combat, or "same" to keep dpadTarget
 	dpadParty = "raid", -- "off", "raid" or "always": when the whole D-pad selects party members
+	l1DoubleTapParty = false, -- a double tap of L1 steps through the party or raid
 	partyTargeting = "hard", -- "soft" or "hard": party selection sets a soft target or the real one
 	skipPets = false, -- party selection leaves pets out, like FFXIV
 	skipSelf = false, -- party selection with D-pad up / down leaves you out (in a party)
