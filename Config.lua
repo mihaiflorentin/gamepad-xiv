@@ -539,6 +539,8 @@ local function BuildTabs()
 					tip = "What pushing the left stick forward does while {PADLSHOULDER} is held. With Auto-run, pressing {PADLSHOULDER} while already moving forward also starts auto-run." },
 				{ type = "choice", key = "l1RightStick", label = "{PADLSHOULDER} + right stick", choices = L1RightStickChoices,
 					tip = "What the right stick does while {PADLSHOULDER} is held: zoom the camera in and out, or turn the camera as it normally does." },
+				{ type = "check", key = "windowCamera", label = "Turn the camera in windows",
+					tip = "With a window open, the right stick turns the camera as usual, also while the cursor is in a list such as the map's quest list, and steers while running. Off: the right stick scrolls lists instead." },
 				{ type = "spacer", label = "" },
 				{ type = "header", label = "OTHER" },
 				{ type = "check", key = "holdToWalk", label = "Hold {PAD2} to walk",

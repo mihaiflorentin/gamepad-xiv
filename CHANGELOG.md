@@ -1,5 +1,15 @@
 # Gamepad XIV
 
+## v0.1.24
+
+### New
+
+- The right stick can turn the camera while a window is open.
+
+### Fixes
+
+- Cross places spells and items that need a spot on the ground.
+
 ## v0.1.23
 
 ### New

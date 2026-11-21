@@ -1024,6 +1024,12 @@ unitsThatExist.softinteract = true
 driver:RunAttribute("UpdateTargetBindings"); driver:RunAttribute("ApplyLayer")
 Check("cross: something to interact with wins", driver.bindings.PAD1, "BASE_PAD1")
 unitsThatExist.softinteract = nil
+driver.attrs["fc-spellTargeting"] = 1
+driver:RunAttribute("UpdateTargetBindings"); driver:RunAttribute("ApplyLayer")
+Check("cross: placing on the ground clicks the spot", driver.bindings.PAD1, "CAMERAORSELECTORMOVE")
+driver.attrs["fc-spellTargeting"] = 0
+driver:RunAttribute("UpdateTargetBindings"); driver:RunAttribute("ApplyLayer")
+Check("cross: after placing, back to the enemy action", driver.bindings.PAD1, "CLICK GamepadXIVCrossAttack:LeftButton")
 driver.attrs["fc-crossEnemy"] = nil
 driver:RunAttribute("UpdateTargetBindings"); driver:RunAttribute("ApplyLayer")
 Check("cross: default is Forever's", driver.bindings.PAD1, "BASE_PAD1")

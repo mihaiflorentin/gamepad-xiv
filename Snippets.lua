@@ -358,8 +358,12 @@ S.UpdateTargetBindings = [[
 	local suffix = UnitExists("target") and "-target" or "-notarget"
 	self:SetAttribute("base-PAD3", self:GetAttribute("ctx-PAD3" .. suffix))
 	-- Cross on a living enemy target, with nothing else to interact with, can keep attacking or do nothing.
+	-- Placing a spell or item on the ground, which Input.lua watches for, Cross confirms the spot with the
+	-- game's own screen click, as Forever does for a pet's move order.
 	local crossEnemy = self:GetAttribute("fc-crossEnemy")
-	if crossEnemy and SecureCmdOptionParse("[@softinteract,exists] 0; [@target,harm,nodead] 1; 0") == "1" then
+	if self:GetAttribute("fc-spellTargeting") == 1 then
+		self:SetAttribute("base-PAD1", "CAMERAORSELECTORMOVE")
+	elseif crossEnemy and SecureCmdOptionParse("[@softinteract,exists] 0; [@target,harm,nodead] 1; 0") == "1" then
 		self:SetAttribute("base-PAD1", crossEnemy)
 	else
 		self:SetAttribute("base-PAD1", self:GetAttribute("ctx-PAD1"))

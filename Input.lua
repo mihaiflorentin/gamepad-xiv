@@ -1075,6 +1075,58 @@ local function CreateZoomWatcher()
 	end)
 end
 
+-- Forever gives the right stick to a list while the cursor is in one (the map's quest list, the bags),
+-- through its stick listener frame, and the game stops turning the camera with it. With windowCamera
+-- on, that frame stops hearing the stick while the list scrolling is the only thing it listens for,
+-- so the stick works as with no window open: the camera turns, and auto-run steers. Only the frame's
+-- stick input is switched off; Forever switches it on again whenever its stick bindings change.
+-- A spell or item waiting for a spot on the ground: Cross becomes the screen click that places it
+-- (fc-spellTargeting, read by UpdateTargetBindings). Bindings can't change in combat, so a change
+-- there is applied once the fight is over.
+local function CreateGroundTargetWatcher()
+	local watcher = CreateFrame("Frame")
+	local applied = 0
+	watcher:SetScript("OnUpdate", function()
+		local targeting = SpellIsTargeting and SpellIsTargeting() and 1 or 0
+		if targeting == applied or InCombatLockdown() or not driver then
+			return
+		end
+		applied = targeting
+		ns.Trail("ground targeting " .. (targeting == 1 and "on" or "off"))
+		driver:SetAttribute("fc-spellTargeting", targeting)
+		SecureHandlerExecute(driver, [[
+			self:RunAttribute("UpdateTargetBindings")
+			self:RunAttribute("ApplyLayer")
+		]])
+	end)
+end
+
+local function CreateWindowCamera()
+	local watcher = CreateFrame("Frame")
+	local released = false
+	watcher:SetScript("OnUpdate", function()
+		local listener = inputBindingAxisListener
+		local nav = SmartNavigation
+		local bindings = nav and nav.rightStickScrollBindings
+		local scroll = bindings and bindings.axes and GAMEPAD_STICK_RIGHT and bindings.axes[GAMEPAD_STICK_RIGHT]
+		if not (listener and listener.IsGamePadStickEnabled and listener.left and listener.right and scroll) then
+			return
+		end
+		local onlyScrolling = listener.right.func == scroll and not listener.left.func and not listener.left.waitForCentering
+		local wanted = ns.db and ns.db.windowCamera and ns.IsActive() and onlyScrolling
+		if wanted and listener:IsGamePadStickEnabled() then
+			listener:EnableGamePadStick(false)
+			released = true
+		elseif released and not wanted then
+			released = false
+			-- Turned off in the settings: the list scrolls again.
+			if onlyScrolling and not listener:IsGamePadStickEnabled() then
+				listener:EnableGamePadStick(true)
+			end
+		end
+	end)
+end
+
 function ns.PrintInputCVars(report)
 	for name in pairs(INPUT_CVARS) do
 		report(name, "=", GetCVar(name))
@@ -1882,6 +1934,8 @@ function ns.CreateInput()
 	CreateHelperButtons()
 	ns.CreateSpellActions()
 	CreateZoomWatcher()
+	CreateWindowCamera()
+	CreateGroundTargetWatcher()
 	EnableChatLinks()
 	FixEquipmentSetList()
 	CreateMapPinChord()
