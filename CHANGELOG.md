@@ -1,5 +1,11 @@
 # Gamepad XIV
 
+## v0.1.23
+
+### New
+
+- Can now assign buttons in the Input settings to summon mounts or run macros.
+
 ## v0.1.22
 
 ### Fixes

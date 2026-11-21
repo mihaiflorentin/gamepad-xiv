@@ -16,6 +16,7 @@ Theme.lua
 Input.lua
 Assign.lua
 Spellbook.lua
+Actions.lua
 Edit.lua
 Config.lua
 Minimap.lua
