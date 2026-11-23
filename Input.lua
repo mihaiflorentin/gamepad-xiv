@@ -2013,6 +2013,9 @@ function ns.CreateInput()
 		if button and button:GetName() then
 			SecureHandlerSetFrameRef(driver, "classMenu" .. side, button)
 			driver:SetAttribute("classMenu-" .. side, button:GetName())
+			if button:IsProtected() then
+				SecureHandlerWrapScript(button, "OnClick", driver, S.ClassMenuClick)
+			end
 		end
 	end
 	-- The open menu is watched through the secure wrapper, which leaves Forever's frames untainted.
@@ -2743,6 +2746,7 @@ function ns.Sync()
 	driver:SetAttribute("fc-crossEnemy", CROSS_ENEMY[db.crossEnemy])
 	driver:SetAttribute("fc-petOff-L", db.petLeftButton == "disable" and 1 or 0)
 	driver:SetAttribute("fc-petOff-R", db.petRightButton == "disable" and 1 or 0)
+	driver:SetAttribute("fc-classMenuOff", db.classMenuChord == "disable" and 1 or 0)
 	driver:SetAttribute("fc-skipSelf", db.skipSelf and 1 or 0)
 	driver:SetAttribute("fc-skipPets", db.skipPets and 1 or 0)
 	local l3 = StickBinding(db.l3Action, "TOGGLESHEATH")

@@ -17,6 +17,7 @@ Input.lua
 Assign.lua
 Spellbook.lua
 Actions.lua
+Crosshair.lua
 Edit.lua
 Config.lua
 Minimap.lua

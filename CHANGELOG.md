@@ -1,5 +1,12 @@
 # Gamepad XIV
 
+## v0.1.25
+
+### New
+
+- Crosshair settings with a live preview: style, color, size, thickness, opacity and outline, in the Appearance settings.
+- Warriors, druids and paladins can stop the trigger + shoulder chord from opening the stance, form or aura menu, in the General settings.
+
 ## v0.1.24
 
 ### New

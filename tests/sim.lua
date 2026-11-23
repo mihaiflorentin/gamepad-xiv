@@ -1075,6 +1075,27 @@ end
 driver.attrs["fc-petOff-R"] = nil
 driver.attrs["fc-petChords"] = 0
 
+-- A Disabled stance, form or aura menu doesn't open from a trigger chord, only from L1 + R3.
+do
+	local classClick = assert(loadstring("local self, button, down, control = ...\n" .. S.ClassMenuClick))
+	setfenv(classClick, setmetatable({}, { __index = ALLOWED }))
+	local layer = driver.attrs["fc-layer"]
+	driver.attrs["fc-classMenuOff"] = 1
+	driver.attrs["fc-layer"] = "R"
+	Check("class menu disabled: R2 + R1 click stopped", classClick({}, "LeftButton", true, driver), false)
+	driver.attrs["fc-layer"] = "L1"
+	Check("class menu disabled: L1 + R3 opens it", classClick({}, "LeftButton", true, driver), nil)
+	driver.attrs["fc-petChords"] = 1
+	driver.attrs["fc-layer"] = "L"
+	Check("class menu disabled: pet classes untouched", classClick({}, "LeftButton", true, driver), nil)
+	driver.attrs["fc-petChords"] = nil
+	driver.attrs["fc-classMenuOff"] = 0
+	driver.attrs["fc-layer"] = "WR"
+	Check("class menu on: opens", classClick({}, "LeftButton", true, driver), nil)
+	driver.attrs["fc-classMenuOff"] = nil
+	driver.attrs["fc-layer"] = layer
+end
+
 -- D-pad party selection: Off, In a raid and Always.
 local function DpadMode(mode, inRaid)
 	driver.attrs["fc-dpadParty"] = mode

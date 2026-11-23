@@ -468,6 +468,9 @@ function ns.RefreshVisuals()
 		side.label:SetShown(ns.db.showSetLabels)
 	end
 	RefreshKeyIcons()
+	if ns.RefreshCrosshair then
+		ns.RefreshCrosshair()
+	end
 	root.setText:SetShown(ns.db.showSetLabels)
 	if ns.lastShown then
 		ns.ShowLayer(unpack(ns.lastShown))

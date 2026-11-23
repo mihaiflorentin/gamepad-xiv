@@ -912,6 +912,20 @@ S.ClassPopupShown = [[
 -- After a pet menu opens (hunters and warlocks): a menu whose button is Disabled closes again at
 -- once. Forever opens it from its own chord, so this is the only way to keep it shut. The side
 -- (L for pet commands, R for pet spells) comes from the before part's return, as "local side = message".
+-- Before a click on Forever's class button opens its stance, form or aura menu (druids, paladins,
+-- warriors, ...): with a trigger held, as from the trigger + shoulder chord, the click is stopped
+-- when the menu is turned off, so the shoulder only targets. Clicked any other way, as from L1 + R3
+-- or R1 + L3, it opens. Stopping the click leaves Forever's menu alone: hiding the menu once it
+-- has opened leaves it attached to its button, and the next open fails.
+S.ClassMenuClick = [[
+	if control:GetAttribute("fc-classMenuOff") == 1 and control:GetAttribute("fc-petChords") ~= 1 then
+		local layer = control:GetAttribute("fc-layer")
+		if layer == "L" or layer == "R" or layer == "WL" or layer == "WR" then
+			return false
+		end
+	end
+]]
+
 S.PetPopupShown = [[
 	if control:GetAttribute("fc-petChords") == 1 and control:GetAttribute("fc-petOff-" .. side) == 1 and self:IsShown() then
 		self:Hide()

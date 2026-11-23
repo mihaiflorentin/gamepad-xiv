@@ -258,7 +258,10 @@ local function BuildTabs()
 				{ type = "check", key = "spellbookAssign", label = "Replace Forever's Bind to Action Bar",
 					tip = "In the spellbook, {PAD3} on an ability lets you choose its slot on the crossbar, on any set, instead of Forever's Bind to Action Bar. The spellbook closes and you choose the slot." },
 				{ type = "spacer", label = "" },
-				{ type = "header", label = "PET MENUS" },
+				{ type = "header", label = "CLASS MENUS" },
+				{ type = "choice", key = "classMenuChord", label = "Stance, form and aura menu",
+					choices = function() return { { "show", "Opens" }, { "disable", "Disabled" } } end,
+					tip = "Warriors, druids, paladins and other classes with Forever's stance, form or aura menu: what happens when a trigger is held and the shoulder on its side is pressed. Disabled: the menu doesn't open, so {PADLTRIGGER} + {PADLSHOULDER} and {PADRTRIGGER} + {PADRSHOULDER} only target enemies. {PADLSHOULDER} + {PADRSTICK} and {PADRSHOULDER} + {PADLSTICK} still open it. Hunters and warlocks use the two pet menu settings below." },
 				{ type = "choice", key = "petLeftButton", label = "Pet commands button",
 					choices = function() return { { "show", "Shown" }, { "hide", "Hidden" }, { "disable", "Disabled" } } end,
 					tip = "Hunters and warlocks: the left pet menu button under the crossbar (attack, follow, stay). Hidden: {PADLSHOULDER} + {PADLTRIGGER} still opens the menu. Disabled: also hidden, the menu no longer opens, and {PADLSHOULDER} with {PADLTRIGGER} held targets enemies instead." },
@@ -435,6 +438,33 @@ local function BuildTabs()
 				{ type = "choice", key = "activeColorCombo", label = "Combo color", choices = ActiveColorChoices,
 					onChange = function() ns.RefreshActiveHighlight() end,
 					tip = "The highlight color while {PADLTRIGGER} then {PADRTRIGGER}, or {PADRTRIGGER} then {PADLTRIGGER}, is held." },
+				{ type = "spacer", label = "" },
+				{ type = "header", label = "CROSSHAIR" },
+				{ type = "choice", key = "crosshairStyle", label = "Crosshair",
+					choices = function()
+						local choices = {}
+						for _, style in ipairs(ns.CROSSHAIR_STYLES) do
+							tinsert(choices, { style[1], style[2] })
+						end
+						return choices
+					end,
+					onChange = function() ns.RefreshCrosshair() end,
+					tip = "The small mark in the middle of the screen that aims targeting and interacting. Forever's: the game's own. The others are drawn in its place, with the settings below." },
+				{ type = "choice", key = "crosshairColor", label = "Crosshair color", choices = ActiveColorChoices,
+					onChange = function() ns.RefreshCrosshair() end,
+					tip = "The color of the crosshair, when it isn't Forever's." },
+				{ type = "number", key = "crosshairSize", label = "Crosshair size", min = 6, max = 64, step = 2,
+					onChange = function() ns.RefreshCrosshair() end,
+					tip = "How wide the cross or circle is. A dot's size follows the thickness." },
+				{ type = "number", key = "crosshairThickness", label = "Crosshair thickness", min = 1, max = 8, step = 1,
+					onChange = function() ns.RefreshCrosshair() end,
+					tip = "How thick the lines and dots are." },
+				{ type = "number", key = "crosshairAlpha", label = "Crosshair opacity", min = 0.1, max = 1, step = 0.05,
+					onChange = function() ns.RefreshCrosshair() end,
+					tip = "How visible the crosshair is." },
+				{ type = "check", key = "crosshairOutline", label = "Crosshair outline",
+					onChange = function() ns.RefreshCrosshair() end,
+					tip = "A thin dark edge, so the crosshair stays visible on bright ground." },
 			},
 		},
 		{
@@ -1199,6 +1229,9 @@ function UpdateRows()
 		button.selected:SetShown(selected)
 		button.selectedBar:SetShown(selected)
 		button.text:SetFontObject(selected and "GameFontHighlight" or "GameFontNormal")
+	end
+	if window.UpdatePreview then
+		window.UpdatePreview(rows)
 	end
 end
 
@@ -2078,6 +2111,169 @@ function ns.ValidSetting(key, value)
 	return true, value
 end
 
+-- A live preview of the crosshair beside the window, shown while a crosshair setting is on screen:
+-- a small scene, bright sky above and dark ground below, with the crosshair drawn over the horizon
+-- exactly as it will look in the game.
+local PREVIEW_WIDTH, PREVIEW_VIEW = 236, 212
+
+local function Gradient(texture, bottom, top)
+	texture:SetTexture(WHITE)
+	if CreateColor and texture.SetGradient then
+		texture:SetGradient("VERTICAL", CreateColor(unpack(bottom)), CreateColor(unpack(top)))
+	elseif texture.SetGradientAlpha then
+		texture:SetGradientAlpha("VERTICAL", bottom[1], bottom[2], bottom[3], bottom[4], top[1], top[2], top[3], top[4])
+	end
+end
+
+local function StyleName(key)
+	for _, style in ipairs(ns.CROSSHAIR_STYLES or {}) do
+		if style[1] == key then
+			return style[2]
+		end
+	end
+	return key
+end
+
+local function CreatePreview()
+	local panel = CreateFrame("Frame", nil, window, "BackdropTemplate")
+	Flat(panel, PANEL, { GOLD[1], GOLD[2], GOLD[3], 0.35 })
+	panel:SetSize(PREVIEW_WIDTH, TITLE_HEIGHT + 12 + PREVIEW_VIEW + 58)
+	panel:EnableMouse(true)
+	panel:Hide()
+
+	local titleBar = panel:CreateTexture(nil, "BACKGROUND", nil, 1)
+	titleBar:SetPoint("TOPLEFT", 1, -1)
+	titleBar:SetPoint("TOPRIGHT", -1, -1)
+	titleBar:SetHeight(TITLE_HEIGHT)
+	titleBar:SetColorTexture(0.1, 0.1, 0.125, 1)
+	local titleLine = panel:CreateTexture(nil, "ARTWORK")
+	titleLine:SetPoint("TOPLEFT", titleBar, "BOTTOMLEFT")
+	titleLine:SetPoint("TOPRIGHT", titleBar, "BOTTOMRIGHT")
+	titleLine:SetHeight(1)
+	titleLine:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.35)
+	local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	title:SetPoint("LEFT", titleBar, "LEFT", 12, 0)
+	title:SetText("Crosshair preview")
+
+	-- The scene.
+	local view = CreateFrame("Frame", nil, panel, "BackdropTemplate")
+	view:SetSize(PREVIEW_VIEW, PREVIEW_VIEW)
+	view:SetPoint("TOP", panel, "TOP", 0, -TITLE_HEIGHT - 12)
+	view:SetClipsChildren(true)
+	local horizon = math.floor(PREVIEW_VIEW * 0.5)
+	local sky = view:CreateTexture(nil, "BACKGROUND", nil, 1)
+	sky:SetPoint("TOPLEFT")
+	sky:SetPoint("TOPRIGHT")
+	sky:SetHeight(PREVIEW_VIEW - horizon)
+	Gradient(sky, { 0.86, 0.80, 0.66, 1 }, { 0.36, 0.55, 0.78, 1 })
+	local ground = view:CreateTexture(nil, "BACKGROUND", nil, 1)
+	ground:SetPoint("BOTTOMLEFT")
+	ground:SetPoint("BOTTOMRIGHT")
+	ground:SetHeight(horizon)
+	Gradient(ground, { 0.06, 0.07, 0.05, 1 }, { 0.22, 0.25, 0.15, 1 })
+	-- A soft haze along the horizon.
+	local haze = view:CreateTexture(nil, "BACKGROUND", nil, 2)
+	haze:SetPoint("BOTTOMLEFT", ground, "TOPLEFT")
+	haze:SetPoint("BOTTOMRIGHT", ground, "TOPRIGHT")
+	haze:SetHeight(18)
+	Gradient(haze, { 1, 0.95, 0.85, 0.35 }, { 1, 0.95, 0.85, 0 })
+	-- Darker corners, like a game camera.
+	local shade = 0.45
+	local edges = {
+		{ "TOPLEFT", "TOPRIGHT", nil, 40, { 0, 0, 0, 0 }, { 0, 0, 0, shade } },
+		{ "BOTTOMLEFT", "BOTTOMRIGHT", nil, 40, { 0, 0, 0, shade }, { 0, 0, 0, 0 } },
+	}
+	for _, edge in ipairs(edges) do
+		local texture = view:CreateTexture(nil, "BACKGROUND", nil, 3)
+		texture:SetPoint(edge[1])
+		texture:SetPoint(edge[2])
+		texture:SetHeight(edge[4])
+		Gradient(texture, edge[5], edge[6])
+	end
+	local border = panel:CreateTexture(nil, "ARTWORK")
+	border:SetPoint("TOPLEFT", view, "TOPLEFT", -1, 1)
+	border:SetPoint("BOTTOMRIGHT", view, "BOTTOMRIGHT", 1, -1)
+	border:SetColorTexture(1, 1, 1, 0.15)
+
+	-- The middle of the scene, where the crosshair goes.
+	local middle = CreateFrame("Frame", nil, view)
+	middle:SetSize(1, 1)
+	middle:SetPoint("CENTER")
+	local canvas = ns.CreateCrosshairPreview and ns.CreateCrosshairPreview(middle)
+	local note = view:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	note:SetPoint("CENTER")
+	note:SetShadowOffset(1, -1)
+
+	local name = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	name:SetPoint("TOPLEFT", view, "BOTTOMLEFT", 2, -12)
+	local detail = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	detail:SetPoint("TOPLEFT", name, "BOTTOMLEFT", 0, -5)
+	local swatch = panel:CreateTexture(nil, "ARTWORK")
+	swatch:SetSize(12, 12)
+	swatch:SetPoint("TOPRIGHT", view, "BOTTOMRIGHT", -2, -14)
+	local swatchEdge = panel:CreateTexture(nil, "BORDER")
+	swatchEdge:SetPoint("TOPLEFT", swatch, -1, 1)
+	swatchEdge:SetPoint("BOTTOMRIGHT", swatch, 1, -1)
+	swatchEdge:SetColorTexture(1, 1, 1, 0.3)
+
+	-- Beside the window on the right, or on the left when the screen ends first.
+	local function Dock()
+		panel:ClearAllPoints()
+		local right = window:GetRight()
+		local room = UIParent:GetRight()
+		if right and room and (right + 10 + PREVIEW_WIDTH) * window:GetEffectiveScale() > room * UIParent:GetEffectiveScale() then
+			panel:SetPoint("TOPRIGHT", window, "TOPLEFT", -10, 0)
+		else
+			panel:SetPoint("TOPLEFT", window, "TOPRIGHT", 10, 0)
+		end
+	end
+
+	function window.UpdatePreview(rows)
+		local wanted = false
+		for index = scroll + 1, scroll + #rowFrames do
+			local row = rows[index]
+			if row and type(row.key) == "string" and row.key:find("^crosshair") then
+				wanted = true
+				break
+			end
+		end
+		panel:SetShown(wanted)
+		if not wanted then
+			return
+		end
+		Dock()
+		local db = ns.db
+		local style = db.crosshairStyle or "forever"
+		if canvas then
+			ns.DrawCrosshairPreview(canvas)
+		end
+		if style == "forever" then
+			note:SetText("Forever's own crosshair")
+		elseif style == "none" then
+			note:SetText("No crosshair")
+		else
+			note:SetText("")
+		end
+		name:SetText(StyleName(style))
+		local custom = style ~= "forever" and style ~= "none"
+		if custom then
+			detail:SetText(string.format("Size %d \194\183 thickness %d \194\183 %d%%",
+				db.crosshairSize or 16, db.crosshairThickness or 2, math.floor((db.crosshairAlpha or 1) * 100 + 0.5)))
+			swatch:SetColorTexture(ns.ColorByKey(db.crosshairColor or "white"))
+		else
+			detail:SetText("Pick a style to draw your own.")
+		end
+		swatch:SetShown(custom)
+		swatchEdge:SetShown(custom)
+	end
+	-- The window can be dragged: keep the crosshair on whole pixels as it moves.
+	window:HookScript("OnDragStop", function()
+		if panel:IsShown() then
+			window.UpdatePreview(CurrentRows())
+		end
+	end)
+end
+
 local function CreateWindow()
 	tabs = BuildTabs()
 	window = CreateFrame("Frame", "GamepadXIVConfigFrame", UIParent, "BackdropTemplate")
@@ -2378,6 +2574,7 @@ local function CreateWindow()
 
 	CreateNavButtons()
 	CreateDialog()
+	CreatePreview()
 	window:SetScript("OnShow", function()
 		RebuildRingRows()
 		window.UpdateHint()
