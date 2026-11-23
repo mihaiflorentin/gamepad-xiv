@@ -22,7 +22,7 @@ Its double tap timing is adapted from [CrossHotbar](https://github.com/ChainStra
 - **Interact prompt:** A / Cross in your controller's art, with the action's icon (loot, talk, skinning, mining, herbalism) and the target's name, over your character (movable) and on nameplates.
 - **Flyouts:** spells like Aspect open a controller picker, with each choice on a button and B / Circle to cancel, including in combat.
 - **Menus:** map, character, spellbook and inventory on L1 + a face button, with context-sensitive X and A.
-- **Chat and map:** L1 + R1 to place a map pin, and experimental settings to click item links in chat and Shift-click items to link them even with chat closed.
+- **Chat and map:** click item links in chat, Shift-click items to link them even with chat closed, and L1 + R1 to place a map pin.
 - **Editing:** drag and drop directly on the crossbar (R1 + a button shows any set on the bottom row), and a controller flow to move or remove an ability.
 - **Layout:** drag each bar anywhere, or all of them together, and set the scale, opacity and the padding between button groups.
 - **Minimap icon:** left click for settings, right click for a menu, drag to move it around the minimap.
@@ -138,7 +138,7 @@ The addon has its own settings window, with the settings on tabs in a column on 
 | Group finder message | what A on a group in Looking For Group whispers to its leader; `<level>`, `<class>`, `<name>`, `<leader>`, `<activity>` and `<roles>` (the roles ticked in Looking For Group, such as Healer/DPS; nothing with none ticked) are filled in | Hello! Invite me for \<activity\> - \<level\> \<class\> \<roles\>. |
 | Ask before whispering a group | A on a group asks first | on |
 | Open bags when needed (experimental) | opens the bags when a spell or scroll waits for an item to be picked, and at the mailbox, if they are still closed a moment later; closes them after the spell if it opened them | off |
-| Link items in chat (experimental) | opens item, spell and quest links in chat that the game's click misses; a Shift-click on an item puts its link in an open, empty chat box, and holds it for the next chat when chat is closed | off |
+| Link items in chat | opens item, spell and quest links in chat that the game's click misses; a Shift-click on an item puts its link in an open, empty chat box, and holds it for the next chat when chat is closed | on |
 | Scale | size of the whole crossbar (0.5-1.5) | 1 |
 | Horizontal / Vertical position | position of the whole crossbar | 0 / 90 |
 | Padding between button groups | gap between the D-pad and face button groups (0-80) | 16 |
@@ -313,7 +313,7 @@ FFXIV reference: [Controls](https://ffxiv.consolegameswiki.com/wiki/Controls) an
 
 L1 on its own does nothing: holding it is a layer, like the triggers. While it is held, the right stick only zooms (unless `L1 + right stick` is set to turn the camera): camera turning drops to 0.1, the lowest the client accepts, and your own speeds come back on release.
 
-**Item links (experimental, off by default, General tab > Chat > Link items in chat):** the setting runs the game's own chat code from the addon, which can mark Forever's chat and window focus as tainted and lead to "action blocked" errors later. Left-clicking an item, spell, quest or achievement link in chat opens it (player names are left to Forever); Forever does not pass link clicks to chat, so the addon reads the link from the line you clicked. Shift-click an item with chat open to add its link, even with nothing typed yet. With chat closed, the link is held for 30 seconds and goes into the box when you open chat; the addon does not open chat itself, because that leads to the "blocked from an action" message. In the bags, Y / Triangle then Share in Chat also works.
+**Item links (General tab > Chat > Link items in chat, on by default):** the setting runs the game's own chat code from the addon, which can mark Forever's chat and window focus as tainted and lead to "action blocked" errors later. Left-clicking an item, spell, quest or achievement link in chat opens it (player names are left to Forever); Forever does not pass link clicks to chat, so the addon reads the link from the line you clicked. Shift-click an item with chat open to add its link, even with nothing typed yet. With chat closed, the link is held for 30 seconds and goes into the box when you open chat; the addon does not open chat itself, because that leads to the "blocked from an action" message. In the bags, Y / Triangle then Share in Chat also works.
 
 **Game settings changed by the addon:** while active, the addon sets `GamePadEmulateShift`, `GamePadEmulateCtrl` and `GamePadEmulateAlt` to `none` and `GamePadStickAxisButtons` to `1`, which saves them to `Config.wtf`. Your original values stay in the addon's data and come back with `/gxiv off`, or when Forever takes over, for example in a vehicle. If you disable the addon in the AddOns list without `/gxiv off`, the values stay changed. It also turns off the client's interact icon (`SoftTargetIconInteract`) and the input legend for the session only.
 

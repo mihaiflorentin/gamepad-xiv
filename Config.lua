@@ -294,7 +294,7 @@ local function BuildTabs()
 				{ type = "spacer", label = "" },
 				{ type = "header", label = "CHAT" },
 				{ type = "check", key = "chatLinks", label = "Link items in chat",
-					tip = "Experimental. {PAD1} on an item, spell or quest link in chat opens it, a Shift-click on an item puts its link in an open, empty chat box, and a link Shift-clicked with chat closed goes in when chat opens next. Can cause \"action blocked\" errors later, as it runs the game's chat code." },
+					tip = "{PAD1} on an item, spell or quest link in chat opens it, a Shift-click on an item puts its link in an open, empty chat box, and a link Shift-clicked with chat closed goes in when chat opens next. If you get \"action blocked\" errors, try turning this off, as it runs the game's chat code." },
 			},
 		},
 		{

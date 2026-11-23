@@ -109,7 +109,7 @@ ns.DEFAULTS = {
 	r1TapTopA = 2, -- pair A: the top row's set (both halves)
 	r1TapBottomB = 4, -- pair B: sets no other default uses (3 is the L2 + R2 bars)
 	r1TapTopB = 5,
-	chatLinks = false, -- experimental: open chat links under the cursor, and put Shift-clicked item links in chat
+	chatLinks = true, -- open chat links under the cursor, and put Shift-clicked item links in chat
 	openBagsWhenNeeded = false, -- experimental: open the bags for a spell that targets an item, and at the mailbox
 	partyHighlight = "fill", -- "outline", "thick", "fill", "pulse" or "none": how the selected party member's frame is marked
 	raidHighlight = "thick", -- the same, for raid frames
@@ -841,6 +841,10 @@ local MIGRATIONS = {
 		if db.activeStrength then
 			db.activeStrengthCombo = db.activeStrength
 		end
+	end,
+	-- 13: linking items in chat is on by default again; v0.1.26 had it off.
+	function(db)
+		db.chatLinks = true
 	end,
 }
 
