@@ -13,9 +13,22 @@ function UnitLevel() return 60 end
 local clock, combat = 100, false
 function GetTime() return clock end
 function InCombatLockdown() return combat end
-local handler
+-- Errors reach the addon through Forever's error window, after it has taken them; replacing the
+-- game's error handler would run Forever's error code as this addon's.
+local handlerReplaced = false
 function geterrorhandler() return function() end end
-function seterrorhandler(fn) handler = fn end
+function seterrorhandler() handlerReplaced = true end
+function hooksecurefunc(target, method, hook)
+	local original = target[method]
+	target[method] = function(...)
+		original(...)
+		hook(...)
+	end
+end
+ScriptErrorsFrame = { DisplayMessageInternal = function() end }
+local function handler(message)
+	ScriptErrorsFrame:DisplayMessageInternal(message, "error", stackText)
+end
 local function Frame()
 	return setmetatable({}, { __index = function() return function() end end })
 end
@@ -32,6 +45,11 @@ local function Check(label, actual, expected)
 		print("FAIL " .. label .. ": expected " .. tostring(expected) .. ", got " .. tostring(actual))
 	end
 end
+
+Check("error handler left alone", handlerReplaced, false)
+-- A warning comes without a stack and isn't logged.
+ScriptErrorsFrame:DisplayMessageInternal("a warning", "warning")
+Check("warning skipped", #ns.db.errorLog, 0)
 
 ns.Trail("CVar alwaysCompareItems")
 clock = 101

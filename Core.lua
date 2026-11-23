@@ -21,7 +21,7 @@ ns.DEFAULTS = {
 	sideWR = 4, -- double tap R2: set 2 right
 	sideLR = 5, -- hold L2, then R2: set 3 left
 	sideRL = 6, -- hold R2, then L2: set 3 right
-	doubleTapTicks = 2, -- secure timer ticks (0.2s each): window of 0.2-0.4s
+	doubleTapTicks = 3, -- secure timer ticks (0.2s each, sooner on some game events): window of 0.4-0.6s
 	priorityBindings = false, -- true only if Forever's own bindings outrank ours on this client
 	autoFace = false,
 	experimentalAccepted = false,
@@ -109,6 +109,7 @@ ns.DEFAULTS = {
 	r1TapTopA = 2, -- pair A: the top row's set (both halves)
 	r1TapBottomB = 4, -- pair B: sets no other default uses (3 is the L2 + R2 bars)
 	r1TapTopB = 5,
+	chatLinks = false, -- experimental: open chat links under the cursor, and put Shift-clicked item links in chat
 	openBagsWhenNeeded = false, -- experimental: open the bags for a spell that targets an item, and at the mailbox
 	partyHighlight = "fill", -- "outline", "thick", "fill", "pulse" or "none": how the selected party member's frame is marked
 	raidHighlight = "thick", -- the same, for raid frames
@@ -327,10 +328,10 @@ local pendingErrors = {}
 
 local MAX_GROUPED_ACTIONS = 30
 
-local function LogError(message, tainted)
+local function LogError(message, tainted, stack)
 	local log = ns.db and ns.db.errorLog or pendingErrors
 	message = tostring(message)
-	local stack = debugstack(3, 30, 0)
+	stack = stack or debugstack(3, 30, 0)
 	local ours = tainted and true or IsOurs(message, stack)
 	local now = date("%Y-%m-%d %H:%M:%S")
 	-- One tainted call can get dozens of Forever's actions blocked at once, one event each. They go in
@@ -402,10 +403,31 @@ local function FindTaintedState()
 end
 
 do
-	local previousHandler = geterrorhandler()
-	seterrorhandler(function(message, ...)
-		pcall(LogError, message)
-		return previousHandler(message, ...)
+	-- Errors are read after Forever's error window has taken them, never by replacing the game's
+	-- error handler: a handler of ours would run Forever's own one, which shows the error window and
+	-- focuses it, as this addon's code. That marks Forever's window focus as tainted by this addon on
+	-- every error of any addon, and in combat its action bars and bindings are then blocked.
+	local errorsHooked = false
+	local function HookErrors()
+		local errors = ScriptErrorsFrame
+		if errorsHooked or not errors or type(errors.DisplayMessageInternal) ~= "function" then
+			return
+		end
+		errorsHooked = true
+		hooksecurefunc(errors, "DisplayMessageInternal", function(_, message, _, stack)
+			-- Warnings come without a stack; a message the game keeps secret can't be read.
+			if stack and not (issecretvalue and (issecretvalue(message) or issecretvalue(stack))) then
+				pcall(LogError, message, nil, stack)
+			end
+		end)
+	end
+	HookErrors()
+	local errorsLoaded = CreateFrame("Frame")
+	errorsLoaded:RegisterEvent("ADDON_LOADED")
+	errorsLoaded:SetScript("OnEvent", function(_, _, name)
+		if name == "Blizzard_ScriptErrorsFrame" then
+			HookErrors()
+		end
 	end)
 
 	local blocked = CreateFrame("Frame")
@@ -878,7 +900,7 @@ local SLASH_HELP = {
 	"/gxiv reset - put the bars back in their default place",
 	"/gxiv wxhb <L|R> <set> <L|R> - side shown by a double tap, e.g. /gxiv wxhb R 4 L",
 	"/gxiv exhb <LR|RL> <set> <L|R> - side shown by L2>R2 or R2>L2",
-	"/gxiv tap <2-4> - double tap window, in 0.2s ticks",
+	"/gxiv tap <2-6> - double tap window, in 0.2s ticks",
 	"/gxiv scale <0.5-1.5> - bar scale",
 	"/gxiv priority on | off - use if R2 does nothing in game",
 }
@@ -947,7 +969,7 @@ local function HandleSlash(message)
 		end
 	elseif command == "tap" then
 		local ticks = tonumber(a)
-		if ticks and ticks >= 2 and ticks <= 4 then
+		if ticks and ticks >= 2 and ticks <= 6 then
 			ns.db.doubleTapTicks = ticks
 			ns.Sync()
 		end

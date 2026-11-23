@@ -245,6 +245,30 @@ Check("R2 release: base layer", Layer(), "BASE")
 Check("R2 release: PAD1 back to base", driver.bindings.PAD1, "BASE_PAD1")
 Wait(R2, 3)
 
+-- Casting from the R2 bar and pressing R2 again quickly is no double tap: it stays on the bottom bar.
+R2.press()
+driver.attrs["fc-used-L"], driver.attrs["fc-used-R"] = 1, 1 -- what a cast button's press does
+R2.release()
+R2.press()
+Check("R2 cast, quick R2 again: bottom bar", Layer(), "R")
+R2.release()
+Wait(R2, 3)
+
+-- A chord is no tap either: R2 + L2, let go, then R2 again soon stays on the bottom bar.
+R2.press(); L2.press(); L2.release(); R2.release()
+R2.press()
+Check("R2 + L2, quick R2 again: bottom bar", Layer(), "R")
+R2.release()
+Wait(R2, 3); Wait(L2, 3)
+L2.press(); R2.press(); R2.release(); L2.release()
+R2.press()
+Check("L2 + R2, quick R2 again: bottom bar", Layer(), "R")
+R2.release()
+L2.press()
+Check("L2 + R2, quick L2 again: bottom bar", Layer(), "L")
+L2.release()
+Wait(R2, 3); Wait(L2, 3)
+
 -- The user's main case: double tap and hold, cast several spells, release returns.
 R2.press(); R2.release()
 R2.press()

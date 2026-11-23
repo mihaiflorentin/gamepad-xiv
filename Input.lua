@@ -888,6 +888,11 @@ local function EnableChatLinks()
 			handled = false
 			return
 		end
+		-- Off by default: SetItemRef from this addon runs the game's chat and tooltip code as this
+		-- addon's, which taints Forever's window focus.
+		if not (ns.db and ns.db.chatLinks) then
+			return
+		end
 		-- Only a left click on an item-type link. Player names and channels open menus, whispers or /who,
 		-- which from addon code are blocked or taint Forever's window focus.
 		if button ~= "LeftButton" then
@@ -922,8 +927,13 @@ local function KeepChatOpenForLinks()
 	-- the "blocked from an action" popup, so chat is only ever opened by the player.
 	local PENDING_SECONDS = 30
 	local pendingLink, pendingTime
+	-- Off by default: typing into the chat box from this addon runs the game's chat code as this
+	-- addon's, which taints Forever's chat and window focus.
+	local function On()
+		return ns.db and ns.db.chatLinks
+	end
 	local function HoldLink(link)
-		if type(link) ~= "string" or not IsModifiedClick("CHATLINK") then
+		if not On() or type(link) ~= "string" or not IsModifiedClick("CHATLINK") then
 			return
 		end
 		if ChatFrameUtil.GetActiveWindow() then
@@ -936,7 +946,7 @@ local function KeepChatOpenForLinks()
 		UIErrorsFrame:AddMessage(link .. " - open chat to post it", 1, 0.82, 0)
 	end
 	local function InsertHeldLink(editBox)
-		if not pendingLink then
+		if not pendingLink or not On() then
 			return
 		end
 		local link, age = pendingLink, GetTime() - pendingTime
@@ -968,7 +978,7 @@ local function KeepChatOpenForLinks()
 	local watcher = CreateFrame("Frame")
 	watcher:RegisterEvent("GLOBAL_MOUSE_DOWN")
 	watcher:SetScript("OnEvent", function(_, _, button)
-		if button ~= "LeftButton" or not IsShiftKeyDown() then
+		if button ~= "LeftButton" or not IsShiftKeyDown() or not On() then
 			return
 		end
 		local editBox = ChatFrameUtil and ChatFrameUtil.GetActiveWindow and ChatFrameUtil.GetActiveWindow()

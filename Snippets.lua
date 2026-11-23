@@ -569,6 +569,9 @@ S.ActionPre = [[
 		return
 	end
 	local driver = self:GetFrameRef("driver")
+	-- A trigger press that used a slot is no tap: pressing the trigger again soon after is no double tap.
+	driver:SetAttribute("fc-used-L", 1)
+	driver:SetAttribute("fc-used-R", 1)
 	if driver:GetAttribute("fc-clear") ~= 0 or driver:GetAttribute("fc-editing") == 1 then
 		return
 	end
@@ -744,13 +747,23 @@ S.TriggerClick = [[
 		isQuick = 1
 	end
 	if down then
-		if self:GetAttribute("fc-ready") == 0 then
-			if driver:GetAttribute("fc-noDouble-" .. self:GetAttribute("fc-side")) ~= 1 then
-				isDoubleTap = 1
-			end
+		-- A double tap is a quick second press after a first press that was only a tap: nothing used
+		-- from a bar and no press of the other trigger in between. So R2 + L2, then R2 again soon, or
+		-- casting from the R2 bar and pressing R2 again, stays on the bottom bar.
+		local side = self:GetAttribute("fc-side")
+		local other = (side == "L") and "R" or "L"
+		local otherDown = driver:GetAttribute("fc-" .. other:lower() .. "Down") == 1
+		if self:GetAttribute("fc-ready") == 0 and driver:GetAttribute("fc-used-" .. side) ~= 1 and not otherDown
+				and driver:GetAttribute("fc-noDouble-" .. side) ~= 1 then
+			isDoubleTap = 1
 			self:SetAttribute("fc-ticks", 0)
 		else
 			self:SetAttribute("fc-ticks", driver:GetAttribute("fc-tapTicks"))
+		end
+		-- A press made while the other trigger is held is a chord for both.
+		driver:SetAttribute("fc-used-" .. side, otherDown and 1 or 0)
+		if otherDown then
+			driver:SetAttribute("fc-used-" .. other, 1)
 		end
 	end
 	driver:RunAttribute("OnTrigger", self:GetAttribute("fc-side"), down and 1 or 0, isDoubleTap, isQuick)

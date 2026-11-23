@@ -313,7 +313,7 @@ Hidden it by mistake? Type `/gxiv minimap`.
 - `/gxiv move`: move the bars
 - `/gxiv reset`: put the bars back in their default place
 - `/gxiv scale 0.5-1.5`: crossbar size
-- `/gxiv tap 2-4`: double tap window (higher is more forgiving)
+- `/gxiv tap 2-6`: double tap window (higher is more forgiving)
 - `/gxiv wxhb R 4 L`: choose what a double tap shows (here: double tap R2 shows set 4, left side)
 - `/gxiv exhb LR 5 R`: choose what Expanded Hold shows (here: L2 then R2 shows set 5, right side)
 - `/gxiv minimap`: show or hide the minimap icon
