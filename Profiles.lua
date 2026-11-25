@@ -112,7 +112,7 @@ end
 -- Everything that reads the settings once, so a whole set of them shows without a /reload.
 function ns.AfterSettingsChanged()
 	for _, refresh in ipairs({ "UpdateMinimapButton", "ApplyAlwaysCompare", "RefreshVisuals", "RefreshActiveHighlight",
-			"UpdatePartyPrompt", "RefreshLootDetails", "Sync" }) do
+			"UpdatePartyPrompt", "RefreshLootDetails", "ApplyChatChoice", "ApplyLfgFinderChoice", "Sync" }) do
 		if ns[refresh] then
 			pcall(ns[refresh])
 		end

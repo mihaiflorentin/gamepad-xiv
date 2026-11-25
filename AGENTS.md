@@ -18,3 +18,12 @@ The addon has to work with any controller: PlayStation, Xbox, Switch or another 
 - Labels and tips in the settings window write buttons as `{PADLSHOULDER}` tokens. `ButtonText` in `Config.lua` turns them into icons on screen and into plain names for search.
 - Anything that draws button icons must redraw them when the controller changes, through `InputDeviceIconSetManager:RegisterActiveInputDeviceIconSetUpdatedCallback`.
 - Text that can't show icons (chat output, docs, CurseForge) may use names. The docs use the PlayStation names because the player plays on a DualSense.
+
+## Lists go round with the D-pad
+
+Every list or menu of the addon's own that the D-pad moves through must wrap around.
+
+- {PADDUP} on the first entry goes to the last, and {PADDDOWN} on the last entry goes to the first. Skip headers and other entries that can't be picked.
+- Use `ns.StepWrap(index, delta, count)` from `Repeat.lua`. While the D-pad is held (`ns.RepeatOnHold`), it stops at the ends instead, so a held press doesn't loop.
+- The mouse wheel scrolls and stops at the ends. It never wraps.
+- When you add a new list, menu, dropdown or settings page, add the wrap in the same change.

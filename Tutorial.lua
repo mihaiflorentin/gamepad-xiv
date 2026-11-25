@@ -1826,8 +1826,12 @@ for name, action in pairs({ GamepadXIVTutorialNext = Next, GamepadXIVTutorialBac
 	GamepadXIVTutorialClose = function() Close(false) end, GamepadXIVTutorialChapters = ToggleChapters,
 	GamepadXIVTutorialUp = function() MovePick(-1) end, GamepadXIVTutorialDown = function() MovePick(1) end }) do
 	local button = CreateFrame("Button", name, UIParent)
-	button:RegisterForClicks("AnyDown")
-	button:SetScript("OnClick", action)
+	if name == "GamepadXIVTutorialUp" or name == "GamepadXIVTutorialDown" then
+		ns.RepeatOnHold(button, action) -- holding keeps moving through the chapters
+	else
+		button:RegisterForClicks("AnyDown")
+		button:SetScript("OnClick", action)
+	end
 	button:Hide()
 end
 

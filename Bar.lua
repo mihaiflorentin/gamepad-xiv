@@ -995,6 +995,56 @@ local function CreateMovers()
 	if ns.lootFrame then
 		movers.loot = CreateMover(ns.lootFrame, 300, 80, "LOOT ROLL", "DIALOG", GetLootPosition, SetLootPosition, UIParent)
 	end
+	-- The chat box (ChatBox.lua), while it replaces the game's chat.
+	if ns.ChatBoxFrame then
+		local box = ns.ChatBoxFrame()
+		movers.chat = CreateMover(box, box:GetWidth(), box:GetHeight(), "CHAT", "DIALOG",
+			function()
+				if db.chatBoxMoved then
+					return db.chatBoxX, db.chatBoxY
+				end
+				local x, y = box:GetCenter()
+				local parentX, parentY = UIParent:GetCenter()
+				if not x then
+					return 0, 0
+				end
+				return x - parentX, y - parentY
+			end,
+			function(x, y)
+				db.chatBoxMoved, db.chatBoxX, db.chatBoxY = true, x, y
+				ns.PlaceChatBox()
+			end, UIParent)
+		movers.chat:ClearAllPoints()
+		movers.chat:SetAllPoints(box)
+		-- A grip at the bottom right corner sizes the box; its top left corner stays where it is.
+		local grip = CreateFrame("Button", nil, movers.chat)
+		grip:SetSize(18, 18)
+		grip:SetPoint("BOTTOMRIGHT", -2, 2)
+		grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+		grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+		grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+		local function StopSizing()
+			grip:SetScript("OnUpdate", nil)
+		end
+		grip:SetScript("OnMouseDown", function()
+			local left, top = box:GetLeft(), box:GetTop()
+			if InCombatLockdown() or not left then
+				return
+			end
+			grip:SetScript("OnUpdate", function()
+				local scale = UIParent:GetEffectiveScale()
+				local cursorX, cursorY = GetCursorPosition()
+				local width = math.max(ns.CHAT_BOX_MIN_WIDTH or 300, math.min(ns.CHAT_BOX_MAX_WIDTH or 1200, cursorX / scale - left))
+				local height = math.max(ns.CHAT_BOX_MIN_HEIGHT or 150, math.min(ns.CHAT_BOX_MAX_HEIGHT or 800, top - cursorY / scale))
+				local parentX, parentY = UIParent:GetCenter()
+				db.chatBoxWidth, db.chatBoxHeight = math.floor(width + 0.5), math.floor(height + 0.5)
+				db.chatBoxMoved, db.chatBoxX, db.chatBoxY = true, left + width / 2 - parentX, top - height / 2 - parentY
+				ns.PlaceChatBox()
+			end)
+		end)
+		grip:SetScript("OnMouseUp", StopSizing)
+		grip:SetScript("OnHide", StopSizing)
+	end
 	-- Above every other handle, which can cover the middle of the screen.
 	movers.all = CreateMover(ns.root, 90, 30, "ALL", "FULLSCREEN_DIALOG", GetWholePosition, SetWholePosition)
 end
@@ -1004,8 +1054,9 @@ function ns.SetMoveMode(on)
 		CreateMovers()
 	end
 	ns.moving = on
-	for _, mover in pairs(movers) do
-		mover:SetShown(on)
+	for key, mover in pairs(movers) do
+		-- The chat box handle only while the chat box is on screen.
+		mover:SetShown(on and (key ~= "chat" or (ns.ChatBoxFrame and ns.ChatBoxFrame():IsShown())) or false)
 	end
 end
 
@@ -1019,6 +1070,10 @@ function ns.ResetPositions()
 	db.x, db.y = defaults.x, defaults.y
 	db.promptX, db.promptY = defaults.promptX, defaults.promptY
 	db.lootMoved = false
+	db.chatBoxMoved = false
+	if ns.PlaceChatBox then
+		ns.PlaceChatBox()
+	end
 	for _, row in ipairs(ns.ROWS) do
 		local keyX, keyY = "pos" .. row .. "x", "pos" .. row .. "y"
 		db[keyX], db[keyY] = defaults[keyX], defaults[keyY]

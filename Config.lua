@@ -78,6 +78,15 @@ local function SetChoices()
 	return choices
 end
 
+-- The quick set swap's L2 + R2 choice: a set, or leave the combos as they are (0).
+local function ComboSetChoices()
+	local choices = { { 0, "Don't change" } }
+	for _, choice in ipairs(SetChoices()) do
+		tinsert(choices, choice)
+	end
+	return choices
+end
+
 -- A form can also use the game's own stance bar (set 0).
 local function FormSetChoices()
 	local choices = { { 0, "The game's stance bar" } }
@@ -238,6 +247,11 @@ local function BuildTabs()
 					tip = "Unlocks the bars so you can drag them anywhere on the screen with the mouse." },
 				{ type = "check", key = "moveBarsSeparately", label = "Move bars separately",
 					tip = "Off: Move bars carries all four bars together. On: each bar is dragged on its own; Shift + drag still moves them all." },
+				{ type = "action", label = "Changelog", button = "Show the changelog", run = CloseAnd(function() ns.ShowChangelog() end),
+					tip = "Every version's changes. Also /gxiv changelog." },
+				{ type = "choice", key = "changelogShow", label = "Changelog after an update",
+					choices = function() return { { "update", "Show once" }, { "never", "Never" } } end,
+					tip = "Show once: after an update, the changelog shows once at login with what changed since your version. Never: it doesn't show by itself; the button above still shows it." },
 				{ type = "action", label = "Tutorial", button = "Start the tutorial", run = CloseAnd(function() ns.StartTutorial() end),
 					tip = "A short tutorial of the buttons, with a controller showing what to press. It shows once by itself after installing." },
 				{ type = "spacer", label = "" },
@@ -277,25 +291,128 @@ local function BuildTabs()
 					end,
 					tip = "Experimental. Turns you toward your enemy target by locking the camera on it, since WoW can't turn only the character. The camera then follows the target too." },
 				{ type = "spacer", label = "" },
-				{ type = "header", label = "LOOKING FOR GROUP" },
-				{ type = "action", label = "Group finder message", button = "Edit message",
-					run = function()
-						OpenTextDialog("Group finder message", "The whisper {PAD1} sends to a group's leader in Looking For Group", ns.db.lfgMessage,
-							"Filled in when sent: <level>, <class>, <name> (yours), <leader>, <activity> and <roles> (the roles ticked in Looking For Group, or nothing). A keyboard or the on-screen keyboard is needed to type.",
-							function(text) ns.db.lfgMessage = text; UpdateRows() end)
-					end,
-					tip = function() return "In Looking For Group, {PAD1} on a group whispers this to its leader:\n" .. ns.db.lfgMessage end },
-				{ type = "check", key = "lfgConfirm", label = "Ask before whispering a group",
-					tip = "On: {PAD1} on a group first asks whether to send the message. Off: it is sent straight away." },
-				{ type = "spacer", label = "" },
 				{ type = "header", label = "BAGS" },
 				{ type = "check", key = "openBagsWhenNeeded", label = "Open bags when needed (experimental)",
 					tip = "Experimental. Opens your bags when a spell or scroll asks you to pick an item, and at the mailbox, if the game left them closed." },
-				{ type = "spacer", label = "" },
-				{ type = "header", label = "CHAT" },
-				{ type = "check", key = "chatLinks", label = "Link items in chat",
-					tip = "{PAD1} on an item, spell or quest link in chat opens it, a Shift-click on an item puts its link in an open, empty chat box, and a link Shift-clicked with chat closed goes in when chat opens next. If you get \"action blocked\" errors, try turning this off, as it runs the game's chat code." },
 			},
+		},
+		{
+			name = "Chat",
+			icon = "Interface\\Icons\\INV_Letter_15",
+			rows = (function()
+				-- The chat box's width or height: 0 follows the game's chat, else at least the smallest
+				-- size (a step up from 0 goes there, a step down from it back to 0).
+				local function ChatBoxSize(key, low)
+					return function(value)
+						local old = tonumber(ns.db[key]) or 0
+						if value > 0 and value < low then
+							value = value < old and 0 or low
+						end
+						ns.db[key] = value
+						if ns.PlaceChatBox then ns.PlaceChatBox() end
+					end
+				end
+				local rows = {
+					{ type = "header", label = "CHAT" },
+					{ type = "choice", key = "chatUI", label = "Chat",
+						choices = function() return { { "game", "The game's" }, { "gxiv", "Chat window (controller)" } } end,
+						onChange = function() if ns.ApplyChatChoice then ns.ApplyChatChoice("setting") end end,
+						tip = "Chat window: the chat box replaces the game's chat, with tabs for channels, whispers and the combat log. Enter or {PADBACK} starts typing, {PAD1} sends, {PAD2} scrolls with {PADDUP} / {PADDDOWN}. The hints under the box show the rest." },
+					{ type = "check", key = "chatLinks", label = "Link items in chat",
+						tip = "{PAD1} on an item, spell or quest link in chat opens it, a Shift-click on an item puts its link in an open, empty chat box, and a link Shift-clicked with chat closed goes in when chat opens next (the chat box's, while it replaces the game's chat). If you get \"action blocked\" errors, try turning this off, as it runs the game's chat code." },
+					{ type = "action", label = "Chat window", button = "Open",
+						run = CloseAnd(function() if ns.OpenGamepadChat then ns.OpenGamepadChat() end end),
+						tip = "Every channel and whisper as a conversation, with quick replies and the ready-made messages. They go into your message rather than out on their own, so several can go in one message: {PAD1} adds the quick reply while nothing is typed, {PADLSTICK} adds it while typing, {PADRSTICK} lists the others, and {PAD1} or Enter sends. Also in the ring's Chat entry when the chat box is on." },
+					{ type = "action", label = "Channel tabs", button = "Choose",
+						run = CloseAnd(function() if ns.ChatBoxChooseTabs then ns.ChatBoxChooseTabs() end end),
+						tip = "Which channels have a tab in the chat box: Trade, General, Local Defense, World Defense and the other channels you are in, plus Say, Party, Guild and the rest. Channels like Trade have no tab until you pick them. Also {PAD3} while browsing the chat box." },
+					{ type = "action", label = "Chat box position", button = "Reset",
+						run = function()
+							ns.db.chatBoxMoved = false
+							ns.db.chatBoxWidth, ns.db.chatBoxHeight = 0, 0
+							if ns.PlaceChatBox then ns.PlaceChatBox() end
+							ns.Print("The chat box is back where the game's chat is, in its size.")
+						end,
+						tip = "Move bars moves and sizes the chat box too. This puts it back where the game's chat is, in the same size." },
+					{ type = "spacer", label = "" },
+					{ type = "header", label = "CHAT BOX" },
+					{ type = "action", label = "Place and size", button = "Move the chat box", run = CloseAnd(function() ns.ToggleMove() end),
+						tip = "Turns on Move bars: drag the chat box to move it, and the grip at its bottom right corner to size it." },
+					{ type = "number", key = "chatBoxWidth", label = "Width", min = 0, max = 1200, step = 10, set = ChatBoxSize("chatBoxWidth", 300),
+						tip = "The chat box's width. 0: as wide as the game's chat. Otherwise 300 to 1200." },
+					{ type = "number", key = "chatBoxHeight", label = "Height", min = 0, max = 800, step = 10, set = ChatBoxSize("chatBoxHeight", 150),
+						tip = "The chat box's height. 0: as tall as the game's chat. Otherwise 150 to 800." },
+					{ type = "choice", key = "chatFont", label = "Font",
+						choices = function() return ns.ChatBoxFonts and ns.ChatBoxFonts() or { { "default", "The game's chat font" } } end,
+						onChange = function() if ns.ChatBoxStyle then ns.ChatBoxStyle() end end,
+						tip = "The chat box's font." },
+					{ type = "number", key = "chatFontSize", label = "Font size", min = 8, max = 24, step = 1,
+						onChange = function() if ns.ChatBoxStyle then ns.ChatBoxStyle() end end,
+						tip = "The size of the chat box's text." },
+					{ type = "choice", key = "chatFontOutline", label = "Text outline",
+						choices = function() return { { "none", "None" }, { "outline", "Outline" }, { "thick", "Thick outline" } } end,
+						onChange = function() if ns.ChatBoxStyle then ns.ChatBoxStyle() end end,
+						tip = "An outline makes the text easier to read over a bright background." },
+					{ type = "number", key = "chatBoxAlpha", label = "Background opacity", min = 0, max = 1, step = 0.05,
+						onChange = function() if ns.ChatBoxRefresh then ns.ChatBoxRefresh() end end,
+						tip = "How dark the chat box is while you aren't typing. It always darkens while you type." },
+					{ type = "choice", key = "chatFade", label = "New messages fade after",
+						choices = function() return { { 10, "10 seconds" }, { 30, "30 seconds" }, { 60, "A minute" }, { 120, "2 minutes" }, { 300, "5 minutes" }, { 0, "Never" } } end,
+						onChange = function() if ns.ChatBoxStyle then ns.ChatBoxStyle() end end,
+						tip = "How long a message stays in the All tab. Scroll up to see faded ones." },
+					{ type = "check", key = "chatTimestamps", label = "Time on messages",
+						tip = "Shows the time before each message in the All tab." },
+					{ type = "check", key = "chatHighlightOwn", label = "Highlight my messages",
+						onChange = function() if ns.ChatBoxStyle then ns.ChatBoxStyle() end end,
+						tip = "Your own lines in the chat box get a gold tag and a faint highlight." },
+					{ type = "spacer", label = "" },
+					{ type = "header", label = "MESSAGES" },
+					{ type = "action", label = "Ready-made messages", button = "Edit",
+						run = CloseAnd(function() if ns.OpenMessagesEditor then ns.OpenMessagesEditor() end end),
+						tip = "Change the quick replies ({PADDLEFT} / {PADDRIGHT} while typing, {PADLSTICK} adds one) and the {PADRSTICK} messages: add, edit, delete and reorder them, and add your own categories. Kept for the whole account. Also /gxiv messages." },
+				}
+				-- Shared with LFG Filter's Settings tab (LfgFilter.lua).
+				for _, row in ipairs(ns.LFG_SETTINGS or {}) do
+					if row.chat then
+						tinsert(rows, row)
+					end
+				end
+				-- Sounds for incoming chat (Sounds.lua).
+				if ns.ChatSounds then
+					tinsert(rows, { type = "spacer", label = "" })
+					tinsert(rows, { type = "header", label = "SOUNDS" })
+					for _, row in ipairs(ns.ChatSounds.SettingRows()) do
+						tinsert(rows, row)
+					end
+				end
+				return rows
+			end)(),
+		},
+		{
+			name = "LFG",
+			icon = "Interface\\Icons\\INV_Misc_GroupNeedMore",
+			rows = (function()
+				local rows = {
+					{ type = "header", label = "LOOKING FOR GROUP" },
+					{ type = "action", label = "LFG Filter", button = "Open",
+						run = CloseAnd(function() ns.OpenLfgFilter() end),
+						tip = "A group finder made for the controller: filter groups by language and by the roles they still need, or players by the roles they fill when you are in a group, whisper and invite, and rate the players you group with. Also opens with {PADLSTICK} in Looking For Group, from the ring, or with /gxiv lfg." },
+					{ type = "action", label = "Group finder message", button = "Edit message",
+						run = function()
+							OpenTextDialog("Group finder message", "The whisper {PAD1} sends to a group's leader in Looking For Group", ns.db.lfgMessage,
+								"Filled in when sent: <level>, <class>, <name> (yours), <leader>, <activity> and <roles> (the roles ticked in Looking For Group, or nothing). A keyboard or the on-screen keyboard is needed to type.",
+								function(text) ns.db.lfgMessage = text; UpdateRows() end)
+						end,
+						tip = function() return "In Looking For Group, {PAD1} on a group whispers this to its leader:\n" .. ns.db.lfgMessage end },
+				}
+				-- The rest are shared with LFG Filter's Settings tab (LfgFilter.lua).
+				for _, row in ipairs(ns.LFG_SETTINGS or {}) do
+					if not row.chat then
+						tinsert(rows, row)
+					end
+				end
+				return rows
+			end)(),
 		},
 		{
 			name = "Targeting",
@@ -309,8 +426,11 @@ local function BuildTabs()
 					choices = function() return { { "same", "Same as out of combat" }, { "enemy", "Enemies only" }, { "friend", "Friendly only" }, { "both", "Both" } } end,
 					tip = "Which targets {PADDLEFT} / {PADDRIGHT} step through in combat. For example Both out of combat and Enemies only in combat." },
 				{ type = "choice", key = "crossEnemy", label = "{PAD1} on an enemy target",
-					choices = function() return { { "forever", "Toggle the attack" }, { "attack", "Keep attacking" }, { "nothing", "Nothing" } } end,
-					tip = "What {PAD1} does with a living enemy targeted. Toggle the attack: the game's own, a second press stops attacking. Keep attacking: starts the attack and never stops it, like FFXIV. Nothing: keeps the target and doesn't attack. With no target, a friend or a corpse, {PAD1} interacts as usual." },
+					choices = function() return { { "forever", "Toggle the attack" }, { "attack", "Keep attacking" }, { "shoot", "Shoot with a wand" }, { "nothing", "Nothing" } } end,
+					tip = "What {PAD1} does with a living enemy targeted. Toggle the attack: the game's own, a second press stops attacking. Keep attacking: starts the attack and never stops it, like FFXIV. Shoot with a wand: with a wand equipped, starts the wand's Shoot and keeps it going, else attacks like Keep attacking. Nothing: keeps the target and doesn't attack. With no target, a friend or a corpse, {PAD1} interacts as usual." },
+				{ type = "choice", key = "airCircle", label = "{PAD2} while swimming or flying",
+					choices = function() return { { "clear", "Clear the target, then go down" }, { "descend", "Go down" } } end,
+					tip = "Swimming or flying, {PAD2} takes you down. Clear the target, then go down: with a target, {PAD2} clears it as on land, and once nothing is targeted it takes you down." },
 				{ type = "choice", key = "dpadParty", label = "D-pad party selection",
 					choices = function() return { { "off", "Off" }, { "raid", "In a raid" }, { "always", "Always" } } end,
 					tip = "When the whole D-pad moves over the party and raid frames, each direction to the frame that way. Off: the D-pad works as usual, {PADDLEFT} / {PADDRIGHT} as set above." },
@@ -318,7 +438,7 @@ local function BuildTabs()
 					tip = "A double tap of {PADLSHOULDER} steps through the party or raid. Off: {PADLSHOULDER} only shows its bar, so it never changes your target when you tab target with {PADLTRIGGER} / {PADRTRIGGER} + {PADLSHOULDER}." },
 				{ type = "choice", key = "partyTargeting", label = "Party targeting",
 					choices = function() return { { "soft", "Soft" }, { "hard", "Hard" } } end,
-					tip = "Hard: selecting a party or raid member makes them your target. Soft (like FFXIV): they get only your next ability, and your enemy target stays." },
+					tip = "Hard: selecting a party or raid member makes them your target. Soft (like FFXIV): they get only your next ability, and your enemy target stays. Holding the D-pad keeps moving only on Soft; on Hard each press moves once." },
 				{ type = "check", key = "skipPets", label = "Exclude pets from party targeting",
 					tip = "{PADDUP} / {PADDDOWN} step through the players only, like FFXIV. Off: pets shown on the party or raid frames are selected too." },
 				{ type = "check", key = "skipSelf", label = "Exclude yourself from party targeting",
@@ -427,9 +547,9 @@ local function BuildTabs()
 					tip = "How bright the flash over a bar is when its set changes. 0 turns it off." },
 				{ type = "check", key = "pressFeedback", label = "Press feedback",
 					tip = "A slot darkens while its button is held, and flashes red when the ability can't be used." },
-				{ type = "check", key = "activeMarks", label = "Marks in the middle of the selected bar",
+				{ type = "check", key = "activeMarks", label = "Cross and dots on the selected bar",
 					onChange = function() ns.RefreshActiveHighlight() end,
-					tip = "The small cross and dots between the slots of the bar you are using." },
+					tip = "The small white cross (D-pad) and four dots (face buttons) between the slots of the bar you are using. Turn off if your slots sit close enough for them to overlap." },
 				{ type = "choice", key = "activeColorBottom", label = "Bottom bar color", choices = ActiveColorChoices,
 					onChange = function() ns.RefreshActiveHighlight() end,
 					tip = "The highlight color of the bottom bars, while {PADLTRIGGER} or {PADRTRIGGER} is held." },
@@ -521,6 +641,8 @@ local function BuildTabs()
 					tip = "Which set's left or right half shows when you hold {PADLTRIGGER} then {PADRTRIGGER}." },
 				{ type = "choice", key = "sideRL", label = "{PADRTRIGGER} then {PADLTRIGGER} shows", choices = SideChoices,
 					tip = "Which set's left or right half shows when you hold {PADRTRIGGER} then {PADLTRIGGER}." },
+				{ type = "check", key = "comboFollowsTop", label = "{PADLTRIGGER} + {PADRTRIGGER} show the top bars",
+					tip = "On: {PADLTRIGGER} then {PADRTRIGGER} shows the top left bar and {PADRTRIGGER} then {PADLTRIGGER} the top right bar, the same bars as a double tap, so you can reach them without double tapping. They change with the top row on a quick set swap. The two choices above, and the quick set swap's {PADLTRIGGER} + {PADRTRIGGER} bars, are not used then." },
 				{ type = "spacer", label = "" },
 				{ type = "header", label = "QUICK SET SWAP" },
 				{ type = "check", key = "r1Tap", label = "Quick set swap (tap {PADRSHOULDER})",
@@ -535,6 +657,10 @@ local function BuildTabs()
 					tip = "Quick set swap: the set the bottom row shows in pair B, for example your area of effect abilities." },
 				{ type = "choice", key = "r1TapTopB", label = "Pair B: top row", choices = SetChoices,
 					tip = "Quick set swap: the set the top row shows in pair B." },
+				{ type = "choice", key = "r1TapComboA", label = "Pair A: {PADLTRIGGER} + {PADRTRIGGER} bars", choices = ComboSetChoices,
+					tip = "Quick set swap: the set {PADLTRIGGER} then {PADRTRIGGER} (its left half) and {PADRTRIGGER} then {PADLTRIGGER} (its right half) show in pair A. Pick the same set as the top row to use those bars without double tapping. Don't change: they keep what is set above." },
+				{ type = "choice", key = "r1TapComboB", label = "Pair B: {PADLTRIGGER} + {PADRTRIGGER} bars", choices = ComboSetChoices,
+					tip = "Quick set swap: the set {PADLTRIGGER} then {PADRTRIGGER} (its left half) and {PADRTRIGGER} then {PADLTRIGGER} (its right half) show in pair B. Don't change: they keep what is set above." },
 				{ type = "spacer", label = "" },
 				{ type = "header", label = "FORMS AND STANCES" },
 				{ type = "check", key = "formsChangeBar", label = "Forms change the bottom row",
@@ -574,7 +700,9 @@ local function BuildTabs()
 				{ type = "choice", key = "l1RightStick", label = "{PADLSHOULDER} + right stick", choices = L1RightStickChoices,
 					tip = "What the right stick does while {PADLSHOULDER} is held: zoom the camera in and out, or turn the camera as it normally does." },
 				{ type = "check", key = "windowCamera", label = "Turn the camera in windows",
-					tip = "With a window open, the right stick turns the camera as usual, also while the cursor is in a list such as the map's quest list, and steers while running. Off: the right stick scrolls lists instead." },
+					tip = "With a window open, the right stick turns the camera as usual, also while the cursor is in a list such as the map's quest list, and steers while running. In quest, gossip, book and letter windows it still scrolls the text. Off: the right stick scrolls lists instead." },
+				{ type = "check", key = "groundUnderCharacter", label = "Place under the character (experimental)",
+					tip = "Experimental. Spells and items you put on the ground, such as a quest item or an area spell, go under your character when you press {PAD1}. Off: {PAD1} places them where the game's marker is." },
 				{ type = "spacer", label = "" },
 				{ type = "header", label = "OTHER" },
 				{ type = "check", key = "holdToWalk", label = "Hold {PAD2} to walk",
@@ -1049,14 +1177,10 @@ local function CreateRowFrame(index)
 	end
 	frame:SetScript("OnEnter", Focus)
 	frame:EnableMouseWheel(true)
+	-- The wheel scrolls the settings, never changes one: choices change in their open list (which
+	-- scrolls with the wheel too), numbers with a click or the D-pad.
 	frame:SetScript("OnMouseWheel", function(_, delta)
-		local row = frame.row
-		if row and (row.type == "number" or row.type == "choice") then
-			cursor = scroll + index
-			StepRow(row, delta > 0 and 1 or -1, IsShiftKeyDown())
-		else
-			ScrollRows(delta > 0 and -3 or 3)
-		end
+		ScrollRows(delta > 0 and -3 or 3)
 	end)
 	frame:SetScript("OnClick", function()
 		if listRow and listRow ~= frame.row then
@@ -1353,17 +1477,39 @@ local function CreateNavButtons()
 		PrevTab = function() SelectTab(selectedTab - 1) end,
 		NextTab = function() SelectTab(selectedTab + 1) end,
 	}
+	-- Holding the D-pad repeats a direction while it works on the same list or row (ns.RepeatOnHold).
+	-- Left / right only repeat on numbers and button rows: a checkbox or a choice of two would flip
+	-- back and forth, applying the setting each time. Choices go quickly through their list instead.
+	local function HoldContext(name)
+		if dialog and dialog:IsShown() then
+			return "dialog:" .. tostring(dialog.mode)
+		elseif listRow then
+			return "list"
+		elseif name == "Left" or name == "Right" then
+			local row = CurrentRows()[cursor]
+			if not row or (row.type ~= "number" and row.type ~= "buttons") then
+				return false
+			end
+			return "row:" .. selectedTab .. ":" .. cursor
+		end
+		return "rows:" .. selectedTab
+	end
 	for name, action in pairs(actions) do
 		local button = CreateFrame("Button", "GamepadXIVConfigNav" .. name, window)
-		button:RegisterForClicks("AnyDown")
-		button:SetScript("OnClick", function()
+		local function OnClick()
 			-- While the add window is open, the controller works that instead.
 			if dialog and dialog:IsShown() then
 				dialog.Nav(name)
 			else
 				action()
 			end
-		end)
+		end
+		if name == "Up" or name == "Down" or name == "Left" or name == "Right" then
+			ns.RepeatOnHold(button, OnClick, function() return HoldContext(name) end)
+		else
+			button:RegisterForClicks("AnyDown")
+			button:SetScript("OnClick", OnClick)
+		end
 	end
 end
 

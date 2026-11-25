@@ -12,10 +12,11 @@ local _, ns = ...
 -- - A stays Forever's (it selects the entry); the addon reads the controller to see it was pressed.
 
 local REPEAT_WAIT = 10 -- seconds before the same leader can be whispered again
-local LOG_MAX = 80
+local LOG_MAX = 300
 
+-- On with the session log (/gxiv log, or [Debug] Log this session); /gxiv lfglog clears it.
 function ns.LfgLog(...)
-	if not (ns.db and ns.db.lfgLogOn) then
+	if not (ns.db and ns.db.playLogOn) then
 		return
 	end
 	local parts = { date("%H:%M:%S") }
@@ -30,17 +31,13 @@ function ns.LfgLog(...)
 end
 
 function ns.ToggleLfgLog()
-	ns.db.lfgLogOn = not ns.db.lfgLogOn
-	if ns.db.lfgLogOn then
-		ns.db.lfgLog = {}
-		ns.Print("Group finder log on. Use the Looking For Group window, then /gxiv lfglog again to stop; it is saved on /reload or logout.")
-	else
-		ns.Print("Group finder log off,", #(ns.db.lfgLog or {}), "lines saved.")
-	end
+	local count = #(ns.db.lfgLog or {})
+	ns.db.lfgLog = {}
+	ns.Print("Group finder log cleared (" .. count .. " lines). It records while /gxiv log is on and is saved on /reload or logout.")
 end
 
 local owner = CreateFrame("Frame") -- holds the addon's override bindings for the window
-local refreshButton, menuButton, cancelButton
+local refreshButton, menuButton, cancelButton, filterButton
 local confirm, hint
 local boundKeys = {} -- key -> the binding command the addon set
 local takenBack = {} -- keys logged as taken back since the window opened
@@ -50,6 +47,8 @@ local lastRebind = 0
 local REFRESH_COMMAND = "CLICK GamepadXIVLfgRefresh:LeftButton"
 local MENU_COMMAND = "CLICK GamepadXIVLfgMenu:RightButton"
 local CANCEL_COMMAND = "CLICK GamepadXIVLfgCancel:LeftButton"
+-- L3 closes the window (a secure click on its own close button) and opens LFG Filter (LfgFilter.lua).
+local FILTER_COMMAND = "CLICK GamepadXIVLfgFilterOpen:LeftButton"
 
 local function WindowShown()
 	return LFGParentFrame and LFGParentFrame:IsVisible() and LFGBrowseFrame and LFGBrowseFrame:IsVisible()
@@ -120,13 +119,17 @@ local function GroupInfo(entry)
 	return info
 end
 
+-- The activity, or up to three of them, such as "Uldaman/Zul'Farrak".
 local function ActivityName(info)
-	local id = (info.activityIDs and info.activityIDs[1]) or info.activityID
-	local activity = id and C_LFGList.GetActivityInfoTable and C_LFGList.GetActivityInfoTable(id)
-	if not activity then
-		return ""
+	local ids = info.activityIDs or { info.activityID }
+	local names = {}
+	for index = 1, math.min(#ids, 3) do
+		local activity = ids[index] and C_LFGList.GetActivityInfoTable and C_LFGList.GetActivityInfoTable(ids[index])
+		if activity then
+			names[#names + 1] = (activity.shortName and activity.shortName ~= "" and activity.shortName) or activity.fullName or nil
+		end
 	end
-	return (activity.shortName and activity.shortName ~= "" and activity.shortName) or activity.fullName or ""
+	return table.concat(names, "/")
 end
 
 -- The roles ticked in Looking For Group, such as "Healer/DPS"; empty with none ticked.
@@ -204,9 +207,12 @@ local function UpdateHint()
 		return
 	end
 	local shown = WindowShown() and ns.IsGamepadUI and ns.IsGamepadUI() and not InCombatLockdown()
+		and not (ns.LfgFilterShown and ns.LfgFilterShown())
 	hint:SetShown(shown and true or false)
 	if shown then
-		hint.text:SetText(ns.ButtonText("{PAD4} Refresh     {PAD1} Request invite     {PAD3} Group menu", 20))
+		local unread = ns.LfgFilterUnread and ns.LfgFilterUnread() or 0
+		hint.text:SetText(ns.ButtonText("{PAD4} Refresh     " .. (ns.db.lfgAsk == "off" and "" or ("{PAD1} " .. (ns.db.lfgAsk == "chat" and "Open Chat" or "Request invite") .. "     ")) .. "{PAD3} Group menu     {PADLSTICK} LFG Filter", 20)
+			.. (unread > 0 and ("  |cffff5555(" .. unread .. " unread)|r") or ""))
 		hint:SetSize(hint.text:GetStringWidth() + 24, 34)
 	end
 end
@@ -288,7 +294,12 @@ local function OnConfirmPress()
 		ns.LfgLog("A: nothing to whisper,", why, "cursor on:", FrameName(SmartNavigation and SmartNavigation.currentButton))
 		return
 	end
-	if ns.db.lfgConfirm then
+	if ns.db.lfgAsk == "off" then
+		ns.LfgLog("A on a group: nothing done (Do nothing)")
+	elseif ns.db.lfgAsk == "chat" then
+		ns.LfgLog("open chat with", info.leaderName)
+		ns.LfgChatWith(info.leaderName)
+	elseif ns.db.lfgAsk ~= "send" then
 		ShowConfirm(info)
 	else
 		Send(info)
@@ -321,6 +332,7 @@ local function UpdateBindings()
 	local wanted = {
 		PAD4 = (confirm and confirm:IsShown()) and CANCEL_COMMAND or REFRESH_COMMAND,
 		PAD3 = MENU_COMMAND,
+		PADLSTICK = FILTER_COMMAND,
 	}
 	local now = GetTime()
 	for key, command in pairs(wanted) do
@@ -407,7 +419,8 @@ local function ConfirmButtonDown()
 end
 
 watcher:SetScript("OnUpdate", function(_, elapsed)
-	if not WindowShown() then
+	-- LFG Filter's window has the controller while it is open.
+	if not WindowShown() or (ns.LfgFilterShown and ns.LfgFilterShown()) then
 		windowWasShown = false
 		if wasDown or (confirm and confirm:IsShown()) or next(boundKeys) or (hint and hint:IsShown()) then
 			wasDown = false
@@ -488,6 +501,22 @@ function ns.SetupLfg()
 	cancelButton:RegisterForClicks("AnyDown")
 	cancelButton:SetScript("OnClick", function() HideConfirm("cancelled") end)
 	cancelButton:Hide()
+	filterButton = CreateSecureClick("GamepadXIVLfgFilterOpen", "LeftButton")
+	if LFGParentFrameCloseButton then
+		filterButton:SetAttribute("clickbutton", LFGParentFrameCloseButton)
+	end
+	filterButton:HookScript("OnClick", function(_, _, down)
+		if down then
+			ns.LfgLog("LFG Filter pressed")
+			if ns.LfgFilterLog then
+				ns.LfgFilterLog("opened from Looking For Group, its window shown:", tostring(LFGParentFrame:IsShown()))
+			end
+			-- Opened inside the press: the first search needs a hardware event, a timer would block it.
+			if ns.OpenLfgFilter and not (ns.LfgFilterShown and ns.LfgFilterShown()) then
+				ns.OpenLfgFilter()
+			end
+		end
+	end)
 	refreshButton:HookScript("OnClick", function(_, _, down)
 		if down then
 			ns.LfgLog("refresh pressed")
@@ -521,6 +550,12 @@ function ns.SetupLfg()
 		end, hint)
 	end
 	ns.LfgLog("set up")
+end
+
+ns.UpdateLfgHint = function()
+	if hint and hint:IsShown() then
+		UpdateHint()
+	end
 end
 
 -- The group finder loads when it is first opened; after a /reload it may be loaded already.

@@ -85,6 +85,7 @@ hooksecurefunc = function(name, fn)
 	local old = _G[name]
 	_G[name] = function(...) local r = old(...); fn(...); return r end
 end
+assert(loadfile("Repeat.lua"))("GamepadXIV", ns)
 assert(loadfile(arg[1] or "Tutorial.lua"))("GamepadXIV", ns)
 
 local fails = 0

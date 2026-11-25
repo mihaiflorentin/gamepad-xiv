@@ -20,6 +20,10 @@ jobs:
         with:
           fetch-depth: 0 # the packager reads the tags and history for the version and changelog
 
+      # The in-game changelog (Changelog.lua) is made from CHANGELOG.md, so it always matches the release.
+      - name: Make the in-game changelog
+        run: python3 tools/make_changelog.py
+
       - name: Build test package
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: BigWigsMods/packager@v2

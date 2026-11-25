@@ -9,6 +9,7 @@
 ## OptionalDeps: Blizzard_Gamepad, Blizzard_GamepadActionBars
 
 Core.lua
+Repeat.lua
 Profiles.lua
 Snippets.lua
 Bar.lua
@@ -23,5 +24,16 @@ Config.lua
 Minimap.lua
 Ring.lua
 Lfg.lua
+LfgFilter.lua
+LfgDetails.lua
+ChatHistory.lua
+MessagesEditor.lua
+ChatBox.lua
+RollPicker.lua
+MenuWrap.lua
+Sounds.lua
 Items.lua
 Tutorial.lua
+Changelog.lua
+News.lua
+VersionCheck.lua

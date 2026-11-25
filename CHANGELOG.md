@@ -1,10 +1,28 @@
 # Gamepad XIV
 
+## v0.1.28
+
+### New
+
+- Implemented LFG Filter, a new gamepad friendly group finder.
+- Implemented a new gamepad friendly chatbox.
+- The quick set swap can now also change the L2 + R2 bars.
+- L2 + R2 can now show the top bars.
+- Circle now clears your target while swimming or flying.
+- Added an option for Cross on an enemy to shoot with your wand.
+- Holding the D-pad now keeps moving in menus.
+
+### Fixed
+
+- Fixed picking roles in a group invite with the D-pad.
+- Fixed the right stick not scrolling quest, gossip, book and letter text.
+- Fixed the mouse wheel changing settings instead of scrolling.
+
 ## v0.1.27
 
 ### Changes
 
-- Linking items in chat can now be turned off in the General settings.
+- Linking items in chat can now be turned off in the Chat settings.
 
 ### Fixes
 

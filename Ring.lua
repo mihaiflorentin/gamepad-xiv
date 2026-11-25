@@ -58,20 +58,24 @@ local BUILTINS = {
 	tracking = { label = Label("RADIAL_LABEL_TRACKING", "Tracking"), atlas = "gamepad-radial-icon-minimapsettings",
 		run = function() MinimapCluster.Tracking.Button:OpenMenu() end },
 	gxiv = { label = "Gamepad XIV", icon = ns.ICON, run = function() ns.OpenConfig() end },
+	-- The addon's own group finder, with Forever's Group Finder icon. It takes Forever's entry's place.
+	-- The addon's Chat window, in the Chat entry's place while it replaces the game's chat.
+	gxivchat = { label = Label("RADIAL_LABEL_CHAT", "Chat"), atlas = "gamepad-radial-icon-chat", run = function() ns.OpenGamepadChat() end, now = true },
+	lfgfilter = { label = "LFG Filter", atlas = "gamepad-radial-icon-groupfinder", run = function() ns.OpenLfgFilter() end, now = true },
 }
 ns.RING_BUILTINS = BUILTINS
 
 -- The order the built-in entries are offered in when adding one.
 ns.RING_BUILTIN_ORDER = {
-	"character", "bags", "spellbook", "talents", "professions", "map", "collections", "lfd", "guild", "social",
-	"chat", "menu", "calendar", "time", "tracking", "pvp", "store", "legacy", "gxiv",
+	"character", "bags", "spellbook", "talents", "professions", "map", "collections", "lfgfilter", "lfd", "guild", "social",
+	"chat", "gxivchat", "menu", "calendar", "time", "tracking", "pvp", "store", "legacy", "gxiv",
 }
 
 -- Forever's three main menu pages, counter-clockwise from east. Forever's Buffs entry focuses a
 -- frame for the controller, which addon code can't do without tainting it, so its segment is free
 -- here; Chat opens chat to type in. The settings entry takes a free segment of the third page.
 local DEFAULT_PAGES = {
-	{ "lfd", "legacy", { toybox = true }, "guild", "social", false, "tracking", "collections" },
+	{ "lfgfilter", "legacy", { toybox = true }, "guild", "social", false, "tracking", "collections" },
 	{ "bags", "professions", "character", "talents", "map", "chat", "menu", "spellbook" },
 	{ "time", "calendar", "gxiv", false, "pvp", false, false, false },
 }
@@ -1309,7 +1313,11 @@ function ns.OnRing(action)
 			if entry.run then
 				-- After this frame, so a window it opens is not caught by the press that closed the ring.
 				ns.Trail("ring entry " .. tostring(entry.label))
-				C_Timer.After(0, entry.run)
+				if entry.now then
+					entry.run() -- inside the press: LFG Filter's first search needs it
+				else
+					C_Timer.After(0, entry.run)
+				end
 			else
 				ns.Print(entry.label, "can't be opened from the ring in combat.")
 			end

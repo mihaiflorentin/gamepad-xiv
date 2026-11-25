@@ -112,8 +112,24 @@ local function NewFrame(name)
 end
 
 local driver = NewFrame("GamepadXIVDriver")
-for _, key in ipairs({ "ApplyLayer", "BindAll", "UpdateTargetBindings", "UpdateYield", "OnTrigger", "UpdateTriggerLayer", "ReturnFromTop", "BeginEdit", "EndEdit", "SetSoft", "ReturnToGroupUnit", "UpdateForm", "CycleGroup", "PartyCycleUnit", "SelectGroupUnit", "MoveFrameCursor", "OpenFlyout", "CloseFlyout", "SetClear" }) do
+for _, key in ipairs({ "ApplyLayer", "BindAll", "UpdateTargetBindings", "UpdateYield", "OnTrigger", "UpdateTriggerLayer", "ReturnFromTop", "BeginEdit", "EndEdit", "SetSoft", "ReturnToGroupUnit", "UpdateForm", "CycleGroup", "PartyCycleUnit", "SelectGroupUnit", "MoveFrameCursor", "OpenFlyout", "CloseFlyout", "SetClear", "HoldStart", "HoldStop", "HoldTick" }) do
 	driver.attrs[key] = S[key]
+end
+
+-- The hold clock for party selection: the state driver writes "fc-tick" back to 1 on each 0.2s tick.
+local holdTicker = NewFrame("GamepadXIVHoldTicker")
+holdTicker.refs.driver = driver
+holdTicker.attrs["fc-tick"] = 1
+driver.refs.holdTicker = holdTicker
+do
+	local attrFn = assert(loadstring("local self, name, value = ...\n" .. S.HoldTickerAttribute))
+	setfenv(attrFn, setmetatable({}, { __index = ALLOWED }))
+	holdTicker.onAttribute = function(key, value) attrFn(holdTicker, key, value) end
+	holdTicker.tick = function()
+		if holdTicker.attrs["fc-tick"] ~= 1 then
+			holdTicker:SetAttribute("fc-tick", 1)
+		end
+	end
 end
 
 local KEYS = { "PADDLEFT", "PADDUP", "PADDRIGHT", "PADDDOWN", "PAD3", "PAD4", "PAD2", "PAD1" }
@@ -382,6 +398,19 @@ L2.release()
 Check("releasing L2 returns to R", Layer(), "R")
 R2.release()
 Wait(L2, 3); Wait(R2, 3)
+
+-- With the combos showing the top bars, they show the double tap halves (sides 3 and 4).
+driver.attrs["fc-comboTop"] = 1
+L2.press(); R2.press()
+Check("combos show the top bars: L2 then R2", SlotL(1), 301)
+R2.release(); L2.release()
+Wait(L2, 3); Wait(R2, 3)
+R2.press(); L2.press()
+Check("combos show the top bars: R2 then L2", SlotR(1), 401)
+L2.release(); R2.release()
+Wait(L2, 3); Wait(R2, 3)
+driver.attrs["fc-comboTop"] = 0
+
 
 L2.press(); R2.press(); L2.release()
 Check("releasing the first trigger keeps the other", Layer(), "R")
@@ -896,6 +925,19 @@ unitsThatExist.swimming = true
 driver:RunAttribute("UpdateTargetBindings")
 driver:RunAttribute("ApplyLayer")
 Check("swimming: B dives", driver.bindings.PAD2, "SITORSTAND")
+-- With "clear the target, then go down", a target is cleared first, as on land.
+local hadTarget = unitsThatExist.target
+driver.attrs["fc-airClear"] = 1
+unitsThatExist.target = true
+driver:RunAttribute("UpdateTargetBindings")
+driver:RunAttribute("ApplyLayer")
+Check("swimming, clear first: B cancels with a target", driver.bindings.PAD2, "BACK")
+unitsThatExist.target = nil
+driver:RunAttribute("UpdateTargetBindings")
+driver:RunAttribute("ApplyLayer")
+Check("swimming, clear first: B dives with no target", driver.bindings.PAD2, "SITORSTAND")
+driver.attrs["fc-airClear"] = 0
+unitsThatExist.target = hadTarget
 unitsThatExist.swimming = nil
 driver:RunAttribute("UpdateTargetBindings")
 driver:RunAttribute("ApplyLayer")
@@ -1051,6 +1093,16 @@ unitsThatExist.softinteract = nil
 driver.attrs["fc-spellTargeting"] = 1
 driver:RunAttribute("UpdateTargetBindings"); driver:RunAttribute("ApplyLayer")
 Check("cross: placing on the ground clicks the spot", driver.bindings.PAD1, "CAMERAORSELECTORMOVE")
+driver.attrs["fc-spellTargeting"] = 2
+driver:RunAttribute("UpdateTargetBindings"); driver:RunAttribute("ApplyLayer")
+Check("cross: a ground spot with the option off clicks the spot", driver.bindings.PAD1, "CAMERAORSELECTORMOVE")
+driver.attrs["fc-groundSelf"] = 1
+driver:RunAttribute("UpdateTargetBindings"); driver:RunAttribute("ApplyLayer")
+Check("cross: under the character targets the player", driver.bindings.PAD1, "CLICK GamepadXIVGroundSelf:LeftButton")
+driver.attrs["fc-spellTargeting"] = 1
+driver:RunAttribute("UpdateTargetBindings"); driver:RunAttribute("ApplyLayer")
+Check("cross: an item or unit to pick still clicks", driver.bindings.PAD1, "CAMERAORSELECTORMOVE")
+driver.attrs["fc-groundSelf"] = nil
 driver.attrs["fc-spellTargeting"] = 0
 driver:RunAttribute("UpdateTargetBindings"); driver:RunAttribute("ApplyLayer")
 Check("cross: after placing, back to the enemy action", driver.bindings.PAD1, "CLICK GamepadXIVCrossAttack:LeftButton")
@@ -1763,6 +1815,18 @@ do
 	Tap()
 	Check("tap again: pair A", driver.attrs["fc-formset-0"], 1)
 	Check("tap again: top row set 5", driver.attrs["fc-side-WL"], 9)
+	Check("no L2 + R2 sets chosen: combos unchanged", driver.attrs["fc-side-LR"], 5)
+
+	-- Each pair can bring its own L2 + R2 / R2 + L2 set.
+	driver.attrs["fc-tapA-combo"], driver.attrs["fc-tapB-combo"] = 5, 7
+	Tap()
+	Check("tap: L2 + R2 to pair B's set 7 left", driver.attrs["fc-side-LR"], 13)
+	Check("tap: R2 + L2 to pair B's set 7 right", driver.attrs["fc-side-RL"], 14)
+	Check("tap: combos saved", driver.calls.OnTapCombo and driver.calls.OnTapCombo[1], 13)
+	Tap()
+	Check("tap again: L2 + R2 to pair A's set 5", driver.attrs["fc-side-LR"], 9)
+	Check("tap again: R2 + L2 to pair A's set 5", driver.attrs["fc-side-RL"], 10)
+	driver.attrs["fc-tapA-combo"], driver.attrs["fc-tapB-combo"] = 0, 0
 
 	-- A slow release (R1 held to look at the sets) changes nothing.
 	tapFn(tapR1, "LeftButton", true)
@@ -1907,6 +1971,135 @@ do
 	driver:RunAttribute("ApplyLayer")
 	Check("tutorial off: A interacts", driver.bindings.PAD1, "BASE_PAD1")
 	Check("tutorial off: Y has its action", driver.bindings.PAD4, "BASE_PAD4")
+end
+
+-- Holding the D-pad on party selection, with Party targeting on Soft, keeps stepping on the hold clock.
+do
+	driver.attrs["fc-partyTargeting"] = "soft"
+	driver.attrs["fc-layer"] = "BASE"
+	driver.attrs["fc-tutorial"] = 0
+	ClearSoft()
+	for _, unit in ipairs({ "pet", "partypet1", "partypet2", "raid1", "raid2", "raid3", "target" }) do
+		unitsThatExist[unit] = nil
+	end
+	unitsThatExist.player, unitsThatExist.party1, unitsThatExist.party2 = true, true, true
+	driver.attrs["fc-skipSelf"], driver.attrs["fc-skipPets"] = nil, nil
+	driver.attrs["fc-ufCount"], driver.attrs["fc-ufCursor"] = 0, nil
+	driver.attrs["fc-cycle-party"], driver.attrs["fc-cycleUnit"], driver.attrs["fc-cycleFrame"] = nil, nil, nil
+	local savedBase = driver.attrs["base-PADDDOWN"]
+	driver.attrs["base-PADDDOWN"] = "CLICK GamepadXIVPartyNext:LeftButton"
+	driver:RunAttribute("ApplyLayer")
+	Check("hold: D-pad down on party selection", driver.bindings.PADDDOWN, "CLICK GamepadXIVPartyNext:LeftButton")
+	local cycle, cycleFn = RunButton(S.CyclePreClick, { ["fc-step"] = 1, ["fc-raidOnly"] = 0 })
+	cycle.name = "GamepadXIVPartyNext"
+	local function Press() cycleFn(cycle, "LeftButton", true) end
+	local function Release() cycleFn(cycle, "LeftButton", false) end
+	local function Tick(n)
+		for _ = 1, n or 1 do
+			holdTicker.tick()
+		end
+		return driver.attrs["fc-soft"]
+	end
+
+	Press()
+	Release()
+	Check("hold: a tap selects once", Tick(3), "player")
+	Check("hold: the release never targets", cycle.attrs.unit, nil)
+
+	Press()
+	Check("hold: the press steps", driver.attrs["fc-soft"], "party1")
+	Check("hold: the first tick waits", Tick(), "party1")
+	Check("hold: the second tick waits", Tick(), "party1")
+	Check("hold: then a step per tick", Tick(), "party2")
+	Check("hold: and on, wrapping", Tick(), "player")
+	Check("hold: the bindings stay", driver.bindings.PADDDOWN, "CLICK GamepadXIVPartyNext:LeftButton")
+	Release()
+	Check("hold: the release stops it", Tick(3), "player")
+	Check("hold: the clock rests", holdTicker.attrs["fc-tick"], 1)
+
+	-- The release went elsewhere: a trigger was pressed mid-hold.
+	Press()
+	Tick(3)
+	driver.attrs["fc-layer"] = "R"
+	local before = driver.attrs["fc-soft"]
+	Check("hold: another layer stops it", Tick(3), before)
+	Check("hold: ended", driver.attrs["fc-holdKind"], nil)
+	driver.attrs["fc-layer"] = "BASE"
+	Release()
+
+	-- The key now does something else (party selection turned to the frames, say).
+	Press()
+	Tick(1)
+	driver.attrs["base-PADDDOWN"] = "FRAME_DOWN"
+	before = driver.attrs["fc-soft"]
+	Check("hold: the key rebound stops it", Tick(3), before)
+	driver.attrs["base-PADDDOWN"] = "CLICK GamepadXIVPartyNext:LeftButton"
+	Release()
+
+	-- An ability or Circle spent the soft target.
+	Press()
+	Tick(1)
+	ClearSoft()
+	Check("hold: a spent soft target stops it", Tick(3), "")
+
+	-- A release that never came at all.
+	Press()
+	Tick(59)
+	before = driver.attrs["fc-soft"]
+	Tick(1)
+	Check("hold: steps up to the limit", driver.attrs["fc-soft"] ~= before, true)
+	before = driver.attrs["fc-soft"]
+	Check("hold: ends after the limit", Tick(5), before)
+	Check("hold: limit ended it", driver.attrs["fc-holdKind"], nil)
+	Release()
+
+	-- Party targeting on Hard: each step is the real target, which only a press can change.
+	ClearSoft()
+	driver.attrs["fc-partyTargeting"] = "hard"
+	driver.attrs["fc-cycle-party"], driver.attrs["fc-cycleUnit"] = nil, nil
+	Press()
+	Check("hold hard: the press targets", cycle.attrs.unit, "player")
+	Check("hold hard: no hold", driver.attrs["fc-holdKind"], nil)
+	Check("hold hard: the clock rests", holdTicker.attrs["fc-tick"], 1)
+	Release()
+	Check("hold hard: the release targets nothing", cycle.attrs.unit, nil)
+	driver.attrs["fc-partyTargeting"] = "soft"
+
+	-- The frames on screen: holding a direction keeps moving over them.
+	local function AddFrame(index, unit, x, y)
+		local frame = NewFrame("uf" .. index)
+		frame.attrs.unit = unit
+		frame.rect = { x, y, 90, 40 }
+		driver.refs["uf" .. index] = frame
+		unitsThatExist[unit] = true
+	end
+	AddFrame(1, "player", 0, 100)
+	AddFrame(2, "party1", 0, 50)
+	AddFrame(3, "party2", 0, 0)
+	driver.attrs["fc-ufCount"], driver.attrs["fc-ufCursor"] = 3, nil
+	driver.attrs["base-PADDDOWN"] = "CLICK GamepadXIVFrameDown:LeftButton"
+	ClearSoft()
+	local move, moveFn = RunButton(S.FrameMovePreClick, { ["fc-dx"] = 0, ["fc-dy"] = -1 })
+	move.name = "GamepadXIVFrameDown"
+	moveFn(move, "LeftButton", true)
+	Check("hold frames: the press picks the top", driver.attrs["fc-soft"], "player")
+	Check("hold frames: waits two ticks", Tick(2), "player")
+	Check("hold frames: moves down", Tick(), "party1")
+	Check("hold frames: and down", Tick(), "party2")
+	moveFn(move, "LeftButton", false)
+	Check("hold frames: the release stops it", Tick(3), "party2")
+	-- A release from another button doesn't end this hold.
+	moveFn(move, "LeftButton", true)
+	Tick(2)
+	cycleFn(cycle, "LeftButton", false)
+	Check("hold frames: another button's release leaves it", Tick(), "party1")
+	moveFn(move, "LeftButton", false)
+
+	ClearSoft()
+	driver.refs.uf1, driver.refs.uf2, driver.refs.uf3 = nil, nil, nil
+	driver.attrs["fc-ufCount"], driver.attrs["fc-ufCursor"], driver.attrs["fc-cycleFrame"] = 0, nil, nil
+	driver.attrs["base-PADDDOWN"] = savedBase
+	driver:RunAttribute("ApplyLayer")
 end
 
 print(failures == 0 and "ALL PASSED" or (failures .. " FAILED"))

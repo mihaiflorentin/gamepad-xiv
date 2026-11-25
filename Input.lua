@@ -306,7 +306,23 @@ end
 -- attacking. The driver swaps the binding (UpdateTargetBindings), so anything else (no target, a
 -- friend, a corpse or other thing to interact with) is Forever's own button, bound directly: reached
 -- through a macro's /click, loot opened without auto loot.
-local CROSS_ENEMY = { attack = "CLICK GamepadXIVCrossAttack:LeftButton", nothing = "NONE" }
+-- "shoot" is the wand's Shoot (its ! form never stops it) while a wand is equipped, else /startattack.
+local CROSS_ENEMY = { attack = "CLICK GamepadXIVCrossAttack:LeftButton", shoot = "CLICK GamepadXIVCrossShoot:LeftButton",
+	nothing = "NONE" }
+
+-- The wand's Shoot and the Wands item type, in the game's language.
+local function ShootMacro()
+	local function Name(get, ...)
+		local ok, name = pcall(get, ...)
+		return ok and type(name) == "string" and name ~= "" and name or nil
+	end
+	local shoot = (C_Spell and C_Spell.GetSpellName and Name(C_Spell.GetSpellName, 5019))
+		or (GetSpellInfo and Name(GetSpellInfo, 5019)) or "Shoot"
+	local wands = (C_Item and C_Item.GetItemSubClassInfo and Name(C_Item.GetItemSubClassInfo, 2, 19))
+		or (GetItemSubClassInfo and Name(GetItemSubClassInfo, 2, 19)) or "Wands"
+	return "/cast [@target,harm,nodead,equipped:" .. wands .. "] !" .. shoot
+		.. "\n/startattack [@target,harm,nodead,noequipped:" .. wands .. "]"
+end
 
 local function SetupBaseBindings()
 	local interact = ForeverButtonBinding(1, "INTERACTTARGET")
@@ -317,6 +333,12 @@ local function SetupBaseBindings()
 	cross:SetAttribute("type", "macro")
 	cross:SetAttribute("macrotext", "/startattack [@target,harm,nodead]")
 	cross:Hide()
+	local shoot = CreateFrame("Button", "GamepadXIVCrossShoot", UIParent, "SecureActionButtonTemplate")
+	shoot:RegisterForClicks("AnyDown", "AnyUp")
+	shoot:SetAttribute("useOnKeyDown", true)
+	shoot:SetAttribute("type", "macro")
+	shoot:SetAttribute("macrotext", ShootMacro())
+	shoot:Hide()
 	local inspect = ForeverButtonBinding(2, "TOGGLEWORLDMAP")
 	local back, backButton = ForeverButtonBinding(3, "TOGGLEGAMEMENU")
 
@@ -400,12 +422,45 @@ local ANSWERED_POPUPS = {
 	PARTY_INVITE = true,
 }
 local POPUP_KEYS = { PAD1 = "GetButton1", PAD2 = "GetButton2", PAD3 = "GetButton3", PAD4 = "GetButton4" }
-local POPUP_KEY_ORDER = { "PAD1", "PAD2", "PAD3", "PAD4" }
+local POPUP_KEY_ORDER = { "PAD1", "PAD2", "PAD3", "PAD4", "PADDLEFT", "PADDUP", "PADDRIGHT" }
 
 -- The group finder's invite (a group from Looking For Group invites you) is a window of its own,
 -- not one of the four popups; it is number 5 here.
 local INVITE_POPUP = 5
 local INVITE_BUTTONS = { PAD1 = "LFGInvitePopupAcceptButton", PAD2 = "LFGInvitePopupDeclineButton" }
+-- The invite's role boxes have no names of their own, and no gamepad focus reaches them (Back says
+-- "No interface frame to focus"). Secure "click" buttons of ours press them: the D-pad left, up and
+-- right tick tank, healer and DPS, laid out as the boxes are.
+local INVITE_ROLES = { PADDLEFT = "Tank", PADDUP = "Healer", PADDRIGHT = "DPS" }
+local INVITE_ROLE_NAMES = { Tank = "Tank", Healer = "Healer", DPS = "DPS" }
+
+local function InviteRoleButton(key)
+	local role = INVITE_ROLES[key]
+	local roleButton = role and _G["LFGInvitePopupRoleButton" .. role]
+	local check = roleButton and roleButton.checkButton
+	if not (check and roleButton:IsShown() and check:IsShown() and check:IsEnabled()) then
+		return nil
+	end
+	local proxy = _G["GamepadXIVInviteRole" .. role]
+	if not proxy then
+		if InCombatLockdown() then
+			return nil
+		end
+		proxy = CreateFrame("Button", "GamepadXIVInviteRole" .. role, UIParent, "SecureActionButtonTemplate")
+		proxy:RegisterForClicks("AnyDown")
+		proxy:SetAttribute("useOnKeyDown", true)
+		proxy:SetAttribute("type", "click")
+		proxy:Hide()
+		proxy.label = INVITE_ROLE_NAMES[role]
+	end
+	if proxy:GetAttribute("clickbutton") ~= check then
+		if InCombatLockdown() then
+			return nil
+		end
+		proxy:SetAttribute("clickbutton", check)
+	end
+	return proxy
+end
 
 local function PopupByIndex(index)
 	if index == INVITE_POPUP then
@@ -428,6 +483,9 @@ end
 
 local function GetPopupButton(popup, key)
 	if popup and popup == LFGInvitePopup then
+		if INVITE_ROLES[key] then
+			return InviteRoleButton(key)
+		end
 		local button = INVITE_BUTTONS[key] and _G[INVITE_BUTTONS[key]]
 		return button and button:IsShown() and button or nil
 	end
@@ -451,29 +509,46 @@ local function UpdatePopupHint()
 		return
 	end
 	if not popupHint then
-		popupHint = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+		-- On a frame of its own above every window (LFG Filter's included), with a dark plate so it
+		-- reads over anything: under it {PAD2} declines the invite, so it must be seen.
+		local plate = CreateFrame("Frame", "GamepadXIVPopupHint", UIParent, "BackdropTemplate")
+		plate:SetFrameStrata("FULLSCREEN_DIALOG")
+		plate:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+		plate:SetBackdropColor(0.04, 0.04, 0.06, 0.92)
+		plate:SetBackdropBorderColor(1, 0.82, 0, 0.8)
+		plate:EnableMouse(false)
+		popupHint = plate:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+		popupHint:SetPoint("CENTER", plate, "CENTER")
+		popupHint.plate = plate
+		hooksecurefunc(popupHint, "Show", function(self) self.plate:Show() end)
+		hooksecurefunc(popupHint, "Hide", function(self) self.plate:Hide() end)
 	end
 	local parts = {}
 	for _, key in ipairs(POPUP_KEY_ORDER) do
 		local button = GetPopupButton(popup, key)
 		if button then
-			tinsert(parts, ns.ButtonText("{" .. key .. "}", 16) .. " " .. (button:GetText() or ""))
+			tinsert(parts, ns.ButtonText("{" .. key .. "}", 16) .. " " .. (button.label or button:GetText() or ""))
 		end
 	end
 	popupHint:SetText(table.concat(parts, "    "))
-	popupHint:ClearAllPoints()
-	popupHint:SetPoint("TOP", popup, "BOTTOM", 0, -8)
+	local plate = popupHint.plate
+	plate:SetSize((popupHint:GetStringWidth() or 200) + 24, (popupHint:GetStringHeight() or 18) + 14)
+	plate:ClearAllPoints()
+	plate:SetPoint("TOP", popup, "BOTTOM", 0, -8)
 	popupHint:Show()
 end
 
+-- The party selection buttons hear the release too, which ends holding the D-pad (S.HoldStart).
 local function CreateCycle(name, step, raidOnly)
 	local button = CreateSecureButton(name, S.CyclePreClick, "PreClick")
-	button:RegisterForClicks("AnyDown")
 	button:SetAttribute("type", "target")
 	button:SetAttribute("fc-step", step)
 	button:SetAttribute("fc-raidOnly", raidOnly and 1 or 0)
 	-- Play log: what each press picked, to find presses that seem to do nothing.
-	button:HookScript("OnClick", function(self)
+	button:HookScript("OnClick", function(self, _, down)
+		if not down then
+			return
+		end
 		ns.PlayLog("party cycle:", name, "unit", self:GetAttribute("unit") or "nil",
 			"frame", driver:GetAttribute("fc-cycleFrame") or "nil", "of", driver:GetAttribute("fc-ufCount") or 0,
 			"list", driver:GetAttribute("fc-cycle-party") or "nil", "soft", driver:GetAttribute("fc-soft") or "")
@@ -489,7 +564,6 @@ end
 
 local function CreateFrameMove(name, dx, dy)
 	local button = CreateSecureButton(name, S.FrameMovePreClick, "PreClick")
-	button:RegisterForClicks("AnyDown")
 	button:SetAttribute("type", "target")
 	button:SetAttribute("fc-dx", dx)
 	button:SetAttribute("fc-dy", dy)
@@ -565,10 +639,14 @@ SyncCycleToTarget = function()
 	end
 end
 
-local function CreatePlainButton(name, onClick)
+local function CreatePlainButton(name, onClick, repeatOnHold)
 	local button = CreateFrame("Button", name, UIParent)
-	button:RegisterForClicks("AnyDown")
-	button:SetScript("OnClick", onClick)
+	if repeatOnHold then
+		ns.RepeatOnHold(button, onClick)
+	else
+		button:RegisterForClicks("AnyDown")
+		button:SetScript("OnClick", onClick)
+	end
 	button:Hide()
 end
 
@@ -739,10 +817,62 @@ end
 -- Back is pointed at Forever's own R2 button until every open window was visited, then at the game's
 -- Open Chat binding. With nothing open, it opens chat; Forever only says "No interface frame to focus".
 -- Only bindings change: Forever's focus manager is only read, and its buttons run from the press.
--- In combat Back is Forever's own, for loot rolls and popups.
+-- In combat Back opens chat if nothing was open when the fight began; otherwise it is Forever's own,
+-- for loot rolls and popups.
 local BACK_POPUPS = { "GamepadGroupLootRollFrame", "GroupLootFrame1", "GroupLootFrame2", "GroupLootFrame3", "GroupLootFrame4",
 	"StaticPopup1", "StaticPopup2", "StaticPopup3", "StaticPopup4", "LFGDungeonReadyPopup", "LFGDungeonReadyDialog",
 	"LFGInvitePopup", "LFGListInviteDialog", "LFGListApplicationDialog", "ReadyCheckFrame", "RolePollPopup", "PVPReadyDialog" }
+ns.BACK_POPUPS = BACK_POPUPS -- LFG Filter lets go of the controller while one shows
+
+-- A group invite waiting for an answer: from PARTY_INVITE_REQUEST until it is answered, cancelled or
+-- runs out. LFG Filter lets go of the controller meanwhile, so Forever's Cross / Circle answer it.
+do
+	local pendingUntil = 0
+	local inviteWatch = CreateFrame("Frame")
+	for _, event in ipairs({ "PARTY_INVITE_REQUEST", "PARTY_INVITE_CANCEL", "GROUP_JOINED", "GROUP_ROSTER_UPDATE" }) do
+		pcall(inviteWatch.RegisterEvent, inviteWatch, event)
+	end
+	inviteWatch:SetScript("OnEvent", function(_, event)
+		if event == "PARTY_INVITE_REQUEST" then
+			pendingUntil = GetTime() + 65
+			-- Which window shows the invite in this client, for the play log.
+			local names = {}
+			for _, name in ipairs({ "LFGInvitePopup", "LFGListInviteDialog", "StaticPopup1", "StaticPopup2" }) do
+				local frame = _G[name]
+				if frame and frame.IsShown and frame:IsShown() then
+					names[#names + 1] = name
+				end
+			end
+			ns.PlayLog("group invite, shown:", #names > 0 and table.concat(names, ", ") or "none of the known windows")
+		elseif event ~= "GROUP_ROSTER_UPDATE" or IsInGroup() then
+			if pendingUntil > 0 then
+				ns.PlayLog("group invite answered:", event)
+			end
+			pendingUntil = 0
+		end
+	end)
+	function ns.InvitePending()
+		return GetTime() < pendingUntil
+	end
+
+	-- Group quest prompts (an escort started by a party member): logged with the popup that shows, to
+	-- find out why one may not show.
+	local questWatch = CreateFrame("Frame")
+	pcall(questWatch.RegisterEvent, questWatch, "QUEST_ACCEPT_CONFIRM")
+	questWatch:SetScript("OnEvent", function(_, _, who, quest)
+		ns.PlayLog("group quest prompt from", tostring(who), "for", tostring(quest), InCombatLockdown() and "(in combat)" or "")
+		C_Timer.After(0.5, function()
+			local shown = {}
+			for index = 1, 4 do
+				local popup = _G["StaticPopup" .. index]
+				if popup and popup:IsShown() then
+					shown[#shown + 1] = "StaticPopup" .. index .. " " .. tostring(popup.which)
+				end
+			end
+			ns.PlayLog("group quest prompt, popups shown:", #shown > 0 and table.concat(shown, ", ") or "none")
+		end)
+	end)
+end
 
 local function CreateBackChat()
 	local visited = {}
@@ -753,31 +883,42 @@ local function CreateBackChat()
 		if not manager then
 			return ""
 		end
-		if ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow() then
+		-- The game's chat box while it is open to type in. In the "im" chat style it stays the active
+		-- one after it closes without sending, so being active alone kept Back from chat for good.
+		local chatBox = (ChatFrameUtil and ChatFrameUtil.GetActiveWindow and ChatFrameUtil.GetActiveWindow())
+			or (ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow())
+		if chatBox and chatBox:IsShown() and chatBox:HasFocus() then
 			wipe(visited)
 			afterChat = manager.isUIFocused and true or false
-			return ""
+			return "", "the game's chat box is open"
 		end
-		-- Forever shows loot rolls and popups without focus; its Back is what focuses them.
+		-- Forever shows loot rolls and popups without focus; its Back is what focuses them. With another
+		-- window focused (bags, a quest), Back steps through Forever's windows (its R2) to the roll, and
+		-- only lets go once the roll has the focus.
 		for _, name in ipairs(BACK_POPUPS) do
 			local frame = _G[name]
 			if frame and frame.IsVisible and frame:IsVisible() then
 				wipe(visited)
-				return ""
+				local shown = manager.shownFrames or {}
+				if manager.isUIFocused and manager.focusedFrame ~= frame and tContains(shown, frame) then
+					return "next", name .. " behind " .. tostring(manager.focusedFrame and manager.focusedFrame.GetName
+						and manager.focusedFrame:GetName())
+				end
+				return "", name .. (manager.isUIFocused and (manager.focusedFrame == frame and " focused" or " (not in Forever's windows)") or "")
 			end
 		end
 		local shown = manager.shownFrames or {}
 		if not manager.isUIFocused then
 			wipe(visited)
 			afterChat = false
-			return #shown == 0 and "chat" or ""
+			return #shown == 0 and "chat" or "", #shown .. " windows open"
 		end
 		if afterChat then
-			return ""
+			return "", "after chat"
 		end
 		local focused = manager.focusedFrame
 		if not focused or not tContains(shown, focused) then
-			return ""
+			return "", "no focused window"
 		end
 		visited[focused] = true
 		for _, frame in ipairs(shown) do
@@ -785,11 +926,20 @@ local function CreateBackChat()
 				return "next"
 			end
 		end
+		-- The chat box can't type while a window has the controller (it gives way), so with it Back's
+		-- last step is Forever's own, which lets go of the windows; Enter still opens the chat box.
+		if ns.db and ns.db.chatUI == "gxiv" then
+			return "", "every window visited"
+		end
 		return "chat"
 	end
-	local function Set(value)
+	local function Set(value, why)
+		-- With the chat box replacing the game's chat, Back opens it instead (ChatBox.lua).
+		if value == "chat" and ns.db and ns.db.chatUI == "gxiv" then
+			value = "chatbox"
+		end
 		if driver:GetAttribute("fc-backAction") ~= value then
-			ns.PlayLog("Back:", value == "" and "Forever's" or value)
+			ns.PlayLog("Back:", value == "" and "Forever's" or value, value == "" and why and ("(" .. why .. ")") or "")
 			driver:SetAttribute("fc-backAction", value)
 			if ns.IsActive() then
 				SecureHandlerExecute(driver, [[ self:RunAttribute("ApplyLayer") ]])
@@ -799,10 +949,44 @@ local function CreateBackChat()
 	local watcher = CreateFrame("Frame")
 	-- Bindings freeze in combat; they can still change while this event runs.
 	watcher:RegisterEvent("PLAYER_REGEN_DISABLED")
-	watcher:SetScript("OnEvent", function()
+	-- Loot rolls still open: Back stays Forever's through a fight then, so it can reach the roll.
+	local rolls = {} -- rollID = when it runs out
+	watcher:RegisterEvent("START_LOOT_ROLL")
+	watcher:RegisterEvent("CANCEL_LOOT_ROLL")
+	local function RollPending()
+		local now = GetTime()
+		for id, ends in pairs(rolls) do
+			if ends > now then
+				return id
+			end
+			rolls[id] = nil
+		end
+	end
+	-- With nothing open, Back keeps opening chat in combat; a roll that drops mid-fight gets the roll
+	-- picker from it (RollPicker.lua). With a window, popup or loot roll open it is Forever's.
+	watcher:SetScript("OnEvent", function(_, event, rollID, rollTime)
+		if event == "START_LOOT_ROLL" then
+			rolls[rollID] = GetTime() + (tonumber(rollTime) or 60000) / 1000
+			-- Whether Forever shows the roll during a fight, for the play log.
+			C_Timer.After(0.5, function()
+				local frame = GamepadGroupLootRollFrame
+				ns.PlayLog("loot roll", tostring(rollID), "window shown:", tostring(frame and frame:IsVisible()),
+					InCombatLockdown() and "(in combat)" or "", "Back:", tostring(driver:GetAttribute("fc-backAction")))
+			end)
+			return
+		elseif event == "CANCEL_LOOT_ROLL" then
+			rolls[rollID] = nil
+			return
+		end
+		local value, why = BackAction()
 		wipe(visited)
 		afterChat = false
-		Set("")
+		if value == "chat" and RollPending() then
+			value, why = "", "loot roll open"
+		elseif value ~= "chat" then
+			value, why = "", why or "combat"
+		end
+		Set(value, why)
 	end)
 	local elapsedSince = 0
 	watcher:SetScript("OnUpdate", function(_, elapsed)
@@ -813,6 +997,23 @@ local function CreateBackChat()
 		elapsedSince = 0
 		Set(BackAction())
 	end)
+	-- Whether Back is the chat box's now (for its hints in combat).
+	function ns.BackOpensChat()
+		return driver:GetAttribute("fc-backAction") == "chatbox"
+	end
+	-- A loot roll or popup takes Back the moment it shows, not up to 0.1 s later: Forever shows rolls
+	-- as a fight ends, often just as Back is pressed.
+	function ns.RefreshBack()
+		if not InCombatLockdown() then
+			Set(BackAction())
+		end
+	end
+	for _, name in ipairs(BACK_POPUPS) do
+		local frame = _G[name]
+		if frame and frame.HookScript then
+			frame:HookScript("OnShow", ns.RefreshBack)
+		end
+	end
 end
 
 -- L1 + R1 on the open world map places a pin at the map cursor, or removes the pin under it, the same
@@ -929,8 +1130,10 @@ local function KeepChatOpenForLinks()
 	local pendingLink, pendingTime
 	-- Off by default: typing into the chat box from this addon runs the game's chat code as this
 	-- addon's, which taints Forever's chat and window focus.
+	-- Not while the chat box replaces the game's chat: links go to it (ChatBox.lua), and the game's box
+	-- is left alone.
 	local function On()
-		return ns.db and ns.db.chatLinks
+		return ns.db and ns.db.chatLinks and ns.db.chatUI ~= "gxiv"
 	end
 	local function HoldLink(link)
 		if not On() or type(link) ~= "string" or not IsModifiedClick("CHATLINK") then
@@ -1093,22 +1296,65 @@ end
 -- A spell or item waiting for a spot on the ground: Cross becomes the screen click that places it
 -- (fc-spellTargeting, read by UpdateTargetBindings). Bindings can't change in combat, so a change
 -- there is applied once the fight is over.
+-- 1 for a spell waiting for an item, unit or object, 2 for one waiting for a spot on the ground.
+local function TargetingKind()
+	if not (SpellIsTargeting and SpellIsTargeting()) then
+		return 0
+	end
+	-- Each check is guarded: an API missing or shaped differently on this client must never raise an
+	-- error here, which runs every frame. A spell waiting for a unit counts as a spot: with the option
+	-- on it goes to the player, as a [@player] macro would.
+	for _, check in ipairs({ SpellCanTargetItem, SpellCanTargetItemID, SpellCanTargetGameObject }) do
+		local ok, yes = pcall(check)
+		if ok and yes then
+			return 1
+		end
+	end
+	return 2
+end
+
 local function CreateGroundTargetWatcher()
 	local watcher = CreateFrame("Frame")
 	local applied = 0
 	watcher:SetScript("OnUpdate", function()
-		local targeting = SpellIsTargeting and SpellIsTargeting() and 1 or 0
+		local ok, targeting = pcall(TargetingKind)
+		targeting = ok and targeting or 0
 		if targeting == applied or InCombatLockdown() or not driver then
 			return
 		end
 		applied = targeting
-		ns.Trail("ground targeting " .. (targeting == 1 and "on" or "off"))
+		ns.Trail("ground targeting " .. targeting)
+		ns.PlayLog("placing:", targeting == 2 and "spot" or targeting == 1 and "item or object" or "done",
+			"under character", tostring(ns.db.groundUnderCharacter), "ui focus", tostring(GamepadMode
+			and GamepadMode.FrameControlsManager and GamepadMode.FrameControlsManager.isUIFocused))
 		driver:SetAttribute("fc-spellTargeting", targeting)
 		SecureHandlerExecute(driver, [[
 			self:RunAttribute("UpdateTargetBindings")
 			self:RunAttribute("ApplyLayer")
 		]])
+		-- With a window focused, such as the bags the item was used from, Forever binds Cross to its
+		-- cursor click. While a spot is picked with Place under the character on, Cross is taken over
+		-- with a binding of this frame's own, given back as soon as the spot is placed or cancelled.
+		if targeting == 2 and ns.db.groundUnderCharacter then
+			SetOverrideBindingClick(watcher, true, "PAD1", "GamepadXIVGroundSelf", "LeftButton")
+		else
+			ClearOverrideBindings(watcher)
+		end
 	end)
+end
+
+-- Windows whose text is read by scrolling: there the right stick keeps scrolling, as Forever's D-pad
+-- moves between their buttons.
+local READING_WINDOWS = { "QuestFrame", "GossipFrame", "QuestLogFrame", "QuestLogDetailFrame", "ItemTextFrame",
+	"OpenMailFrame", "QuestMapDetailsScrollFrame" }
+
+local function ReadingWindowOpen()
+	for _, name in ipairs(READING_WINDOWS) do
+		local frame = _G[name]
+		if frame and frame.IsVisible and frame:IsVisible() then
+			return name
+		end
+	end
 end
 
 local function CreateWindowCamera()
@@ -1123,7 +1369,7 @@ local function CreateWindowCamera()
 			return
 		end
 		local onlyScrolling = listener.right.func == scroll and not listener.left.func and not listener.left.waitForCentering
-		local wanted = ns.db and ns.db.windowCamera and ns.IsActive() and onlyScrolling
+		local wanted = ns.db and ns.db.windowCamera and ns.IsActive() and onlyScrolling and not ReadingWindowOpen()
 		if wanted and listener:IsGamePadStickEnabled() then
 			listener:EnableGamePadStick(false)
 			released = true
@@ -1750,6 +1996,7 @@ local EQUIP_SLOTS = {
 	INVTYPE_WEAPONOFFHAND = { 17 }, INVTYPE_HOLDABLE = { 17 }, INVTYPE_RANGED = { 18 },
 	INVTYPE_THROWN = { 18 }, INVTYPE_RANGEDRIGHT = { 18 }, INVTYPE_RELIC = { 18 }, INVTYPE_TABARD = { 19 },
 }
+ns.EQUIP_SLOTS = EQUIP_SLOTS -- the chat box's item tooltips compare with these too
 
 -- Item details for loot rolls: the item and what you wear in its slot, beside the roll window, for as
 -- long as it is open. Forever only shows the item while a button in the window has focus, without the
@@ -1856,6 +2103,9 @@ function ns.CreateInput()
 	driver:SetAttribute("PartyCycleUnit", S.PartyCycleUnit)
 	driver:SetAttribute("SelectGroupUnit", S.SelectGroupUnit)
 	driver:SetAttribute("MoveFrameCursor", S.MoveFrameCursor)
+	driver:SetAttribute("HoldStart", S.HoldStart)
+	driver:SetAttribute("HoldStop", S.HoldStop)
+	driver:SetAttribute("HoldTick", S.HoldTick)
 	driver:SetAttribute("OpenFlyout", S.OpenFlyout)
 	driver:SetAttribute("CloseFlyout", S.CloseFlyout)
 	driver:SetAttribute("SetClear", S.SetClear)
@@ -1910,6 +2160,9 @@ function ns.CreateInput()
 
 	driver.OnLayerChanged = function(_, ...) ns.ShowLayer(...) end
 	-- The R1 tap changed the top row: kept, so the next sync does not put the old one back.
+	driver.OnTapCombo = function(_, sideLR, sideRL)
+		ns.db.sideLR, ns.db.sideRL = sideLR, sideRL
+	end
 	driver.OnTapSwap = function(_, _, sideWL, sideWR)
 		ns.db.sideWL, ns.db.sideWR = sideWL, sideWR
 		-- Redraws the bars' labels with the new top sets, which also flashes the top bars.
@@ -1970,6 +2223,14 @@ function ns.CreateInput()
 	local chordL2 = CreateSecureButton("GamepadXIVR1ChordL2", S.R1ChordPre)
 	chordL2:SetAttribute("type", "macro")
 	chordL2:SetAttribute("macrotext", "/targetenemy")
+	-- Holding the D-pad on party selection, with Party targeting on Soft, keeps stepping: the clock
+	-- for it is an attribute driver, the only timer secure code has (S.HoldTick).
+	local holdTicker = CreateFrame("Frame", "GamepadXIVHoldTicker", driver, "SecureHandlerAttributeTemplate")
+	SecureHandlerSetFrameRef(holdTicker, "driver", driver)
+	SecureHandlerSetFrameRef(driver, "holdTicker", holdTicker)
+	holdTicker:SetAttribute("fc-tick", 1)
+	holdTicker:SetAttribute("_onattributechanged", S.HoldTickerAttribute)
+	RegisterAttributeDriver(holdTicker, "fc-tick", 1)
 	CreateCycle("GamepadXIVPartyPrev", -1, false)
 	CreateCycle("GamepadXIVPartyNext", 1, false)
 	CreateCycle("GamepadXIVRaidPrev", -1, true)
@@ -1984,6 +2245,14 @@ function ns.CreateInput()
 	local softConfirm = CreateSecureButton("GamepadXIVSoftConfirm", S.SoftConfirmPreClick, "PreClick")
 	softConfirm:RegisterForClicks("AnyDown")
 	softConfirm:SetAttribute("type", "target")
+	-- Place under the character: targeting the player while a spot on the ground is picked puts it there.
+	local groundSelf = CreateSecureButton("GamepadXIVGroundSelf")
+	groundSelf:RegisterForClicks("AnyDown")
+	groundSelf:SetAttribute("type", "target")
+	groundSelf:SetAttribute("unit", "player")
+	groundSelf:HookScript("OnClick", function()
+		ns.PlayLog("placing: under the character")
+	end)
 	CreateSecureButton("GamepadXIVSoftCancel", S.SoftCancelClick)
 
 	for i = 1, ns.NUM_SLOTS do
@@ -2120,9 +2389,9 @@ function ns.CreateInput()
 	CreatePlainButton("GamepadXIVClearConfirm", ConfirmClear)
 	CreatePlainButton("GamepadXIVSlotMove", StartMove)
 	CreatePlainButton("GamepadXIVSlotReplace", StartReplace)
-	-- The list of what to put in a slot (Assign.lua) takes the D-pad, A and B.
+	-- The list of what to put in a slot (Assign.lua) takes the D-pad, A and B. Holding the D-pad keeps moving.
 	for key, name in pairs({ PADDUP = "Up", PADDDOWN = "Down", PADDLEFT = "Left", PADDRIGHT = "Right", PAD1 = "Accept", PAD2 = "Back" }) do
-		CreatePlainButton("GamepadXIVAssign" .. name, function() ns.AssignNav(name) end)
+		CreatePlainButton("GamepadXIVAssign" .. name, function() ns.AssignNav(name) end, key:find("^PADD") ~= nil)
 		driver:SetAttribute("assignKey-" .. key, "GamepadXIVAssign" .. name)
 	end
 
@@ -2195,9 +2464,23 @@ function ns.CreateInput()
 		local lootHint = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 		lootHint:SetPoint("TOP", lootFrame, "BOTTOM", 0, -8)
 		lootHint:Hide()
-		lootFrame:HookScript("OnShow", function()
+		local function ShowLootHint()
+			-- In a fight Back may be the chat box's: it opens the roll picker then (RollPicker.lua).
 			lootHint:SetText(ns.ButtonMarkup("PADBACK", "Back", 28) .. " Roll on loot")
 			lootHint:SetShown(ns.IsActive())
+		end
+		lootFrame:HookScript("OnShow", function()
+			if ns.ChatBoxYield then
+				ns.ChatBoxYield("the loot roll")
+			end
+			ShowLootHint()
+		end)
+		local combatEnd = CreateFrame("Frame")
+		combatEnd:RegisterEvent("PLAYER_REGEN_ENABLED")
+		combatEnd:SetScript("OnEvent", function()
+			if lootFrame:IsShown() then
+				ShowLootHint()
+			end
 		end)
 		lootFrame:HookScript("OnHide", function()
 			lootHint:Hide()
@@ -2754,9 +3037,11 @@ function ns.Sync()
 	driver:SetAttribute("fc-dpadTarget", db.dpadTarget)
 	driver:SetAttribute("fc-dpadTargetCombat", db.dpadTargetCombat)
 	driver:SetAttribute("fc-crossEnemy", CROSS_ENEMY[db.crossEnemy])
+	driver:SetAttribute("fc-airClear", db.airCircle == "clear" and 1 or 0)
 	driver:SetAttribute("fc-petOff-L", db.petLeftButton == "disable" and 1 or 0)
 	driver:SetAttribute("fc-petOff-R", db.petRightButton == "disable" and 1 or 0)
 	driver:SetAttribute("fc-classMenuOff", db.classMenuChord == "disable" and 1 or 0)
+	driver:SetAttribute("fc-groundSelf", db.groundUnderCharacter and 1 or 0)
 	driver:SetAttribute("fc-skipSelf", db.skipSelf and 1 or 0)
 	driver:SetAttribute("fc-skipPets", db.skipPets and 1 or 0)
 	local l3 = StickBinding(db.l3Action, "TOGGLESHEATH")
@@ -2780,6 +3065,8 @@ function ns.Sync()
 	driver:SetAttribute("fc-tapA-top", db.r1TapTopA)
 	driver:SetAttribute("fc-tapB-bottom", db.r1TapBottomB)
 	driver:SetAttribute("fc-tapB-top", db.r1TapTopB)
+	driver:SetAttribute("fc-tapA-combo", db.r1TapComboA or 0)
+	driver:SetAttribute("fc-tapB-combo", db.r1TapComboB or 0)
 	driver:SetAttribute("fc-ringRelease", db.ringReleaseToUse and 1 or 0)
 	ns.UpdateClassMenuHints()
 	ns.ApplyPetButtons()
@@ -2825,6 +3112,7 @@ function ns.Sync()
 	driver:SetAttribute("fc-side-WR", db.sideWR)
 	driver:SetAttribute("fc-side-LR", db.sideLR)
 	driver:SetAttribute("fc-side-RL", db.sideRL)
+	driver:SetAttribute("fc-comboTop", db.comboFollowsTop and 1 or 0)
 	driver:SetAttribute("fc-off", on and 0 or 1)
 	-- Forever's page can change in its own editor, so this is read again each time.
 	local mainPageUnit = GamepadMainActionBarFrame and GamepadMainActionBarFrame.PageUnit

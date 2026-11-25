@@ -54,9 +54,10 @@ S.ApplyLayer = [[
 	if layer == "L" or layer == "R" or layer == "WL" or layer == "WR" then
 		active = layer
 	elseif layer == "LR" then
-		active, left = "L", self:GetAttribute("fc-side-LR")
+		-- With fc-comboTop the combos show the top row's halves, so they follow the quick set swap too.
+		active, left = "L", self:GetAttribute("fc-comboTop") == 1 and topLeft or self:GetAttribute("fc-side-LR")
 	elseif layer == "RL" then
-		active, right = "R", self:GetAttribute("fc-side-RL")
+		active, right = "R", self:GetAttribute("fc-comboTop") == 1 and topRight or self:GetAttribute("fc-side-RL")
 	end
 
 	if editing then
@@ -241,6 +242,8 @@ S.ApplyLayer = [[
 		local backAction = self:GetAttribute("fc-backAction")
 		if backAction == "chat" then
 			self:SetBinding(true, "PADBACK", "OPENCHAT")
+		elseif backAction == "chatbox" then
+			self:SetBindingClick(true, "PADBACK", "GamepadXIVChatOpenKey", "LeftButton")
 		elseif backAction == "next" then
 			-- Forever's own R2 while a window is focused: the next window.
 			self:SetBindingClick(true, "PADBACK", "InputFunctionBindingButton_PADRTRIGGER", "LeftButton")
@@ -360,8 +363,13 @@ S.UpdateTargetBindings = [[
 	-- Cross on a living enemy target, with nothing else to interact with, can keep attacking or do nothing.
 	-- Placing a spell or item on the ground, which Input.lua watches for, Cross confirms the spot with the
 	-- game's own screen click, as Forever does for a pet's move order.
+	-- With Place under the character on, a spot on the ground, which is 2 (not an item, unit or object), is
+	-- confirmed by targeting the player, which puts it at the character's feet.
 	local crossEnemy = self:GetAttribute("fc-crossEnemy")
-	if self:GetAttribute("fc-spellTargeting") == 1 then
+	local spellTargeting = self:GetAttribute("fc-spellTargeting") or 0
+	if spellTargeting == 2 and self:GetAttribute("fc-groundSelf") == 1 then
+		self:SetAttribute("base-PAD1", "CLICK GamepadXIVGroundSelf:LeftButton")
+	elseif spellTargeting > 0 then
 		self:SetAttribute("base-PAD1", "CAMERAORSELECTORMOVE")
 	elseif crossEnemy and SecureCmdOptionParse("[@softinteract,exists] 0; [@target,harm,nodead] 1; 0") == "1" then
 		self:SetAttribute("base-PAD1", crossEnemy)
@@ -369,8 +377,10 @@ S.UpdateTargetBindings = [[
 		self:SetAttribute("base-PAD1", self:GetAttribute("ctx-PAD1"))
 	end
 	self:SetAttribute("base-PADLSTICK", self:GetAttribute("ctx-PADLSTICK" .. suffix))
-	-- Flying or swimming, B descends instead of cancelling.
-	self:SetAttribute("base-PAD2", (IsFlying() or IsSwimming()) and "SITORSTAND" or self:GetAttribute("ctx-PAD2-ground"))
+	-- Flying or swimming, B descends instead of cancelling; with fc-airClear, only once no target is
+	-- left, so the first press clears the target as on land.
+	local descend = (IsFlying() or IsSwimming()) and not (self:GetAttribute("fc-airClear") == 1 and UnitExists("target"))
+	self:SetAttribute("base-PAD2", descend and "SITORSTAND" or self:GetAttribute("ctx-PAD2-ground"))
 	-- D-pad left and right tab target, unless the party selection option takes the whole D-pad.
 	local dpadParty = self:GetAttribute("fc-dpadParty")
 	local partyMode = dpadParty == "always" or (dpadParty == "raid" and self:GetAttribute("fc-inRaid") == 1)
@@ -538,6 +548,7 @@ S.ClearCancelClick = [[
 -- It ends with the next action, or when A confirms it or B cancels it.
 S.SetSoft = [[
 	local unit = ...
+	local wasSet = (self:GetAttribute("fc-soft") or "") ~= ""
 	self:SetAttribute("fc-soft", unit)
 	local value = unit
 	if unit == "" then
@@ -550,7 +561,11 @@ S.SetSoft = [[
 		end
 	end
 	self:CallMethod("OnSoftChanged", unit)
-	self:RunAttribute("ApplyLayer")
+	-- The bindings only follow whether there is a soft target, so moving it from one unit to another
+	-- (a held D-pad does every tick) leaves them alone.
+	if not (wasSet and unit ~= "") then
+		self:RunAttribute("ApplyLayer")
+	end
 ]]
 
 -- Cast button: a press spends the soft target once the action has gone out. With "Return after the
@@ -835,6 +850,13 @@ S.SwapTapSets = [[
 		return
 	end
 	self:SetAttribute("fc-formset-" .. form, bottom)
+	-- The pair's L2 + R2 / R2 + L2 set, when one is chosen: its left and right halves.
+	local combo = self:GetAttribute("fc-tap" .. pair .. "-combo")
+	if combo and combo > 0 then
+		self:SetAttribute("fc-side-LR", combo * 2 - 1)
+		self:SetAttribute("fc-side-RL", combo * 2)
+		self:CallMethod("OnTapCombo", combo * 2 - 1, combo * 2)
+	end
 	if top then
 		self:SetAttribute("fc-side-WL", top * 2 - 1)
 		self:SetAttribute("fc-side-WR", top * 2)
@@ -1136,13 +1158,18 @@ S.StickUpClick = [[
 	end
 ]]
 
--- D-pad up/down and L1 + left/right: soft target through the party or raid list.
+-- D-pad up/down and L1 + left/right: soft target through the party or raid list. Held, it keeps
+-- stepping (HoldStart); the release only ends that and never targets.
 S.CyclePreClick = [[
+	local driver = self:GetFrameRef("driver")
 	if down then
-		local driver = self:GetFrameRef("driver")
 		driver:RunAttribute("CycleGroup", self:GetAttribute("fc-step"), self:GetAttribute("fc-raidOnly"))
 		self:SetAttribute("unit", driver:GetAttribute("fc-realPick"))
 		driver:SetAttribute("fc-realPick", nil)
+		driver:RunAttribute("HoldStart", self:GetName(), "cycle", self:GetAttribute("fc-step"), self:GetAttribute("fc-raidOnly"))
+	else
+		self:SetAttribute("unit", nil)
+		driver:RunAttribute("HoldStop", self:GetName())
 	end
 ]]
 
@@ -1174,13 +1201,105 @@ S.TargetCyclePreClick = [[
 	self:SetAttribute("macrotext", command)
 ]]
 
--- D-pad with party selection active: moves over the party or raid frames on screen.
+-- D-pad with party selection active: moves over the party or raid frames on screen. Held, it keeps
+-- moving (HoldStart); the release only ends that and never targets.
 S.FrameMovePreClick = [[
+	local driver = self:GetFrameRef("driver")
 	if down then
-		local driver = self:GetFrameRef("driver")
 		driver:RunAttribute("MoveFrameCursor", self:GetAttribute("fc-dx"), self:GetAttribute("fc-dy"))
 		self:SetAttribute("unit", driver:GetAttribute("fc-realPick"))
 		driver:SetAttribute("fc-realPick", nil)
+		driver:RunAttribute("HoldStart", self:GetName(), "frame", self:GetAttribute("fc-dx"), self:GetAttribute("fc-dy"))
+	else
+		self:SetAttribute("unit", nil)
+		driver:RunAttribute("HoldStop", self:GetName())
+	end
+]]
+
+-- Driver: a D-pad press on party selection starts a hold. Arguments: the button's name, "cycle" or
+-- "frame", and its two numbers (step and raid only, or dx and dy). Only with Party targeting on Soft:
+-- on Hard each step changes the real target, which only a button press can do, so there a held
+-- D-pad moves once.
+S.HoldStart = [[
+	local name, kind, a, b = ...
+	self:SetAttribute("fc-holdKind", nil)
+	if self:GetAttribute("fc-partyTargeting") == "hard" or (self:GetAttribute("fc-soft") or "") == "" then
+		return
+	end
+	self:SetAttribute("fc-holdButton", name)
+	self:SetAttribute("fc-holdA", a)
+	self:SetAttribute("fc-holdB", b)
+	self:SetAttribute("fc-holdLayer", self:GetAttribute("fc-layer"))
+	self:SetAttribute("fc-holdTicks", 0)
+	self:SetAttribute("fc-holdKind", kind)
+	-- Wakes the clock: the state driver writes 1 back on its next tick.
+	self:GetFrameRef("holdTicker"):SetAttribute("fc-tick", 0)
+]]
+
+S.HoldStop = [[
+	local name = ...
+	if self:GetAttribute("fc-holdButton") == name then
+		self:SetAttribute("fc-holdKind", nil)
+	end
+]]
+
+-- Driver, on each tick of the hold clock (the state driver's, about every 0.2 s; secure code has no
+-- faster one): the first two ticks are the wait after the press (0.2 to 0.4 s, or sooner when an
+-- event wakes the clock, would turn a slow tap into two steps), then one step per tick. Returns whether
+-- the hold goes on. Besides the release, it ends when the key no longer clicks the button (a trigger,
+-- L1 let go, the ring; its release then goes elsewhere), when the soft target was used or cancelled,
+-- and after 60 ticks (about 12 seconds) in case a release was lost anyway.
+S.HoldTick = [[
+	local kind = self:GetAttribute("fc-holdKind")
+	if not kind then
+		return false
+	end
+	local ticks = (self:GetAttribute("fc-holdTicks") or 0) + 1
+	local layer = self:GetAttribute("fc-layer")
+	local soft = self:GetAttribute("fc-soft") or ""
+	local bound = false
+	if ticks <= 60 and soft ~= "" and self:GetAttribute("fc-partyTargeting") ~= "hard"
+			and layer == self:GetAttribute("fc-holdLayer") and self:GetAttribute("fc-yield") ~= 1
+			and self:GetAttribute("fc-ring") ~= 1 and (self:GetAttribute("fc-flyout") or "") == ""
+			and (self:GetAttribute("fc-clear") or 0) == 0 then
+		-- What ApplyLayer binds each key to, in the layers this button is used in.
+		local command = "CLICK " .. self:GetAttribute("fc-holdButton") .. ":LeftButton"
+		local tutorial = self:GetAttribute("fc-tutorial") == 1 and not PlayerInCombat()
+		for i = 1, 8 do
+			local key = self:GetAttribute("key" .. i)
+			local action
+			if layer == "L1" then
+				action = self:GetAttribute("l1-" .. key)
+			elseif layer == "BASE" and not self:GetAttribute("popup-" .. key)
+					and not (tutorial and self:GetAttribute("tutorial-" .. key)) then
+				action = self:GetAttribute("soft-" .. key) or self:GetAttribute("base-" .. key)
+			end
+			if action == command then
+				bound = true
+			end
+		end
+	end
+	if not bound then
+		self:SetAttribute("fc-holdKind", nil)
+		return false
+	end
+	self:SetAttribute("fc-holdTicks", ticks)
+	if ticks > 2 then
+		if kind == "frame" then
+			self:RunAttribute("MoveFrameCursor", self:GetAttribute("fc-holdA"), self:GetAttribute("fc-holdB"))
+		else
+			self:RunAttribute("CycleGroup", self:GetAttribute("fc-holdA"), self:GetAttribute("fc-holdB"))
+		end
+		self:SetAttribute("fc-realPick", nil)
+	end
+	return true
+]]
+
+-- The hold clock: an attribute driver writes "fc-tick" back to 1 on each state driver tick; while a
+-- hold goes on, this sets it to 0 again so the next tick comes too.
+S.HoldTickerAttribute = [[
+	if name == "fc-tick" and value == 1 and self:GetFrameRef("driver"):RunAttribute("HoldTick") then
+		self:SetAttribute("fc-tick", 0)
 	end
 ]]
 

@@ -320,7 +320,9 @@ Hidden it by mistake? Type `/gxiv minimap`.
 - `/gxiv priority on`: use this if R2 does not change the bar
 - `/gxiv debug`: record button presses for 10 seconds, for bug reports (`/gxiv debug quiet` keeps it out of chat)
 - `/gxiv log`: a quiet log of a dungeon or raid (combat, casts, error messages, party selection) for bug reports; nothing goes to chat
-- `/gxiv lfglog`: record what the Looking For Group buttons and item moves do, for bug reports (run it again to stop)
+- `/gxiv lfg`: open LFG Filter, a group finder made for the controller
+- `/gxiv messages`: edit the ready-made chat messages and quick replies
+- `/gxiv lfglog`: clear the Looking For Group log, which records while `/gxiv log` is on
 
 ---
 

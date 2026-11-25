@@ -21,6 +21,7 @@ ns.DEFAULTS = {
 	sideWR = 4, -- double tap R2: set 2 right
 	sideLR = 5, -- hold L2, then R2: set 3 left
 	sideRL = 6, -- hold R2, then L2: set 3 right
+	comboFollowsTop = false, -- L2 then R2 / R2 then L2 show the top row's halves (and follow the quick set swap)
 	doubleTapTicks = 3, -- secure timer ticks (0.2s each, sooner on some game events): window of 0.4-0.6s
 	priorityBindings = false, -- true only if Forever's own bindings outrank ours on this client
 	autoFace = false,
@@ -44,6 +45,15 @@ ns.DEFAULTS = {
 	promptX = 0, promptY = 170, -- over the character, from the middle of the screen
 	lootDetails = true, -- the roll item and the equipped item beside the loot roll window
 	alwaysCompareItems = true, -- WoW's alwaysCompareItems: item tooltips compare with what you wear
+	chatFont = "default", chatFontSize = 14, chatFontOutline = "none", chatBoxAlpha = 0.45, chatFade = 30, chatTimestamps = false, -- the chat box's look
+	chatBoxMoved = false, chatBoxX = 0, chatBoxY = 0, -- the chat box (ChatBox.lua): where the game's chat was, or moved
+	chatBoxWidth = 0, chatBoxHeight = 0, -- the chat box's size; 0 = the game's chat size
+	chatHighlightOwn = true, -- the chat box marks your own lines with a gold tag and a faint highlight
+	-- Sounds for incoming chat (Sounds.lua). Each type is "none", "gxiv:<file>", "kit:<SOUNDKIT key>" or
+	-- "lsm:<LibSharedMedia name>"; chatSoundOutput is the sound channel, "Master" or "SFX".
+	chatSounds = true, chatSoundOutput = "Master",
+	chatSoundWhisper = "gxiv:chirp", chatSoundParty = "gxiv:chirp", chatSoundRaid = "gxiv:drop",
+	chatSoundGuild = "gxiv:chirp", chatSoundOfficer = "none", chatSoundInstance = "none", chatSoundSay = "none", chatSoundChannels = "none",
 	lootMoved = false, lootX = 0, lootY = 0, -- the loot roll window: Forever's place, or moved here from the middle
 	crosshairStyle = "forever", -- a key of ns.CROSSHAIR_STYLES: Forever's own reticle or one drawn by the addon
 	crosshairColor = "white", -- a key of ns.HIGHLIGHT_COLORS
@@ -94,21 +104,32 @@ ns.DEFAULTS = {
 	petRightButton = "show", -- and its pet spells button
 	classMenuChord = "show", -- other classes: Forever's stance, form or aura menu from a trigger + shoulder, "show" or "disable"
 	dpadTargetCombat = "same",
-	crossEnemy = "forever", -- Cross on a living enemy target: "forever" (its attack toggle), "attack" (never stops) or "nothing" -- the same choices for combat, or "same" to keep dpadTarget
+	airCircle = "clear", -- Circle while flying or swimming: "clear" (clears the target first, then descends) or "descend"
+	crossEnemy = "forever", -- Cross on a living enemy target: "forever" (its attack toggle), "attack" (never stops), "shoot" (wand Shoot) or "nothing" -- the same choices for combat, or "same" to keep dpadTarget
 	dpadParty = "raid", -- "off", "raid" or "always": when the whole D-pad selects party members
+	groundUnderCharacter = false, -- Cross places spells and items that need a spot on the ground under the character
 	windowCamera = true, -- with a window open, the right stick turns the camera instead of scrolling lists
 	l1DoubleTapParty = false, -- a double tap of L1 steps through the party or raid
 	partyTargeting = "hard", -- "soft" or "hard": party selection sets a soft target or the real one
 	skipPets = false, -- party selection leaves pets out, like FFXIV
 	skipSelf = false, -- party selection with D-pad up / down leaves you out (in a party)
 	lfgMessage = "Hello! Invite me for <activity> - <level> <class> <roles>.", -- whispered to a group's leader with A in Looking For Group
-	lfgConfirm = true, -- ask before that whisper is sent
+	lfgConfirm = true, -- ask before that whisper is sent (before lfgAsk; read once to set it)
+	lfgAsk = "ask", -- {PAD1} on a group: "ask" first, "send" the whisper, or "chat" opens LFG Filter's chat
+	changelogShow = "update", -- the changelog after an update: "update" (once after each) or "never"
+	chatIcons = true, -- ready-made chat messages go out between raid marker icons
+	chatUI = "gxiv", -- "game" (the game's chat) or "gxiv" (the Chat window, with a feed where the game's chat was)
+	lfgChatLines = 100, -- LFG Filter: chat lines kept per conversation
+	lfgChatKeep = "month", -- LFG Filter: how long chat is kept: "day", "week", "month" or "never"
+	lfgFinder = "filter", -- the group finder the ring and the Group Finder key open: "filter" (LFG Filter) or "game"
 	r1Tap = true, -- a tap of R1 swaps the bottom and top rows between two pairs of sets, like FFXIV
 	r1TapTop = true, -- the tap also swaps the top row
 	r1TapBottomA = 1, -- pair A: the bottom row's set; with the top, the default layout
 	r1TapTopA = 2, -- pair A: the top row's set (both halves)
 	r1TapBottomB = 4, -- pair B: sets no other default uses (3 is the L2 + R2 bars)
 	r1TapTopB = 5,
+	r1TapComboA = 0, -- pair A: the set whose halves L2 + R2 / R2 + L2 show; 0 leaves them as they are
+	r1TapComboB = 0,
 	chatLinks = true, -- open chat links under the cursor, and put Shift-clicked item links in chat
 	openBagsWhenNeeded = false, -- experimental: open the bags for a spell that targets an item, and at the mailbox
 	partyHighlight = "fill", -- "outline", "thick", "fill", "pulse" or "none": how the selected party member's frame is marked
@@ -732,7 +753,10 @@ end
 function ns.TogglePlayLog()
 	ns.db.playLogOn = not ns.db.playLogOn
 	if ns.db.playLogOn then
+		-- One switch for every log: the play log, the group finder's and LFG Filter's.
 		ns.db.playLog = {}
+		ns.db.lfgLog = {}
+		ns.db.lfgFilterLog = {}
 		ns.PlayLog("log on", GetZoneText and GetZoneText(), LayerState())
 	end
 	ns.Print("Play log", ns.db.playLogOn and "on, quietly. /gxiv log again stops it; /reload writes it." or "off.")
@@ -846,6 +870,16 @@ local MIGRATIONS = {
 	function(db)
 		db.chatLinks = true
 	end,
+	-- 14: LFG Filter takes the place of Forever's Group Finder on the ring.
+	function(db)
+		for _, page in ipairs(db.ringPages or {}) do
+			for segment, entry in pairs(page.slots or {}) do
+				if type(entry) == "table" and entry.builtin == "lfd" then
+					page.slots[segment] = { builtin = "lfgfilter" }
+				end
+			end
+		end
+	end,
 }
 
 local function RunMigrations(db)
@@ -875,6 +909,10 @@ local function InitDB()
 	if removed[GamepadXIVDB.theme] then
 		GamepadXIVDB.theme = "round"
 	end
+	-- "Ask before whispering a group" became a choice with a third way, Open Chat.
+	if GamepadXIVDB.lfgAsk == nil and GamepadXIVDB.lfgConfirm == false then
+		GamepadXIVDB.lfgAsk = "send"
+	end
 	for key, value in pairs(ns.DEFAULTS) do
 		if GamepadXIVDB[key] == nil then
 			GamepadXIVDB[key] = (type(value) == "table") and {} or value
@@ -899,6 +937,7 @@ local SLASH_HELP = {
 	"/gxiv tutorial - a short tutorial of the buttons",
 	"/gxiv move - drag the bars around the screen (Shift + drag moves all of them; also L2/R2 + Back)",
 	"/gxiv minimap - shows or hides the minimap icon",
+	"/gxiv messages - edit the ready-made chat messages and quick replies",
 	"/gxiv debug - reports bindings, L1 and the right stick (/gxiv debug quiet: saved only, not printed)",
 	"/gxiv log - a quiet log of combat, casts, error messages and party selection, for bug reports",
 	"/gxiv reset - put the bars back in their default place",
@@ -962,6 +1001,16 @@ local function HandleSlash(message)
 		ns.WatchPetMenu()
 	elseif command == "lfglog" then
 		ns.ToggleLfgLog()
+	elseif command == "changelog" or command == "news" then
+		ns.ShowChangelog()
+	elseif command == "lfg" or command == "lfgfilter" then
+		ns.OpenLfgFilter()
+	elseif command == "messages" then
+		if ns.OpenMessagesEditor then
+			ns.OpenMessagesEditor()
+		end
+	elseif command == "lfgfilterlog" then
+		ns.ClearLfgFilterLog()
 	elseif command == "wxhb" then
 		HandleSideCommand("W", a, b, c, { L = true, R = true })
 	elseif command == "exhb" then
