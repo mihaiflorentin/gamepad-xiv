@@ -371,10 +371,17 @@ local function BuildTabs()
 						run = CloseAnd(function() if ns.OpenMessagesEditor then ns.OpenMessagesEditor() end end),
 						tip = "Change the quick replies ({PADDLEFT} / {PADDRIGHT} while typing, {PADLSTICK} adds one) and the {PADRSTICK} messages: add, edit, delete and reorder them, and add your own categories. Kept for the whole account. Also /gxiv messages." },
 				}
-				-- Shared with LFG Filter's Settings tab (LfgFilter.lua).
+				-- Shared with LFG Filter's Settings tab (LfgFilter.lua): at the end of the CHAT section.
+				local at
+				for index, row in ipairs(rows) do
+					if row.type == "header" and row.label == "CHAT BOX" then
+						at = index - 1 -- before the spacer above it
+					end
+				end
 				for _, row in ipairs(ns.LFG_SETTINGS or {}) do
 					if row.chat then
-						tinsert(rows, row)
+						tinsert(rows, at, row)
+						at = at + 1
 					end
 				end
 				-- Sounds for incoming chat (Sounds.lua).
@@ -1544,6 +1551,7 @@ local SEGMENT_ORDER = { 3, 2, 1, 8, 7, 6, 5, 4 }
 local ringEditPage = 2
 local ringResetArmed = false
 local RebuildRingRows
+
 local function RefreshRing()
 	ns.UpdateRing()
 	RebuildRingRows()

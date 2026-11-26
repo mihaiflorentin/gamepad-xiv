@@ -3,8 +3,8 @@ local _, ns = ...
 -- The chat box: where the game's chat was, while the Chat setting is "Chat window" (LfgFilter.lua hides
 -- the game's chat and keeps the conversations). Tabs along the top: All (everything the game's chat
 -- would show), Whispers, Say, Party, Raid, Guild, the channels, then Combat (this session's combat log,
--- read-only). The Whispers tab has a column of the recent conversations; {PADLSHOULDER} / {PADRSHOULDER}
--- stop at each of them. Each tab's lines are in the game's colour for that chat; your own lines are
+-- read-only). The Whispers tab has a column of the recent conversations on the left and the picked one
+-- on the right; {PADDLEFT} / {PADDRIGHT} pick the player while browsing. Each tab's lines are in the game's colour for that chat; your own lines are
 -- marked (the "Highlight my messages" setting).
 --
 -- Two modes, like FFXIV:
@@ -15,7 +15,7 @@ local _, ns = ...
 --   adds at the cursor ({PAD1} too while nothing is typed), Enter or {PAD1} sends, {PAD4} opens the Chat
 --   window on that tab, {PAD2} stops typing and browses, Escape closes. Nothing ready-made is sent by
 --   itself: it goes into the message, so several can go out as one.
--- Browse: {PADDUP} / {PADDDOWN} scroll, {PADLSHOULDER} / {PADRSHOULDER} change tabs, {PAD3} picks the channel tabs, {PAD1} types again,
+-- Browse: {PADDUP} / {PADDDOWN} scroll, {PADDLEFT} / {PADDRIGHT} pick the player on Whispers, {PADLSHOULDER} / {PADRSHOULDER} change tabs, {PAD3} picks the channel tabs, {PAD1} types again,
 --   {PAD2} closes and gives the D-pad back. It ends in combat too.
 -- Chat commands work: /w name, /r, /s, /p, /ra, /g, /o, /y, /i, /e, /1 to /9, and addon commands. The
 -- game's own commands (/reload, /cast, emotes...) run through a secure macro button that {PAD1} clicks,
@@ -344,7 +344,7 @@ end
 local function Stops()
 	local stops = { { key = "all", tab = "all" } }
 	local whispers = RecentWhispers()
-	-- Whispers is one stop: {PADDUP} / {PADDDOWN} pick the player in its column. It opens on the player
+	-- Whispers is one stop: {PADDLEFT} / {PADDRIGHT} pick the player in its column while browsing. It opens on the player
 	-- picked last, or the newest.
 	if #whispers == 0 then
 		stops[#stops + 1] = { key = "whispers", tab = "whispers" }
@@ -675,6 +675,8 @@ local function ApplyBindings()
 	elseif mode == "browse" then
 		BindKey("PADDUP", "BrowseUp")
 		BindKey("PADDDOWN", "BrowseDown")
+		BindKey("PADDLEFT", "BrowseLeft")
+		BindKey("PADDRIGHT", "BrowseRight")
 		BindKey("PADLSHOULDER", "Prev")
 		BindKey("PADRSHOULDER", "Next")
 		BindKey("PAD1", "Type")
@@ -820,7 +822,8 @@ local function SelectTab(tab)
 	Draw()
 end
 
--- On the Whispers tab, {PADDUP} / {PADDDOWN} move through the players in the column on the left.
+-- On the Whispers tab, {PADDLEFT} / {PADDRIGHT} move through the players in the column on the left while
+-- browsing (typing, they pick the quick reply).
 local function OnWhispers()
 	return TabOf(current) == "whispers" and #RecentWhispers() > 0
 end
@@ -906,7 +909,7 @@ end
 
 local function Scroll(delta)
 	local frame = ShownMessages()
-	if frame and delta < 0 and frame.GetScrollOffset and frame:GetScrollOffset() <= 1 then
+	if frame and delta < 0 and frame.GetScrollOffset and (frame:GetScrollOffset() or 0) <= 1 then
 		jumpAt = nil -- back at the newest by hand
 	end
 	if jumpAt then
@@ -959,6 +962,21 @@ local function MenuItems()
 	end
 	local phrases = API().Phrases or {}
 	local items = {}
+	if menuState.kind == "languages" then
+		-- Say and Yell, each with the language picked in the settings ({PAD1} steps to the next one).
+		local choices = ns.ChatLanguages and ns.ChatLanguages() or {}
+		for _, chat in ipairs({ { "SAY", "Say", "ffffff" }, { "YELL", "Yell", "ff4040" } }) do
+			local picked = ns.db and ns.db["chatLanguage" .. chat[1]]
+			local name = "The game's default"
+			for _, choice in ipairs(choices) do
+				if choice[1] == picked then
+					name = choice[2]
+				end
+			end
+			items[#items + 1] = { text = "|cff" .. chat[3] .. chat[2] .. ":|r  " .. name, value = chat[1] }
+		end
+		return items
+	end
 	if menuState.kind == "tabs" then
 		local shown = {}
 		for _, stop in ipairs((Stops())) do
@@ -994,6 +1012,7 @@ local function DrawMenu()
 	menuState.index = math.max(1, math.min(menuState.index, #items))
 	local phrases = API().Phrases or {}
 	menu.title:SetText(menuState.kind == "line" and (Line.title or "Options") or menuState.kind == "tabs" and "Channel tabs"
+		or menuState.kind == "languages" and ("Languages" .. (IsInGroup() and "  |cff999999(only out of a group)|r" or ""))
 		or menuState.group and phrases[menuState.group] and phrases[menuState.group].name or "Ready-made messages")
 	-- For a moment after {PAD1}: "Added" by the title and a tick on the message (or why it wasn't).
 	local added = menuState.added
@@ -1018,7 +1037,7 @@ local function DrawMenu()
 	end
 	menu:SetHeight(46 + math.min(#items, MENU_ROWS) * 20)
 	menu.hint:SetText(Buttons("{PADDUP}{PADDDOWN} Move   {PAD1} "
-		.. (menuState.kind == "line" and "Pick" or menuState.kind == "tabs" and "Tab on / off" or menuState.group and "Add" or "Open")
+		.. (menuState.kind == "line" and "Pick" or menuState.kind == "tabs" and "Tab on / off" or menuState.kind == "languages" and "Change" or menuState.group and "Add" or "Open")
 		.. "   {PAD2} Back", 13))
 end
 
@@ -1039,6 +1058,18 @@ local function OpenMenu()
 	ApplyBindings()
 	DrawMenu()
 	Log("messages menu")
+end
+
+-- Say and Yell languages, from the {PAD3} menu (ns.db.chatLanguageSAY / chatLanguageYELL; LfgFilter.lua sends them).
+function Line.OpenLanguagesMenu()
+	if not menu then
+		return
+	end
+	menuState.group, menuState.index, menuState.kind = nil, 1, "languages"
+	menu:Show()
+	ApplyBindings()
+	DrawMenu()
+	Log("languages menu")
 end
 
 -- Channel tabs: on and off, from browse ({PAD3}), the settings or the menu.
@@ -1075,6 +1106,22 @@ local function MenuPick(index)
 		Draw()
 		return
 	end
+	if menuState.kind == "languages" then
+		local choices = ns.ChatLanguages and ns.ChatLanguages() or {}
+		local key = "chatLanguage" .. item.value
+		local index = 0
+		for i, choice in ipairs(choices) do
+			if choice[1] == ns.db[key] then
+				index = i
+			end
+		end
+		local nextChoice = choices[index % math.max(1, #choices) + 1]
+		ns.db[key] = nextChoice and nextChoice[1] or "default"
+		Log("language", item.value, tostring(ns.db[key]))
+		DrawMenu()
+		Draw()
+		return
+	end
 	if menuState.kind == "tabs" then
 		TabChoices()[item.value] = not item.on
 		Log("channel tab", item.value, not item.on)
@@ -1100,7 +1147,7 @@ local function MenuPick(index)
 end
 
 local function MenuBack()
-	if menuState.kind == "tabs" or menuState.kind == "line" then
+	if menuState.kind == "tabs" or menuState.kind == "line" or menuState.kind == "languages" then
 		menuState.kind = nil
 		CloseMenu()
 	elseif menuState.group then
@@ -1359,6 +1406,29 @@ local function Run(what, call, ...)
 	end
 end
 
+-- The game's own report window for a player, as from a name in the game's chat. It reports their
+-- last chat line when there is one this session (LfgFilter.lua keeps the line ids).
+function Line.Report(player)
+	local ids = ns.chatLineIDs or {}
+	local lineID = ids[player]
+	if not lineID and not player:find("-", 1, true) and GetNormalizedRealmName then
+		lineID = ids[player .. "-" .. (GetNormalizedRealmName() or "")]
+	end
+	local location = lineID and PlayerLocation and PlayerLocation.CreateFromChatLineID
+		and PlayerLocation:CreateFromChatLineID(lineID) or nil
+	-- The chat box lets go of the controller, so the game's navigation reaches the report window.
+	ns.CloseChatBox()
+	local ok, err = pcall(function()
+		local info = ReportInfo:CreateReportInfoFromType(Enum.ReportType.Chat)
+		info:SetReportTarget(player)
+		ReportFrame:InitiateReport(info, player, location)
+	end)
+	Log("report", player, lineID and "with its chat line" or "without a chat line", ok and "opened" or ("failed: " .. tostring(err)))
+	if not ok then
+		ns.Print("The report window couldn't open from the chat box.")
+	end
+end
+
 -- The menu for a player and a link (the picked line's, or a right-clicked name). pick: the entry to
 -- start on ("who").
 function Line.Menu(player, link, pick)
@@ -1377,6 +1447,9 @@ function Line.Menu(player, link, pick)
 		end }
 		items[#items + 1] = { text = "Add friend", action = function() Run("friend " .. name, C_FriendList.AddFriend, name) end }
 		items[#items + 1] = { text = "Ignore", action = function() Run("ignore " .. name, C_FriendList.AddIgnore, name) end }
+		if ReportFrame and ReportInfo and Enum.ReportType then
+			items[#items + 1] = { text = "Report", action = function() Line.Report(player) end }
+		end
 	end
 	if link then
 		items[#items + 1] = { text = "Put the link in a message", action = function()
@@ -1385,6 +1458,9 @@ function Line.Menu(player, link, pick)
 		end }
 	end
 	items[#items + 1] = { text = "Channel tabs  >", action = OpenTabsMenu }
+	if ns.ChatLanguages then
+		items[#items + 1] = { text = "Languages  >", action = Line.OpenLanguagesMenu }
+	end
 	Line.items = items
 	Line.title = player and API().Color(player) or "Options"
 	menuState.group, menuState.index, menuState.kind = nil, 1, "line"
@@ -1602,6 +1678,9 @@ end
 
 local function FormatLine(line, who, to)
 	local message = API().Icons(tostring(line.m or ""))
+	if type(line.l) == "string" then
+		message = "[" .. line.l .. "] " .. message -- spoken in a language, as the game's chat shows it
+	end
 	if line.o then
 		local own = HighlightOwn()
 		local you = own and "|cffffd100You|r" or "|cff999999You|r"
@@ -1930,7 +2009,13 @@ function Draw()
 		local empty = strtrim(input:GetText() or "") == ""
 		replyText = "{PADDLEFT} " .. tostring(reply) .. " {PADDRIGHT}   |cffbbbbbb" .. (empty and "{PAD1}" or "{PADLSTICK}") .. " Add|r"
 	end
-	prefix:SetText(TargetText(current))
+	-- The language picked for Say or Yell, while the game uses it (not in a group, not your faction's own).
+	local spoken = typing and ns.ChatLanguageName and ns.ChatLanguageName(Target())
+	local label = TargetText(current)
+	if spoken then
+		label = label:gsub(":(|r)$", " [" .. spoken .. "]:%1"):gsub(":$", " [" .. spoken .. "]:")
+	end
+	prefix:SetText(label)
 	local alpha = tonumber(ns.db and ns.db.chatBoxAlpha) or 0.45
 	local active = typing or browsing
 	box:SetBackdropColor(0.04, 0.04, 0.06, active and math.max(alpha, 0.85) or alpha)
@@ -1961,10 +2046,11 @@ function Draw()
 		local channel = current == "all" and "{PADLTRIGGER}{PADRTRIGGER} Channel   " or ""
 		hint = "{PADLSHOULDER}{PADRSHOULDER} Tab   " .. channel .. "{PADRSTICK} Ready-made messages   {PAD3} Erase   {PAD1} " .. cross
 			.. "   {PAD4} Window   {PAD2} Browse"
-		short = "{PADLSHOULDER}{PADRSHOULDER} Tab   {PADRSTICK} Ready-made messages   {PAD1} " .. cross .. "   {PAD2} Browse"
+		-- Shorter for a narrow box, but still with the All tab's channel keys.
+		short = "{PADLSHOULDER}{PADRSHOULDER} Tab   " .. channel .. "{PADRSTICK} Messages   {PAD1} " .. cross .. "   {PAD2} Browse"
 	elseif browsing then
-		hint = "{PADLSHOULDER}{PADRSHOULDER} Tab   {PADDUP}{PADDDOWN} " .. (OnWhispers() and "Players" or "Scroll")
-			.. "   {PAD3} Options   {PAD1} Type   {PAD2} Close"
+		hint = "{PADLSHOULDER}{PADRSHOULDER} Tab   " .. (OnWhispers() and "{PADDLEFT}{PADDRIGHT} Players   " or "")
+			.. "{PADDUP}{PADDDOWN} Scroll   {PAD3} Options   {PAD1} Type   {PAD2} Close"
 	else
 		local unread = API().Unread(true)
 		hint = (unread > 0 and ("|cffff5555" .. unread .. " unread|r     ") or "") .. "Enter or {PADBACK}: chat"
@@ -2525,8 +2611,6 @@ local function Create()
 		Up = function()
 			if MenuOpen() then
 				MenuMove(-1)
-			elseif OnWhispers() then
-				WhisperStep(-1)
 			else
 				Recall(-1)
 			end
@@ -2534,15 +2618,15 @@ local function Create()
 		Down = function()
 			if MenuOpen() then
 				MenuMove(1)
-			elseif OnWhispers() then
-				WhisperStep(1)
 			else
 				Recall(1)
 			end
 		end,
-		-- Browse: the D-pad moves through the players on the Whispers tab, and scrolls elsewhere.
-		BrowseUp = function() if OnWhispers() then WhisperStep(-1) else Scroll(1) end end,
-		BrowseDown = function() if OnWhispers() then WhisperStep(1) else Scroll(-1) end end,
+		-- Browse: D-pad up / down scroll, left / right move through the players on the Whispers tab.
+		BrowseUp = function() Scroll(1) end,
+		BrowseDown = function() Scroll(-1) end,
+		BrowseLeft = function() if OnWhispers() then WhisperStep(-1) end end,
+		BrowseRight = function() if OnWhispers() then WhisperStep(1) end end,
 		ChannelPrev = function() StepAllTarget(-1) end,
 		ChannelNext = function() StepAllTarget(1) end,
 		ScrollUp = function() Scroll(1) end,
@@ -2559,21 +2643,21 @@ local function Create()
 	}
 	-- Which actions work in browse mode, and which only there.
 	local BROWSE = { Prev = true, Next = true, ScrollUp = true, ScrollDown = true, BrowseUp = true, BrowseDown = true,
-		Type = true, Close = true, Tabs = true }
+		BrowseLeft = true, BrowseRight = true, Type = true, Close = true, Tabs = true }
 	local BROWSE_MENU = { Up = true, Down = true, Send = true, Back = true } -- the channel tabs menu while browsing
-	local BROWSE_ONLY = { Type = true, Close = true, Tabs = true, BrowseUp = true, BrowseDown = true }
+	local BROWSE_ONLY = { Type = true, Close = true, Tabs = true, BrowseUp = true, BrowseDown = true, BrowseLeft = true, BrowseRight = true }
 	-- The D-pad and stick ones repeat while held, as long as they keep doing the same thing.
 	local function MenuOrSent()
-		return MenuOpen() and "menu" or OnWhispers() and "players" or "sent"
+		return MenuOpen() and "menu" or "sent"
 	end
 	local function BrowseWhat()
-		return OnWhispers() and "players" or current
+		return current
 	end
 	local function Showing()
 		return current
 	end
 	local held = { Up = MenuOrSent, Down = MenuOrSent, ReplyPrev = true, ReplyNext = true, ScrollUp = Showing, ScrollDown = Showing,
-		BrowseUp = BrowseWhat, BrowseDown = BrowseWhat }
+		BrowseUp = BrowseWhat, BrowseDown = BrowseWhat, BrowseLeft = true, BrowseRight = true }
 	for name, action in pairs(actions) do
 		local button = CreateFrame("Button", BUTTON .. name, box)
 		local function OnClick()

@@ -400,10 +400,23 @@ end
 Check("stops in order", table.concat(order, " "), "Ann #SAY #PARTY - - Ann")
 Check("the old whisper is no stop", order[3] ~= "Old", true)
 Click("Down")
-Check("D-pad down: the next player", ns.ChatBoxActiveKey(), "Bob")
+Check("typing on Whispers: D-pad down recalls, same player", ns.ChatBoxActiveKey(), "Ann")
+Type("")
+Click("Back")
+Check("browse on Whispers: D-pad up scrolls", Key("PADDUP"), "CLICK GamepadXIVChatBoxBrowseUp:LeftButton")
+Check("browse on Whispers: D-pad right picks players", Key("PADDRIGHT"), "CLICK GamepadXIVChatBoxBrowseRight:LeftButton")
+local function Picked() -- the player highlighted in the column
+	for _, row in ipairs(GamepadXIVChatBoxWhispers.rows) do
+		if row:IsShown() and row.bg:IsShown() then return row.key end
+	end
+end
+Click("BrowseDown")
+Check("browse: D-pad down keeps the player", Picked(), "Ann")
+Click("BrowseRight")
+Check("browse: D-pad right: the next player", Picked(), "Bob")
 Click("Next")
 Click("Prev")
-Check("Whispers opens on the player picked last", ns.ChatBoxActiveKey(), "Bob")
+Check("Whispers opens on the player picked last", Picked(), "Bob")
 Check("whispers column shown", GamepadXIVChatBoxWhispers:IsShown(), true)
 Check("whispers column: newest first", GamepadXIVChatBoxWhispers.rows[1].key, "Ann")
 Check("whispers column: then Bob", GamepadXIVChatBoxWhispers.rows[2].key, "Bob")
@@ -419,9 +432,14 @@ end
 Check("own whisper line: gold You", own and own.text:find("|cffffd100You|r", 1, true) ~= nil, true)
 Check("own whisper line: marked", own and own.text:find("WHITE8X8", 1, true) ~= nil, true)
 Check("own whisper line: whisper inform colour", own and own.b, 0.9)
-Click("Up")
-Check("Ann", ns.ChatBoxActiveKey(), "Ann")
+Check("a click on a player: typing", input:HasFocus(), true)
+Click("Back")
+Click("BrowseLeft")
+Check("Ann", Picked(), "Ann")
 Check("looking at Ann reads her lines", chats.Ann.unread, 0)
+Click("Type")
+Check("typing to Ann", ns.ChatBoxActiveKey(), "Ann")
+Check("ReplyPrev while typing: not a player pick", (function() Click("ReplyPrev") return ns.ChatBoxActiveKey() end)(), "Ann")
 Type("hi Ann")
 Click("Send")
 Check("sent to the picked whisper", sentTo[#sentTo], "Ann:hi Ann")
@@ -831,6 +849,42 @@ Click("ChannelPrev")
 Type("back to say")
 Click("Send")
 Check("all: L2 steps back to Say", sentTo[#sentTo], "#SAY:back to say")
+
+-- Square's menu: Languages, Say and Yell, Cross steps through what this character knows.
+IsInGroup = IsInGroup or function() return false end
+ns.ChatLanguages = function() return { { "default", "The game's default" }, { 7, "Common" }, { 2, "Darnassian" } } end
+ns.db.chatLanguageSAY, ns.db.chatLanguageYELL = "default", "default"
+ns.FocusChatBox()
+Type("")
+Click("Back")
+for _, frame in ipairs({ GamepadXIVChatFeed, GamepadXIVChatConversation }) do
+	frame.visibleLines = {}
+	frame.GetNumMessages = function() return 0 end
+end
+Click("Tabs")
+local langIndex
+for i, item in ipairs(menu.rows) do
+	if item:IsShown() and item.text.text and item.text.text:find("Languages", 1, true) then langIndex = i end
+end
+Check("square menu: Languages listed", langIndex ~= nil, true)
+for _ = 1, 12 do
+	if menu.title.text == "Languages" then break end
+	Click("Down")
+	if menu.rows[langIndex] and menu.rows[langIndex].bg:IsShown() then Click("Send") end
+end
+Check("languages menu open", menu.title.text, "Languages")
+Check("languages: Say first, default", menu.rows[1].text.text:find("The game's default", 1, true) ~= nil, true)
+Click("Send")
+Check("Cross: next language", ns.db.chatLanguageSAY, 7)
+Click("Send")
+Check("Cross again", ns.db.chatLanguageSAY, 2)
+Click("Send")
+Check("wraps to the default", ns.db.chatLanguageSAY, "default")
+Click("Down")
+Click("Send")
+Check("Yell row", ns.db.chatLanguageYELL, 7)
+Click("Back")
+Check("Circle closes it", menu:IsShown(), false)
 
 if fails > 0 then
 	print("chatbox: " .. fails .. " FAILED")

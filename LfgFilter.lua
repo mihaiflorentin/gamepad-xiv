@@ -1066,7 +1066,7 @@ function ns.PruneLfgChats(reason)
 end
 
 -- kind: the line's chat type when it isn't the conversation's own (PARTY_LEADER, RAID_WARNING, LOOT), for its colour.
-local function AddLine(name, outgoing, text, class, sender, senderClass, kind)
+local function AddLine(name, outgoing, text, class, sender, senderClass, kind, language)
 	local chats = Chats()
 	local chat = chats[name]
 	if not chat then
@@ -1077,7 +1077,7 @@ local function AddLine(name, outgoing, text, class, sender, senderClass, kind)
 	chat.last = time()
 	chat.closed = nil -- a new message opens a closed conversation again
 	chat.seq = (chat.seq or 0) + 1
-	tinsert(chat.lines, { o = outgoing or nil, m = text, t = time(), s = sender, c = senderClass, k = kind })
+	tinsert(chat.lines, { o = outgoing or nil, m = text, t = time(), s = sender, c = senderClass, k = kind, l = ns.ChatLineLanguage(language) })
 	PruneChat(chat, time())
 	-- Drop the oldest conversations.
 	local count, oldestName, oldest = 0, nil, nil
@@ -1124,12 +1124,20 @@ end
 -- search runs on your next press in the window (the Nav buttons), not from a timer.
 state.AUTO_REFRESH = 30
 function state.RefreshText()
-	if state.searching or not state.refreshAt then
+	if state.searching or not state.refreshAt or not state.searchedOnce then
 		return ""
-	elseif state.refreshDue then
-		return "  |cff999999- press any button to refresh|r"
 	end
-	return "  |cff999999- refresh in " .. math.max(0, math.ceil(state.refreshAt - GetTime())) .. "s, on your next press|r"
+	-- How long since the last search, counting up.
+	local ago = math.max(0, math.floor(GetTime() - (state.refreshAt - state.AUTO_REFRESH)))
+	local text
+	if ago < 60 then
+		text = ago .. "s"
+	elseif ago < 3600 then
+		text = math.floor(ago / 60) .. "m"
+	else
+		text = math.floor(ago / 3600) .. "h"
+	end
+	return "  |cff999999·  last refresh " .. text .. " ago" .. (state.refreshDue and ", any button refreshes" or "") .. "|r"
 end
 function state.TickRefresh()
 	if not state.refreshAt or state.searching then
@@ -1377,6 +1385,61 @@ function ns.SayChatLocked(why)
 	ns.Print("The game locks chat for addons during this fight, so the message wasn't sent. It stays in the box: send it once the fight ends.")
 end
 
+-- Languages: the game speaks them in Say and Yell only, and only while you aren't in a group; party,
+-- guild, whispers and channels always go out in your faction's language.
+ns.LANGUAGE_CHATS = { SAY = true, YELL = true }
+
+-- The languages this character knows, as { ID, name } for the settings, the game's default first.
+function ns.ChatLanguages()
+	local list = { { "default", "The game's default" } }
+	for index = 1, (GetNumLanguages and GetNumLanguages() or 0) do
+		local name, id = GetLanguageByIndex(index)
+		if name and id then
+			list[#list + 1] = { id, name }
+		end
+	end
+	return list
+end
+
+-- The language to send in for a chat type, if one is picked, this character knows it and the game
+-- would use it now; nil: the game's default. Also its name, for the chat box to show.
+function ns.ChatLanguage(chatType)
+	if not (ns.db and ns.LANGUAGE_CHATS[chatType]) or IsInGroup() then
+		return nil
+	end
+	local wanted = ns.db["chatLanguage" .. chatType]
+	if wanted == nil or wanted == "default" then
+		return nil
+	end
+	for index = 1, (GetNumLanguages and GetNumLanguages() or 0) do
+		local name, id = GetLanguageByIndex(index)
+		if id == wanted then
+			return id, name
+		end
+	end
+	return nil
+end
+
+-- The language a conversation's message goes out in, by name, unless it's the game's default or your
+-- faction's own: for the chat box's label while typing.
+function ns.ChatLanguageName(key)
+	local channel = ChannelInfo(key)
+	local _, name = ns.ChatLanguage(channel and channel.chatType)
+	return ns.ChatLineLanguage(name)
+end
+
+-- A chat line's language as the game's chat shows it ("[Darnassian] "): only when it isn't your
+-- default language or Universal.
+function ns.ChatLineLanguage(language)
+	if type(language) ~= "string" or language == "" or language == "Universal" or (issecretvalue and issecretvalue(language)) then
+		return nil
+	end
+	if language == (GetDefaultLanguage and GetDefaultLanguage("player")) then
+		return nil
+	end
+	return language
+end
+
 -- Sends to a conversation: a whisper, or party or raid chat.
 local function SendTo(name, text, why)
 	local channel = ChannelInfo(name)
@@ -1405,8 +1468,9 @@ local function SendTo(name, text, why)
 			return false
 		end
 	end
-	local ok, err = pcall(send, text, channel.chatType, nil, target)
-	Log(channel.chatType, why, ok and "sent" or ("failed: " .. tostring(err)), text)
+	local language = ns.ChatLanguage(channel.chatType)
+	local ok, err = pcall(send, text, channel.chatType, language, target)
+	Log(channel.chatType, why, "language", tostring(language), ok and "sent" or ("failed: " .. tostring(err)), text)
 	return ok
 end
 
@@ -3483,7 +3547,8 @@ local function DrawResults(active)
 	elseif state.status then
 		header = state.status
 	elseif not state.searchedOnce then
-		header = "Press " .. Hint("{PAD4}") .. " to search"
+		-- No spaces by the icon: its art has room of its own on each side.
+		header = "Press" .. Hint("{PAD4}") .. "to search"
 	elseif #results == 0 then
 		header = state.searchFailed and "The search failed. Try again." or ("No " .. (players and "players" or "groups") .. " match your filters")
 	else
@@ -4506,10 +4571,28 @@ local function BuildRatings(content)
 		window.rateFrames[index] = row
 	end
 	-- {PAD4}: a note on the selected player, typed here.
-	local noteInput = CreateFrame("EditBox", "GamepadXIVLfgFilterNoteInput", ratings, "InputBoxTemplate")
-	noteInput:SetPoint("BOTTOMLEFT", 20, 10)
-	noteInput:SetPoint("BOTTOMRIGHT", -14, 10)
+	-- On a solid plate of its own above the rows, so the row under it doesn't show through.
+	local notePlate = CreateFrame("Frame", nil, ratings, "BackdropTemplate")
+	notePlate:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })
+	notePlate:SetBackdropColor(0.04, 0.04, 0.06, 0.97)
+	notePlate:SetBackdropBorderColor(1, 0.82, 0, 0.95)
+	notePlate:SetPoint("BOTTOMLEFT", 0, 4)
+	notePlate:SetPoint("BOTTOMRIGHT", 0, 4)
+	notePlate:SetHeight(48)
+	notePlate:SetFrameLevel(ratings:GetFrameLevel() + 20)
+	notePlate:EnableMouse(true)
+	notePlate:Hide()
+	notePlate.label = Text(notePlate, "GameFontNormal")
+	notePlate.label:SetPoint("LEFT", 16, 0)
+	local noteInput = CreateFrame("EditBox", "GamepadXIVLfgFilterNoteInput", notePlate, "InputBoxTemplate")
+	noteInput:SetPoint("LEFT", notePlate.label, "RIGHT", 14, 0)
+	noteInput:SetPoint("RIGHT", -16, 0)
 	noteInput:SetHeight(26)
+	hooksecurefunc(noteInput, "Show", function(self)
+		notePlate.label:SetText("Note on " .. Short(self.target and self.target.name) .. ":")
+		notePlate:Show()
+	end)
+	hooksecurefunc(noteInput, "Hide", function() notePlate:Hide() end)
 	noteInput:SetAutoFocus(false)
 	noteInput:SetMaxLetters(120)
 	noteInput:SetScript("OnEnterPressed", function(self)
@@ -5477,6 +5560,12 @@ events:SetScript("OnEvent", function(_, event, ...)
 			end
 		end
 		local sender = key ~= "#SYSTEM" and FullName(who) or nil
+		-- Each sender's last chat line, this session only: the chat box's Report uses it.
+		local lineID = select(11, ...)
+		if sender and not Secret(lineID) and type(lineID) == "number" and lineID > 0 then
+			ns.chatLineIDs = ns.chatLineIDs or {}
+			ns.chatLineIDs[sender] = lineID
+		end
 		local class
 		if not Secret(guid) and guid and GetPlayerInfoByGUID then
 			local ok, _, englishClass = pcall(GetPlayerInfoByGUID, guid)
@@ -5488,7 +5577,7 @@ events:SetScript("OnEvent", function(_, event, ...)
 		if kind == (ChannelInfo(key).chatType or "SYSTEM") then
 			kind = nil
 		end
-		local chat = AddLine(key, outgoing, text, nil, sender, class, kind)
+		local chat = AddLine(key, outgoing, text, nil, sender, class, kind, (select(3, ...)))
 		local viewing = window and window:IsShown() and state.tab == TAB_CHAT and state.selectedName == key
 		if not outgoing and not viewing and not ChannelInfo(key).quiet then
 			chat.unread = (chat.unread or 0) + 1

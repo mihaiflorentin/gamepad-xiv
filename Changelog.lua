@@ -3,6 +3,13 @@ local _, ns = ...
 -- Generated from CHANGELOG.md by tools/make_changelog.py. Do not edit; run the script instead.
 -- Newest first. Each line is { kind, text }: "h" a section, "-" an entry, "--" a sub-entry.
 ns.CHANGELOG = {
+	{ version = "v0.1.30", lines = {
+		{ "h", "New" },
+		{ "-", "Added a Report option to the chatbox player menu." },
+		{ "-", "Added Say and Yell languages to the chatbox Square menu." },
+		{ "h", "Changes" },
+		{ "-", "On the chatbox Whispers tab, the D-pad left / right picks the player and up / down scrolls." },
+	} },
 	{ version = "v0.1.29", lines = {
 		{ "h", "Fixed" },
 		{ "-", "Fixed answering group invites and trades with the controller in combat." },

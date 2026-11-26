@@ -49,6 +49,7 @@ ns.DEFAULTS = {
 	chatBoxMoved = false, chatBoxX = 0, chatBoxY = 0, -- the chat box (ChatBox.lua): where the game's chat was, or moved
 	chatBoxWidth = 0, chatBoxHeight = 0, -- the chat box's size; 0 = the game's chat size
 	chatHighlightOwn = true, -- the chat box marks your own lines with a gold tag and a faint highlight
+	chatLanguageSAY = "default", chatLanguageYELL = "default", -- the language you speak in Say and Yell: "default" or a language ID
 	-- Sounds for incoming chat (Sounds.lua). Each type is "none", "gxiv:<file>", "kit:<SOUNDKIT key>" or
 	-- "lsm:<LibSharedMedia name>"; chatSoundOutput is the sound channel, "Master" or "SFX".
 	chatSounds = true, chatSoundOutput = "Master",

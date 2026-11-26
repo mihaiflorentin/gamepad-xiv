@@ -1,5 +1,16 @@
 # Gamepad XIV
 
+## v0.1.30
+
+### New
+
+- Added a Report option to the chatbox player menu.
+- Added Say and Yell languages to the chatbox Square menu.
+
+### Changes
+
+- On the chatbox Whispers tab, the D-pad left / right picks the player and up / down scrolls.
+
 ## v0.1.29
 
 ### Fixed
