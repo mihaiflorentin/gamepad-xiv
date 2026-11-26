@@ -294,6 +294,9 @@ local function BuildTabs()
 				{ type = "header", label = "BAGS" },
 				{ type = "check", key = "openBagsWhenNeeded", label = "Open bags when needed (experimental)",
 					tip = "Experimental. Opens your bags when a spell or scroll asks you to pick an item, and at the mailbox, if the game left them closed." },
+				{ type = "check", key = "bagWindow", label = "Bags window (alpha)",
+					onChange = function() if ns.ApplyBagWindow then ns.ApplyBagWindow() end end,
+					tip = "Alpha. All your bags in one window moved with the D-pad: {PAD1} uses, equips, sells at a vendor or puts the item in the bank, mail or trade, {PAD3} picks it up or puts it down, {PAD4} sorts, {PADLSHOULDER} / {PADRSHOULDER} jump between bags and {PAD2} closes. {PADBACK} steps between the addon's open windows. With Forever's gamepad UI on and BagPad installed, BagPad keeps the bags. Turning it off needs a /reload." },
 			},
 		},
 		{

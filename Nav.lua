@@ -46,6 +46,9 @@ end
 --   name = "Bags", group = "player", order = 10,
 --   IsOpen = function() return frame:IsShown() end,
 --   keys = { PADDUP = function() ... end, PAD1 = ..., ... },  -- the keys it takes while focused
+--   clicks = { PAD1 = function() return "SlotName", "RightButton" end },
+--       -- keys bound straight to a real button (a bag slot), so the game's own secure click runs.
+--       -- The window calls ns.NavRebindClicks() when its cursor moves.
 --   OnFocus = function() end, OnBlur = function() end,        -- optional
 --   Hint = function() return "{PAD1} Use   {PAD2} Back" end,  -- optional footer text
 -- }
@@ -53,6 +56,7 @@ function ns.NavRegister(window)
 	assert(type(window) == "table" and type(window.name) == "string", "NavRegister: a window needs a name")
 	assert(type(window.IsOpen) == "function", "NavRegister: " .. window.name .. " needs IsOpen")
 	window.keys = window.keys or {}
+	window.clicks = window.clicks or {}
 	if not Nav.windows[window.name] then
 		table.insert(Nav.list, window)
 	end
@@ -130,6 +134,7 @@ local function KeyButton(key)
 			ns.NavLog("error in", window.name, key, tostring(err))
 			geterrorhandler()(err)
 		end
+		ns.NavRebindClicks()
 		Nav.Redraw()
 	end
 	if HELD[key] and ns.RepeatOnHold then
@@ -142,6 +147,30 @@ local function KeyButton(key)
 	return button
 end
 
+-- The real button a click key presses now: its name and mouse button, or nil.
+local function ClickTarget(window, key)
+	local fn = window and window.clicks[key]
+	if not fn then
+		return nil
+	end
+	local ok, name, mouse = pcall(fn)
+	if ok and type(name) == "string" and name ~= "" then
+		return name, mouse or "LeftButton"
+	end
+	return nil
+end
+
+-- What a key of the focused window should be bound to, as GetBindingAction shows it.
+local function Expected(window, key)
+	local name, mouse = ClickTarget(window, key)
+	if name then
+		return "CLICK " .. name .. ":" .. mouse
+	elseif window.keys[key] then
+		return "CLICK GamepadXIVNav" .. key .. ":LeftButton"
+	end
+	return nil
+end
+
 -- Binds the focused window's keys, or gives them all back. Out of combat only.
 function Nav.ApplyBindings()
 	if InCombatLockdown() then
@@ -151,8 +180,32 @@ function Nav.ApplyBindings()
 	local window = Nav.focused
 	if window then
 		for _, key in ipairs(ns.NAV_KEYS) do
-			if window.keys[key] then
+			local name, mouse = ClickTarget(window, key)
+			if name then
+				SetOverrideBindingClick(owner, true, key, name, mouse)
+			elseif window.keys[key] then
 				SetOverrideBindingClick(owner, true, key, KeyButton(key):GetName(), "LeftButton")
+			end
+		end
+	end
+	return true
+end
+
+-- The focused window's cursor moved: its click keys press the button it is on now.
+function ns.NavRebindClicks()
+	local window = Nav.focused
+	if not window or InCombatLockdown() then
+		return false
+	end
+	for _, key in ipairs(ns.NAV_KEYS) do
+		if window.clicks[key] then
+			local name, mouse = ClickTarget(window, key)
+			if name then
+				SetOverrideBindingClick(owner, true, key, name, mouse)
+			elseif window.keys[key] then
+				SetOverrideBindingClick(owner, true, key, KeyButton(key):GetName(), "LeftButton")
+			else
+				SetOverrideBinding(owner, true, key, nil)
 			end
 		end
 	end
@@ -167,11 +220,43 @@ function Nav.BindingsLost()
 		return false
 	end
 	for _, key in ipairs(ns.NAV_KEYS) do
-		if window.keys[key] and GetBindingAction(key, true) ~= "CLICK GamepadXIVNav" .. key .. ":LeftButton" then
+		local expected = Expected(window, key)
+		if expected and GetBindingAction(key, true) ~= expected then
 			return true
 		end
 	end
 	return false
+end
+
+---------------------------------------------------------------------------------------------------
+-- Back: while one of the addon's windows is open (out of combat), Back steps through them.
+
+local backOwner = CreateFrame("Frame")
+local backButton = CreateFrame("Button", "GamepadXIVNavBack", UIParent)
+backButton:Hide()
+backButton:RegisterForClicks("AnyDown")
+backButton:SetScript("OnClick", function()
+	ns.NavCycle(1)
+	Nav.Redraw()
+end)
+local backBound = false
+
+function Nav.UpdateBack()
+	if InCombatLockdown() then
+		return
+	end
+	local want = #ns.NavOpenWindows() > 0
+	if want and (not backBound or GetBindingAction("PADBACK", true) ~= "CLICK GamepadXIVNavBack:LeftButton") then
+		SetOverrideBindingClick(backOwner, true, "PADBACK", "GamepadXIVNavBack", "LeftButton")
+		backBound = true
+	elseif not want and backBound then
+		ClearOverrideBindings(backOwner)
+		backBound = false
+	end
+end
+
+function ns.NavBackBound()
+	return backBound
 end
 
 ---------------------------------------------------------------------------------------------------
@@ -370,6 +455,10 @@ owner:SetScript("OnEvent", function(_, event)
 			ns.NavLog("combat: focus ends on", Nav.focused.name)
 			ns.NavFocus(nil)
 		end
+		if backBound then
+			ClearOverrideBindings(backOwner)
+			backBound = false
+		end
 	end
 end)
 
@@ -383,8 +472,12 @@ watch:SetScript("OnUpdate", function(_, elapsed)
 		return
 	end
 	since = 0
+	if InCombatLockdown() then
+		return
+	end
+	Nav.UpdateBack()
 	local window = Nav.focused
-	if not window or InCombatLockdown() then
+	if not window then
 		return
 	end
 	if not IsOpen(window) then

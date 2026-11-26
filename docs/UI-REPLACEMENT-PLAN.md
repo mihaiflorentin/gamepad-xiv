@@ -615,7 +615,26 @@ Kept in `.reference/`, which is git-ignored and not packaged (the packager build
   - focus ends at combat start;
   - the screen-position cursor `ns.NavPick` and the footer hints `ns.NavHint`.
   - No window uses it yet, and Back isn't wired to it yet, so nothing changes in game.
-- Next: the window kit (a themed window, list and grid widgets, the hint bar), then the bags. Phase 0 is still for the player to run.
+- Committed: 3f22af9, the navigation core.
+- Built after that, not committed yet:
+  - **Nav.lua additions:** `clicks` keys bound straight to a real button (`ns.NavRebindClicks` after each move). While one of the addon's windows is open out of combat, Back is bound to `GamepadXIVNavBack`, which cycles them.
+  - **Bags.lua, the bags window** (setting `bagWindow`, "Bags window (alpha)" under General > BAGS, default off):
+    - one grid of all bags, built from Blizzard's `ContainerFrameItemButtonTemplate`, with one parent per bag carrying the bag ID;
+    - {PAD1} is the slot's right click (use / equip / sell / bank / mail / trade), {PAD3} its left click (pick up / put down), {PAD4} sorts (`C_Container.SortBags`), L1 / R1 jump between bags, {PAD2} closes;
+    - a gold cursor frame, the item tooltip beside the window, money and free slots in the header, a footer hint that names what {PAD1} does there.
+    - The game's bag windows are moved under a hidden frame with `SetParent`.
+    - Post-hooks on the game's Toggle / Open / Close bag functions are settled once per frame: a toggle flips the window, an open shows it, and a close hides it only if the game has no bag open.
+    - It stands aside while BagPad is loaded and Forever's gamepad UI is on.
+    - Turning it off needs a reload.
+  - **Tests:** `tests/bags.lua` (all pass), and an Unreleased changelog line.
+- Known gaps in the bags window:
+  - no search, categories, detail panel or compare yet (BagPad's features);
+  - no reagent bag check;
+  - not movable;
+  - Escape doesn't close it (adding it to `UISpecialFrames` would write a Blizzard table);
+  - in combat the focus ends, so items are used by mouse or the bars.
+  - With gamepad mode on, the game's hidden bag frame stays "open" after Circle closes ours. Check in game whether Forever's cursor tries to focus it.
+- Next: test the bags window in game, then the bank (part of row 1), then mail. Phase 0 is still for the player to run.
 - Build order agreed with the player: bags and bank, mail, loot, NPC interaction, map, popups, trade (milestone A), then the rest.
 
 ### Research data: the player's setup

@@ -1,5 +1,11 @@
 # Gamepad XIV
 
+## Unreleased
+
+### New
+
+- Added a bags window for the controller, off by default (alpha).
+
 ## v0.1.30
 
 ### New

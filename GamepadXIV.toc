@@ -34,6 +34,7 @@ RollPicker.lua
 MenuWrap.lua
 Sounds.lua
 Items.lua
+Bags.lua
 Tutorial.lua
 Changelog.lua
 News.lua

@@ -22,6 +22,7 @@ function InCombatLockdown() return combat end
 local bindings = {}
 function SetOverrideBindingClick(_, _, key, button) bindings[key] = "CLICK " .. button .. ":LeftButton" end
 function ClearOverrideBindings() bindings = {} end
+function SetOverrideBinding(_, _, key, action) bindings[key] = action end
 function GetBindingAction(key) return bindings[key] or "" end
 local errors = {}
 function geterrorhandler() return function(err) table.insert(errors, err) end end

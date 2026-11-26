@@ -133,6 +133,7 @@ ns.DEFAULTS = {
 	r1TapComboB = 0,
 	chatLinks = true, -- open chat links under the cursor, and put Shift-clicked item links in chat
 	openBagsWhenNeeded = false, -- experimental: open the bags for a spell that targets an item, and at the mailbox
+	bagWindow = false, -- alpha: the addon's own bags window (Bags.lua)
 	partyHighlight = "fill", -- "outline", "thick", "fill", "pulse" or "none": how the selected party member's frame is marked
 	raidHighlight = "thick", -- the same, for raid frames
 	partyPrompt = "bottom", -- "bottom", "top" or "off": the button prompt with the party frames
