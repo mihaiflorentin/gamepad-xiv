@@ -235,10 +235,56 @@ local function BuildSideSlots()
 end
 
 -- A controller button as text, in the art of the controller in use. The fallback covers no controller.
-function ns.ButtonMarkup(key, fallback, size)
+-- With Forever's gamepad UI off, the game's icon set is always "Generic" (the Xbox art), whatever
+-- controller is plugged in (InputDeviceIconSetManager.lua). The controller still says which art it
+-- wants (its mapped state's labelStyle), so a PlayStation controller gets the PlayStation art here.
+ns.PS_BUTTON_ATLAS = {
+	PAD1 = "gamepad-ps-buttoncrox-normal", PAD2 = "gamepad-ps-buttoncircle-normal",
+	PAD3 = "gamepad-ps-buttonsquare-normal", PAD4 = "gamepad-ps-buttontriangle-normal",
+	PADDUP = "gamepad-ps-dpadup-normal", PADDDOWN = "gamepad-ps-dpaddown-normal",
+	PADDLEFT = "gamepad-ps-dpadleft-normal", PADDRIGHT = "gamepad-ps-dpadright-normal",
+	PADLSHOULDER = "gamepad-ps-triggerl1-normal", PADRSHOULDER = "gamepad-ps-triggerr1-normal",
+	PADLTRIGGER = "gamepad-ps-triggerl2-normal", PADRTRIGGER = "gamepad-ps-triggerr2-normal",
+	PADLSTICK = "gamepad-ps-stickl3-normal", PADRSTICK = "gamepad-ps-stickr3-normal",
+	PADBACK = "gamepad-ps-touchpad-normal", PADFORWARD = "gamepad-ps-menu-normal",
+	PADLSTICKUP = "gamepad-ps-stickl-normal", PADLSTICKAXIS = "gamepad-ps-stickl-normal",
+	PADRSTICKAXIS = "gamepad-ps-stickr-normal",
+}
+
+-- The controller's own label style while the game's icon set ignores it, read at most every 2 s.
+function ns.OwnLabelStyle()
+	local manager = InputDeviceIconSetManager
+	local set = manager and manager.GetActiveInputDeviceIconSet and manager:GetActiveInputDeviceIconSet()
+	if set ~= "Generic" or not (InputUtil and InputUtil.IsGamepadUIEnabled) or InputUtil.IsGamepadUIEnabled() then
+		return nil
+	end
+	local now = GetTime()
+	if ns.labelStyleAt and now - ns.labelStyleAt < 2 then
+		return ns.labelStyle
+	end
+	ns.labelStyleAt = now
+	local ok, state = pcall(C_GamePad.GetDeviceMappedState, C_GamePad.GetActiveDeviceID())
+	ns.labelStyle = ok and type(state) == "table" and state.labelStyle or nil
+	return ns.labelStyle
+end
+
+-- A controller button's atlas for the controller in use, or nil when there is none.
+function ns.ButtonAtlas(key)
+	local own = ns.OwnLabelStyle() == "Shapes" and ns.PS_BUTTON_ATLAS[key]
+	if own then
+		return own
+	end
 	local utility = InputIconTextureSetUtility
-	if utility and utility.GetActiveInputIconButtonTextures(key) then
-		return CreateAtlasMarkup(utility.GetNormalActiveInputIconButtonTexture(key), size or 18, size or 18)
+	if utility and utility.GetActiveInputIconButtonTextures and utility.GetActiveInputIconButtonTextures(key) then
+		return utility.GetNormalActiveInputIconButtonTexture(key)
+	end
+	return nil
+end
+
+function ns.ButtonMarkup(key, fallback, size)
+	local atlas = ns.ButtonAtlas(key)
+	if atlas then
+		return CreateAtlasMarkup(atlas, size or 18, size or 18)
 	end
 	return fallback
 end

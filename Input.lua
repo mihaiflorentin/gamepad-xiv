@@ -1719,9 +1719,7 @@ local function IsTrue(value)
 end
 
 local function GetInteractButtonAtlas()
-	if InputIconTextureSetUtility.GetActiveInputIconButtonTextures(GAMEPAD_FACE_BOTTOM) then
-		return InputIconTextureSetUtility.GetNormalActiveInputIconButtonTexture(GAMEPAD_FACE_BOTTOM)
-	end
+	return ns.ButtonAtlas(GAMEPAD_FACE_BOTTOM or "PAD1")
 end
 
 -- The action's own icon: loot, talk, skinning, mining, herbalism...
@@ -1927,8 +1925,9 @@ local function ShowFlyoutPanel(flyoutID)
 		if spell then
 			row.icon:SetTexture(C_Spell.GetSpellTexture(spell))
 			row.name:SetText(C_Spell.GetSpellName(spell))
-			if utility.GetActiveInputIconButtonTextures(FLYOUT_KEYS[n]) then
-				row.button:SetAtlas(utility.GetNormalActiveInputIconButtonTexture(FLYOUT_KEYS[n]))
+			local atlas = ns.ButtonAtlas(FLYOUT_KEYS[n])
+			if atlas then
+				row.button:SetAtlas(atlas)
 			end
 		end
 	end
@@ -1993,9 +1992,9 @@ local function CreateClearPanel()
 end
 
 local function SetPromptAtlas(texture, key)
-	local utility = InputIconTextureSetUtility
-	if utility.GetActiveInputIconButtonTextures(key) then
-		texture:SetAtlas(utility.GetNormalActiveInputIconButtonTexture(key))
+	local atlas = ns.ButtonAtlas(key)
+	if atlas then
+		texture:SetAtlas(atlas)
 	end
 end
 

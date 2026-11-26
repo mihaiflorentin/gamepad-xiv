@@ -6,6 +6,10 @@
 
 - Added a bags window for the controller, off by default (alpha).
 
+### Fixed
+
+- Button icons now match your controller with Forever's gamepad UI off.
+
 ## v0.1.30
 
 ### New

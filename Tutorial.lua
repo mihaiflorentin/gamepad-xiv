@@ -854,10 +854,7 @@ end
 -- The controller ----------------------------------------------------------------------------------
 
 local function IconAtlas(key)
-	local utility = InputIconTextureSetUtility
-	if utility and utility.GetActiveInputIconButtonTextures and utility.GetActiveInputIconButtonTextures(key) then
-		return utility.GetNormalActiveInputIconButtonTexture(key)
-	end
+	return ns.ButtonAtlas(key)
 end
 
 local function CreateArt(parent)

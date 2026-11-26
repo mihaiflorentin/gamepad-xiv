@@ -18,10 +18,22 @@ local WHITE = "Interface\\Buttons\\WHITE8X8"
 local PANEL = { 0.075, 0.075, 0.09, 0.97 }
 local BORDER = { 0.25, 0.25, 0.3, 1 }
 local GOLD = { 1, 0.82, 0 }
-local SLOT, GAP, PAD, HEAD, FOOT = 37, 4, 12, 30, 26
+local SLOT, GAP, PAD, HEAD, FOOT = 37, 4, 12, 76, 26 -- HEAD: the title row and the bag slots row
 local COLUMNS = 10
 
-local Bags = { slots = {}, order = {}, parents = {}, cursor = 1 }
+local Bags = { slots = {}, order = {}, parents = {}, cursor = 1, equip = {}, filter = 1 }
+
+-- Quick filters, picked with L2 / R2 without a keyboard: the other items are dimmed.
+-- classes: C_Item.GetItemInfoInstant's class IDs.
+local FILTERS = {
+	{ name = "All" },
+	{ name = "Consumables", classes = { [0] = true } },
+	{ name = "Equipment", classes = { [2] = true, [4] = true } },
+	{ name = "Quest items", classes = { [12] = true }, quest = true },
+	{ name = "Trade goods", classes = { [7] = true } },
+	{ name = "Junk", quality = 0 },
+}
+Bags.FILTERS = FILTERS
 ns.Bags = Bags
 
 local hidden = CreateFrame("Frame")
@@ -133,6 +145,28 @@ local function DrawSlot(button, bag, slot)
 	Call(button, "UpdateJunkItem", info and info.quality, info and info.hasNoValue)
 	Call(button, "UpdateCooldown", texture)
 	Call(button, "SetReadable", info and info.isReadable)
+	Call(button, "SetMatchesSearch", Bags.Matches(info, quest))
+end
+
+-- Whether an item passes the search box (the game's own search, info.isFiltered) and the filter.
+function Bags.Matches(info, quest)
+	local filter = FILTERS[Bags.filter] or FILTERS[1]
+	if not info then
+		return filter.classes == nil and filter.quality == nil
+	end
+	if info.isFiltered then
+		return false
+	end
+	if filter.quality and info.quality ~= filter.quality then
+		return false
+	end
+	if filter.classes then
+		local classID = info.itemID and C_Item and C_Item.GetItemInfoInstant and select(6, C_Item.GetItemInfoInstant(info.itemID))
+		if not (classID and filter.classes[classID]) and not (filter.quest and quest and (quest.isQuestItem or quest.questID)) then
+			return false
+		end
+	end
+	return true
 end
 
 ---------------------------------------------------------------------------------------------------
@@ -171,6 +205,35 @@ local function Build()
 	window.free:SetPoint("LEFT", window.title, "RIGHT", 10, -1)
 	window.money = window:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	window.money:SetPoint("TOPRIGHT", -PAD, -10)
+	window.filter = window:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	window.filter:SetPoint("TOPRIGHT", -PAD, -32)
+
+	-- The search box (a keyboard types in it; {PADRSTICK} puts the cursor in it). The game's own item
+	-- search does the matching, so it is the same search as its bag windows.
+	local search = CreateFrame("EditBox", "GamepadXIVBagsSearch", window, "SearchBoxTemplate")
+	search:SetSize(150, 20)
+	search:SetPoint("RIGHT", window.filter, "LEFT", -12, 0)
+	search:SetAutoFocus(false)
+	search:HookScript("OnTextChanged", function(box)
+		if C_Container.SetItemSearch then
+			C_Container.SetItemSearch(box:GetText() or "")
+		end
+	end)
+	window.search = search
+
+	-- The equipped bags: the backpack, then the four bag slots. {PAD3} picks a bag up or puts the
+	-- one held there, so a bigger bag replaces a smaller one.
+	local bagSlots = NUM_BAG_SLOTS or 4
+	for i = 0, bagSlots do
+		local equip = CreateFrame("Button", "GamepadXIVBagsEquip" .. i, window)
+		equip:SetSize(SLOT - 4, SLOT - 4)
+		equip:SetPoint("TOPLEFT", PAD + i * (SLOT + GAP), -32)
+		equip.icon = equip:CreateTexture(nil, "ARTWORK")
+		equip.icon:SetAllPoints()
+		equip.gxivEquip = i
+		Bags.equip[i] = equip
+	end
+
 	window.hint = window:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	window.hint:SetPoint("BOTTOMLEFT", PAD, 8)
 	window.hint:SetPoint("BOTTOMRIGHT", -PAD, 8)
@@ -204,6 +267,11 @@ function Bags.Layout()
 	end
 	local order, used, total = {}, 0, 0
 	local seen = {}
+	for i = 0, #Bags.equip do
+		local equip = Bags.equip[i]
+		Bags.DrawEquip(equip)
+		table.insert(order, equip)
+	end
 	for _, bag in ipairs(BagIDs()) do
 		for slot = 1, C_Container.GetContainerNumSlots(bag) or 0 do
 			local button = Slot(bag, slot)
@@ -224,15 +292,20 @@ function Bags.Layout()
 		end
 	end
 	Bags.order = order
-	local rows = math.max(1, math.ceil(#order / COLUMNS))
+	local slotCount = #order - (#Bags.equip + 1)
+	local rows = math.max(1, math.ceil(slotCount / COLUMNS))
 	window:SetSize(PAD * 2 + COLUMNS * SLOT + (COLUMNS - 1) * GAP, HEAD + PAD + rows * SLOT + (rows - 1) * GAP + FOOT)
-	for i, button in ipairs(order) do
-		local col, row = (i - 1) % COLUMNS, math.floor((i - 1) / COLUMNS)
+	local first = #Bags.equip + 2
+	for i = first, #order do
+		local button = order[i]
+		local n = i - first
+		local col, row = n % COLUMNS, math.floor(n / COLUMNS)
 		button:ClearAllPoints()
 		button:SetPoint("TOPLEFT", window, "TOPLEFT", PAD + col * (SLOT + GAP), -(HEAD + row * (SLOT + GAP)))
 		button:Show()
 		DrawSlot(button, button.gxivBag, button.gxivSlot)
 	end
+	window.filter:SetText(ns.ButtonText("{PADLTRIGGER}{PADRTRIGGER} ", 12) .. (FILTERS[Bags.filter] or FILTERS[1]).name)
 	window.free:SetText((total - used) .. " / " .. total .. " free")
 	if GetMoney and GetCoinTextureString then
 		window.money:SetText(GetCoinTextureString(GetMoney()))
@@ -243,8 +316,34 @@ function Bags.Layout()
 	Bags.DrawCursor()
 end
 
+-- The inventory slot an equipped bag button stands for (nil for the backpack).
+local function EquipInventoryID(equip)
+	local i = equip and equip.gxivEquip
+	if not i or i == 0 then
+		return nil
+	end
+	return C_Container.ContainerIDToInventoryID and C_Container.ContainerIDToInventoryID(i) or nil
+end
+
+function Bags.DrawEquip(equip)
+	local inv = EquipInventoryID(equip)
+	local texture
+	if equip.gxivEquip == 0 then
+		texture = "Interface\\Buttons\\Button-Backpack-Up"
+	else
+		texture = inv and GetInventoryItemTexture("player", inv) or "Interface\\PaperDoll\\UI-PaperDoll-Slot-Bag"
+	end
+	equip.icon:SetTexture(texture)
+	equip:Show()
+end
+
 function Bags.Current()
 	return Bags.order[Bags.cursor]
+end
+
+local function OnEquip()
+	local current = Bags.Current()
+	return current and current.gxivEquip ~= nil and current or nil
 end
 
 -- What {PAD1} does to the slot right now, the way the game's right click decides.
@@ -263,8 +362,16 @@ end
 
 function Bags.Hint()
 	local holding = GetCursorInfo and GetCursorInfo() == "item"
+	local equip = OnEquip()
+	if equip then
+		if equip.gxivEquip == 0 then
+			return "{PAD1} Its slots   {PADRSTICK} Search   {PAD2} Close"
+		end
+		return "{PAD1} Its slots   {PAD3} " .. (holding and "Put the bag here" or "Pick up the bag")
+			.. "   {PADRSTICK} Search   {PAD2} Close"
+	end
 	return "{PAD1} " .. UseLabel() .. "   {PAD3} " .. (holding and "Put down" or "Pick up")
-		.. "   {PAD4} Sort   {PADLSHOULDER}{PADRSHOULDER} Bag   {PAD2} Close"
+		.. "   {PAD4} Sort   {PADLSHOULDER}{PADRSHOULDER} Bag   {PADRSTICK} Search   {PAD2} Close"
 end
 
 -- Moves the gold frame and the tooltip to the slot the cursor is on.
@@ -280,7 +387,19 @@ function Bags.DrawCursor()
 		highlight:Show()
 		GameTooltip:SetOwner(window, "ANCHOR_NONE")
 		GameTooltip:SetPoint("BOTTOMRIGHT", window, "BOTTOMLEFT", -8, 0)
-		if C_Container.GetContainerItemInfo(button.gxivBag, button.gxivSlot) then
+		local inv = button.gxivEquip and EquipInventoryID(button)
+		if button.gxivEquip then
+			if inv and GetInventoryItemTexture("player", inv) then
+				GameTooltip:SetInventoryItem("player", inv)
+				GameTooltip:Show()
+			elseif button.gxivEquip == 0 then
+				GameTooltip:SetText(BACKPACK_TOOLTIP or "Backpack")
+				GameTooltip:Show()
+			else
+				GameTooltip:SetText(ns.ButtonText("Empty bag slot: {PAD3} puts a bag held here", 14))
+				GameTooltip:Show()
+			end
+		elseif C_Container.GetContainerItemInfo(button.gxivBag, button.gxivSlot) then
 			GameTooltip:SetBagItem(button.gxivBag, button.gxivSlot)
 			GameTooltip:Show()
 		else
@@ -303,6 +422,15 @@ local function Move(direction)
 	Bags.cursor = ns.NavPick(nodes, Bags.cursor, direction)
 end
 
+-- The first item slot of a bag, or nil when it has none on show.
+local function FirstSlotOf(bag)
+	for i, button in ipairs(Bags.order) do
+		if button.gxivBag == bag then
+			return i
+		end
+	end
+end
+
 -- L1 / R1: the first slot of the bag before or after the one the cursor is in.
 local function StepBag(delta)
 	local current = Bags.Current()
@@ -310,15 +438,49 @@ local function StepBag(delta)
 		return
 	end
 	local starts, at = {}, 1
+	local previous
 	for i, button in ipairs(Bags.order) do
-		if i == 1 or button.gxivBag ~= Bags.order[i - 1].gxivBag then
+		if button.gxivBag and button.gxivBag ~= previous then
 			table.insert(starts, i)
+			previous = button.gxivBag
 		end
 		if button == current then
 			at = #starts
 		end
 	end
+	if current.gxivEquip then
+		at = delta > 0 and 0 or #starts + 1
+	end
 	Bags.cursor = starts[ns.StepWrap(at, delta, #starts)] or 1
+end
+
+-- L2 / R2: the next quick filter.
+local function StepFilter(delta)
+	Bags.filter = ns.StepWrap(Bags.filter, delta, #FILTERS)
+	Bags.Layout()
+end
+
+-- {PAD1} on an equipped bag: to its first slot.
+local function EquipUse()
+	local equip = OnEquip()
+	local first = equip and FirstSlotOf(equip.gxivEquip)
+	if first then
+		Bags.cursor = first
+	end
+end
+
+-- {PAD3} on an equipped bag: pick it up, or put the held bag there.
+local function EquipPickUp()
+	local equip = OnEquip()
+	local inv = EquipInventoryID(equip)
+	if not inv then
+		return
+	end
+	if GetCursorInfo and GetCursorInfo() == "item" then
+		if PutItemInBag then PutItemInBag(inv) end
+	elseif PickupBagFromSlot then
+		PickupBagFromSlot(inv)
+	end
 end
 
 function Bags.Open()
@@ -329,6 +491,10 @@ function Bags.Open()
 	if not window:IsShown() then
 		window:Show()
 		Bags.Layout()
+		-- Opening starts on the items, not on the equipped bags row.
+		if Bags.Current() and Bags.Current().gxivEquip and #Bags.order > #Bags.equip + 1 then
+			Bags.cursor = #Bags.equip + 2
+		end
 		Log("open")
 	end
 	if ns.NavOpened then
@@ -355,10 +521,14 @@ end
 ---------------------------------------------------------------------------------------------------
 -- Navigation (Nav.lua)
 
+-- Item slots press the game's own button; the equipped bags row uses the keys below instead.
 local function SlotClick(mouse)
 	return function()
 		local button = Bags.Current()
-		return button and button:GetName(), mouse
+		if button and button.gxivBag then
+			return button:GetName(), mouse
+		end
+		return nil
 	end
 end
 
@@ -378,6 +548,15 @@ ns.NavRegister({
 			end
 		end,
 		PAD2 = function() Bags.Close() end,
+		PAD1 = EquipUse,
+		PAD3 = EquipPickUp,
+		PADLTRIGGER = function() StepFilter(-1) end,
+		PADRTRIGGER = function() StepFilter(1) end,
+		PADRSTICK = function()
+			if window and window.search then
+				window.search:SetFocus()
+			end
+		end,
 	},
 	clicks = {
 		PAD1 = SlotClick("RightButton"),
@@ -482,7 +661,8 @@ end
 local events = CreateFrame("Frame")
 for _, event in ipairs({ "PLAYER_LOGIN", "BAG_UPDATE_DELAYED", "ITEM_LOCK_CHANGED", "BAG_UPDATE_COOLDOWN",
 		"PLAYER_MONEY", "MERCHANT_SHOW", "MERCHANT_CLOSED", "BAG_CONTAINER_UPDATE", "QUEST_ACCEPTED",
-		"UNIT_QUEST_LOG_CHANGED", "CURSOR_CHANGED", "PLAYER_REGEN_ENABLED" }) do
+		"UNIT_QUEST_LOG_CHANGED", "CURSOR_CHANGED", "PLAYER_REGEN_ENABLED", "INVENTORY_SEARCH_UPDATE",
+		"PLAYER_EQUIPMENT_CHANGED" }) do
 	events:RegisterEvent(event)
 end
 local drawQueued = false

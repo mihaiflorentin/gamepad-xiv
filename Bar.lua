@@ -430,9 +430,9 @@ local function RefreshKeyIcons()
 	for _, row in ipairs(ns.ROWS) do
 		for i, button in ipairs(root.sides[row].buttons) do
 			local key = ns.KEYS[i]
-			local textures = InputIconTextureSetUtility and InputIconTextureSetUtility.GetActiveInputIconButtonTextures(key)
-			if ns.db.showKeyLabels and textures then
-				button.keyIcon:SetAtlas(InputIconTextureSetUtility.GetNormalActiveInputIconButtonTexture(key))
+			local atlas = ns.ButtonAtlas(key)
+			if ns.db.showKeyLabels and atlas then
+				button.keyIcon:SetAtlas(atlas)
 				button.keyIcon:SetSize(ns.db.keyIconSize, ns.db.keyIconSize)
 				button.keyIcon:Show()
 			else

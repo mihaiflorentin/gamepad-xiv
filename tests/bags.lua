@@ -135,11 +135,13 @@ anyOpen = true
 GameCalls("OpenAllBags")
 RunTimers()
 Check("open: shown", window.shown, true)
-Check("20 slots laid out", #ns.Bags.order, 20)
+Check("5 equipped bag buttons and 20 slots", #ns.Bags.order, 25)
 Check("free count", window.free.text, "18 / 20 free")
-Check("first slot is the backpack's", ns.Bags.order[1]:GetName(), "GamepadXIVBagsB0S1")
-Check("slot parent carries the bag ID", ns.Bags.order[17]:GetParent():GetID(), 1)
-Check("slot template", ns.Bags.order[1].template, "ContainerFrameItemButtonTemplate")
+Check("the row starts with the backpack button", ns.Bags.order[1]:GetName(), "GamepadXIVBagsEquip0")
+Check("first slot is the backpack's", ns.Bags.order[6]:GetName(), "GamepadXIVBagsB0S1")
+Check("cursor starts on the items", ns.Bags.cursor, 6)
+Check("slot parent carries the bag ID", ns.Bags.order[22]:GetParent():GetID(), 1)
+Check("slot template", ns.Bags.order[6].template, "ContainerFrameItemButtonTemplate")
 Check("focused", ns.NavFocused(), "Bags")
 Check("Cross right-clicks the slot", bindings.PAD1, "CLICK GamepadXIVBagsB0S1:RightButton")
 Check("Square left-clicks the slot", bindings.PAD3, "CLICK GamepadXIVBagsB0S1:LeftButton")
@@ -147,16 +149,38 @@ Check("tooltip on the item", GameTooltip.item, "0:1")
 
 -- The D-pad moves the cursor and the click keys follow.
 GamepadXIVNavPADDRIGHT.scripts.OnClick(GamepadXIVNavPADDRIGHT, "LeftButton", true)
-Check("right: slot 2", ns.Bags.cursor, 2)
+Check("right: slot 2", ns.Bags.cursor, 7)
 Check("Cross follows", bindings.PAD1, "CLICK GamepadXIVBagsB0S2:RightButton")
 GamepadXIVNavPADDDOWN.scripts.OnClick(GamepadXIVNavPADDDOWN, "LeftButton", true)
-Check("down: next row", ns.Bags.cursor, 12)
+Check("down: next row", ns.Bags.cursor, 17)
 GamepadXIVNavPADRSHOULDER.scripts.OnClick(GamepadXIVNavPADRSHOULDER, "LeftButton", true)
 Check("R1: first slot of bag 1", ns.Bags.Current():GetName(), "GamepadXIVBagsB1S1")
 GamepadXIVNavPADRSHOULDER.scripts.OnClick(GamepadXIVNavPADRSHOULDER, "LeftButton", true)
-Check("R1 wraps to the backpack", ns.Bags.cursor, 1)
+Check("R1 wraps to the backpack", ns.Bags.cursor, 6)
 GamepadXIVNavPAD4.scripts.OnClick(GamepadXIVNavPAD4, "LeftButton", true)
 Check("Triangle sorts", _G.sorted, true)
+
+-- Quick filters with L2 / R2: the filter name shows, and they wrap.
+GamepadXIVNavPADRTRIGGER.scripts.OnClick(GamepadXIVNavPADRTRIGGER, "LeftButton", true)
+Check("R2: next filter", ns.Bags.FILTERS[ns.Bags.filter].name, "Consumables")
+Check("filter shown", window.filter.text:find("Consumables") ~= nil, true)
+GamepadXIVNavPADLTRIGGER.scripts.OnClick(GamepadXIVNavPADLTRIGGER, "LeftButton", true)
+GamepadXIVNavPADLTRIGGER.scripts.OnClick(GamepadXIVNavPADLTRIGGER, "LeftButton", true)
+Check("L2 wraps to the last filter", ns.Bags.FILTERS[ns.Bags.filter].name, "Junk")
+Check("junk filter: a common item doesn't match", ns.Bags.Matches({ quality = 1 }), false)
+Check("junk filter: a grey item matches", ns.Bags.Matches({ quality = 0 }), true)
+Check("search hides a match", ns.Bags.Matches({ quality = 0, isFiltered = true }), false)
+ns.Bags.filter = 1
+Check("all: empty slot matches", ns.Bags.Matches(nil), true)
+
+-- The equipped bags row: Cross on a bag button is the nav key (no slot to click), and jumps to its slots.
+ns.Bags.cursor = 2
+ns.NavRebindClicks()
+Check("on a bag button Cross is the nav key", bindings.PAD1, "CLICK GamepadXIVNavPAD1:LeftButton")
+GamepadXIVNavPAD1.scripts.OnClick(GamepadXIVNavPAD1, "LeftButton", true)
+Check("Cross on bag 1: to its first slot", ns.Bags.Current():GetName(), "GamepadXIVBagsB1S1")
+Check("and Cross clicks slots again", bindings.PAD1, "CLICK GamepadXIVBagsB1S1:RightButton")
+ns.Bags.cursor = 6
 
 -- Back is the addon's while the window is open. Back on the last (only) window lets go: the focus
 -- ends, the window stays open and Back goes back to the addon's usual Back; Back again later, after
@@ -213,7 +237,7 @@ Check("Circle closes", window.shown, false)
 sizes[2] = 6
 GameCalls("OpenAllBags")
 RunTimers()
-Check("new bag laid out", #ns.Bags.order, 26)
+Check("new bag laid out", #ns.Bags.order, 31)
 
 -- In combat no new slots are made; the hide of the game's windows waits.
 ns.Bags.Close()
@@ -221,7 +245,7 @@ sizes[3] = 4
 combat = true
 GameCalls("OpenAllBags")
 RunTimers()
-Check("combat: no new slots", #ns.Bags.order, 26)
+Check("combat: no new slots", #ns.Bags.order, 31)
 combat = false
 
 -- Turned off: says a reload gives the game's bags back.
