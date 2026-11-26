@@ -499,9 +499,55 @@ end
 local popupHint
 
 -- Stays on what the bindings really do: in combat they only change when combat ends.
+-- A party invite (not a group finder one) on screen: its window, or nil.
+local function PartyInvitePopup()
+	for index = 1, 4 do
+		local popup = _G["StaticPopup" .. index]
+		if popup and popup:IsShown() and (popup.which == "PARTY_INVITE" or popup.which == "PARTY_INVITE_XREALM") then
+			return popup
+		end
+	end
+end
+
+-- What can wait for an answer mid-fight, when the bindings can't change: a party invite or a trade
+-- window. Back (LfgFilter.lua's chat key button) opens the answer picker for it (ns.OpenCombatAnswer).
+local COMBAT_ANSWERS = {
+	{
+		name = "invite", yes = "Accept", no = "Decline",
+		Frame = function() return ns.InvitePending and ns.InvitePending() and PartyInvitePopup() end,
+		Yes = function() AcceptGroup() end, No = function() DeclineGroup() end,
+	},
+	{
+		name = "trade", yes = "Accept trade", no = "Cancel trade",
+		Frame = function() return TradeFrame and TradeFrame:IsShown() and TradeFrame or nil end,
+		Yes = function() AcceptTrade() end, No = function() CancelTrade() end,
+	},
+}
+-- The first one waiting, and its window.
+local function CombatAnswer()
+	for _, answer in ipairs(COMBAT_ANSWERS) do
+		local frame = answer.Frame()
+		if frame then
+			return answer, frame
+		end
+	end
+end
+function ns.CombatAnswerWaiting()
+	return InCombatLockdown() and CombatAnswer() ~= nil
+end
+
 local function UpdatePopupHint()
+	if not driver then
+		return
+	end
 	local index = driver:GetAttribute("fc-answeredPopup") or 0
 	local popup = PopupByIndex(index)
+	local combatWindow
+	if (not popup or not popup:IsShown()) and InCombatLockdown() then
+		local _, frame = CombatAnswer()
+		combatWindow = frame
+		popup = not (ns.CombatAnswerShown and ns.CombatAnswerShown()) and frame or nil
+	end
 	if not popup or not popup:IsShown() or not ns.IsActive() then
 		if popupHint then
 			popupHint:Hide()
@@ -524,10 +570,14 @@ local function UpdatePopupHint()
 		hooksecurefunc(popupHint, "Hide", function(self) self.plate:Hide() end)
 	end
 	local parts = {}
-	for _, key in ipairs(POPUP_KEY_ORDER) do
-		local button = GetPopupButton(popup, key)
-		if button then
-			tinsert(parts, ns.ButtonText("{" .. key .. "}", 16) .. " " .. (button.label or button:GetText() or ""))
+	if popup and popup == combatWindow then
+		tinsert(parts, ns.ButtonText("{PADBACK}", 16) .. " Answer")
+	else
+		for _, key in ipairs(POPUP_KEY_ORDER) do
+			local button = GetPopupButton(popup, key)
+			if button then
+				tinsert(parts, ns.ButtonText("{" .. key .. "}", 16) .. " " .. (button.label or button:GetText() or ""))
+			end
 		end
 	end
 	popupHint:SetText(table.concat(parts, "    "))
@@ -853,6 +903,111 @@ do
 	end)
 	function ns.InvitePending()
 		return GetTime() < pendingUntil
+	end
+
+	-- Answering an invite or a trade mid-fight. The bindings only change when the fight ends, so Back
+	-- (LfgFilter.lua's chat key button) opens this picker: it reads the controller's buttons itself,
+	-- as the roll picker does, and answers with the game's own calls (AcceptGroup, AcceptTrade...).
+	-- An invite's window stays until the fight ends, when Cross or Circle closes it as usual.
+	local picker
+	local function ClosePicker(why)
+		if picker and picker:IsShown() then
+			ns.PlayLog("answer picker closed:", why)
+			picker:Hide()
+		end
+	end
+	function ns.CombatAnswerShown()
+		return picker ~= nil and picker:IsShown()
+	end
+	function ns.OpenCombatAnswer()
+		local answer, frame = CombatAnswer()
+		if not answer then
+			return false
+		end
+		if not picker then
+			picker = CreateFrame("Frame", "GamepadXIVAnswerPicker", UIParent, "BackdropTemplate")
+			picker:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })
+			picker:SetBackdropColor(0.04, 0.04, 0.06, 0.94)
+			picker:SetBackdropBorderColor(1, 0.82, 0, 0.95)
+			picker:SetFrameStrata("FULLSCREEN_DIALOG")
+			picker:Hide()
+			picker.text = picker:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+			picker.text:SetPoint("CENTER")
+			picker:SetScript("OnGamePadButtonDown", function(self, button)
+				local current = self.answer
+				if (button == "PAD1" or button == "PAD2") and current then
+					local yes = button == "PAD1"
+					local ok, err = pcall(yes and current.Yes or current.No)
+					ns.PlayLog("answer picker:", current.name, yes and current.yes or current.no, ok and "" or tostring(err))
+					ClosePicker("answered")
+				elseif button == "PADBACK" then
+					ClosePicker("by hand")
+				end
+			end)
+			picker:SetScript("OnHide", function(self)
+				pcall(self.EnableGamePadButton, self, false)
+				if ns.ChatBoxReadPad then
+					ns.ChatBoxReadPad(true)
+				end
+				UpdatePopupHint()
+			end)
+		end
+		if ns.ChatBoxReadPad then
+			ns.ChatBoxReadPad(false)
+		end
+		local ok, err = pcall(picker.EnableGamePadButton, picker, true)
+		if not ok then
+			ns.PlayLog("answer picker can't read the controller:", tostring(err))
+			return false
+		end
+		picker.answer = answer
+		picker.window = frame
+		picker.text:SetText(ns.ButtonText("{PAD1}", 16) .. " " .. answer.yes .. "    " .. ns.ButtonText("{PAD2}", 16) .. " "
+			.. answer.no .. "    " .. ns.ButtonText("{PADBACK}", 16) .. " Later")
+		picker:SetSize(picker.text:GetStringWidth() + 28, picker.text:GetStringHeight() + 20)
+		picker:ClearAllPoints()
+		picker:SetPoint("TOP", frame, "BOTTOM", 0, -8)
+		picker:Show()
+		UpdatePopupHint()
+		ns.PlayLog("answer picker opened:", answer.name)
+		return true
+	end
+	-- Its window answered elsewhere (the mouse), cancelled or gone: the picker goes with it.
+	local function CheckPicker(why)
+		if picker and picker:IsShown() then
+			local answer, frame = CombatAnswer()
+			if answer ~= picker.answer or frame ~= picker.window then
+				ClosePicker(why)
+			end
+		end
+		UpdatePopupHint()
+	end
+	inviteWatch:HookScript("OnEvent", function(_, event)
+		if event ~= "PARTY_INVITE_REQUEST" then
+			CheckPicker(event)
+		end
+	end)
+	local regen = CreateFrame("Frame")
+	regen:RegisterEvent("PLAYER_REGEN_ENABLED")
+	regen:RegisterEvent("TRADE_SHOW")
+	regen:RegisterEvent("TRADE_CLOSED")
+	regen:SetScript("OnEvent", function(_, event)
+		if event == "PLAYER_REGEN_ENABLED" then
+			-- After the fight the bindings answer again.
+			ClosePicker("fight over")
+		elseif event == "TRADE_SHOW" then
+			ns.PlayLog("trade window shown", InCombatLockdown() and "(in combat)" or "", "Back:",
+				tostring(driver and driver:GetAttribute("fc-backAction")))
+			C_Timer.After(0, UpdatePopupHint)
+		else
+			C_Timer.After(0, function() CheckPicker(event) end)
+		end
+	end)
+	for index = 1, 4 do
+		local popup = _G["StaticPopup" .. index]
+		if popup then
+			popup:HookScript("OnHide", function() CheckPicker("window closed") end)
+		end
 	end
 
 	-- Group quest prompts (an escort started by a party member): logged with the popup that shows, to

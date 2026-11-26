@@ -3,6 +3,10 @@ local _, ns = ...
 -- Generated from CHANGELOG.md by tools/make_changelog.py. Do not edit; run the script instead.
 -- Newest first. Each line is { kind, text }: "h" a section, "-" an entry, "--" a sub-entry.
 ns.CHANGELOG = {
+	{ version = "v0.1.29", lines = {
+		{ "h", "Fixed" },
+		{ "-", "Fixed answering group invites and trades with the controller in combat." },
+	} },
 	{ version = "v0.1.28", lines = {
 		{ "h", "New" },
 		{ "-", "Implemented LFG Filter, a new gamepad friendly group finder." },

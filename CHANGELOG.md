@@ -1,5 +1,11 @@
 # Gamepad XIV
 
+## v0.1.29
+
+### Fixed
+
+- Fixed answering group invites and trades with the controller in combat.
+
 ## v0.1.28
 
 ### New

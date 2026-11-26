@@ -5105,6 +5105,15 @@ chatOpenButton:SetScript("OnClick", function()
 			"roll waiting", tostring(ns.RollWaiting and ns.RollWaiting()),
 			"chat box", tostring(ns.ChatBoxActive and ns.ChatBoxActive()))
 	end
+	-- A party invite or trade mid-fight: the bindings can't answer it yet, so Back opens the answer picker.
+	if ns.CombatAnswerWaiting and ns.CombatAnswerWaiting() then
+		if ns.ChatBoxActive and ns.ChatBoxActive() then
+			ns.CloseChatBox()
+		end
+		if ns.OpenCombatAnswer() then
+			return
+		end
+	end
 	if InCombatLockdown() and ns.RollWaiting and ns.RollWaiting() then
 		if ns.ChatBoxActive and ns.ChatBoxActive() then
 			ns.CloseChatBox()
