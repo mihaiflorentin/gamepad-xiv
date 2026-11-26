@@ -231,21 +231,38 @@ end
 ---------------------------------------------------------------------------------------------------
 -- Back: while one of the addon's windows is open (out of combat), Back steps through them.
 
+-- Back past the last open window lets go: the focus ends (the windows stay open) and Back goes back to
+-- the addon's usual Back (Snippets.lua, fc-backAction: Forever's window cycle or chat) until a window
+-- opens or closes, or one of the addon's windows takes the focus again.
 local backOwner = CreateFrame("Frame")
 local backButton = CreateFrame("Button", "GamepadXIVNavBack", UIParent)
 backButton:Hide()
 backButton:RegisterForClicks("AnyDown")
+local backBound = false
+local yielded -- the number of open windows when Back let go, or nil
+
 backButton:SetScript("OnClick", function()
-	ns.NavCycle(1)
+	local open = ns.NavOpenWindows()
+	if Nav.focused and open[#open] == Nav.focused then
+		ns.NavFocus(nil)
+		yielded = #open
+		Nav.UpdateBack()
+		ns.NavLog("Back let go after the last window")
+	else
+		ns.NavCycle(1)
+	end
 	Nav.Redraw()
 end)
-local backBound = false
 
 function Nav.UpdateBack()
 	if InCombatLockdown() then
 		return
 	end
-	local want = #ns.NavOpenWindows() > 0
+	local count = #ns.NavOpenWindows()
+	if yielded and (yielded ~= count or Nav.focused) then
+		yielded = nil
+	end
+	local want = count > 0 and not yielded and not ns.NavBusy()
 	if want and (not backBound or GetBindingAction("PADBACK", true) ~= "CLICK GamepadXIVNavBack:LeftButton") then
 		SetOverrideBindingClick(backOwner, true, "PADBACK", "GamepadXIVNavBack", "LeftButton")
 		backBound = true
@@ -343,10 +360,20 @@ function ns.NavClosed(name)
 	end
 end
 
+-- Another of the addon's windows holds the controller keys its own way: the chat box while typing or
+-- browsing, and the settings window.
+function ns.NavBusy()
+	if ns.ChatBoxHoldsKeys and ns.ChatBoxHoldsKeys() then
+		return true
+	end
+	local config = _G.GamepadXIVConfigFrame
+	return config ~= nil and config.IsShown ~= nil and config:IsShown() and true or false
+end
+
 -- A window that should take the controller as it opens (popups, trade) calls this.
 function ns.NavOpened(name)
 	local window = Nav.windows[name]
-	if not window then
+	if not window or ns.NavBusy() then
 		return false
 	end
 	local current = Nav.focused

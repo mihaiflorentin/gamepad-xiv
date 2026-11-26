@@ -438,6 +438,11 @@ end
 
 -- The conversation you are typing to, for muting its sound (Sounds.lua): a channel key or a player's
 -- name, nil while not typing or on All and Combat.
+-- The chat box holds the controller keys (typing or browsing), so other windows leave them alone.
+function ns.ChatBoxHoldsKeys()
+	return Typing() or mode == "browse"
+end
+
 function ns.ChatBoxActiveKey()
 	if not Typing() or current == "all" or current == "combat" then
 		return nil

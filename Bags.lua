@@ -10,8 +10,9 @@ local _, ns = ...
 -- * The game's bag windows are moved under a hidden frame (SetParent, a widget method), so they stay
 --   out of sight without writing anything into Blizzard's code. The game still opens and closes them;
 --   post-hooks on its open, close and toggle functions show and hide this window instead.
--- * With Forever's gamepad UI on and BagPad installed, BagPad keeps the bags and this window stands
---   aside.
+-- * It needs Forever's gamepad UI off. With it on, Forever's focus manager takes the game's bag
+--   window as focused whenever a bag opens (FrameControlsManager.lua, "ContainerFrame.OpenBag"), even
+--   out of sight, and would fight this window for the controller.
 
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 local PANEL = { 0.075, 0.075, 0.09, 0.97 }
@@ -49,9 +50,11 @@ end
 -- Why the window stands aside, or nil when it is in use.
 function ns.BagsStandAside()
 	if not (ns.db and ns.db.bagWindow) then
-		return "off in the settings"
-	elseif GamepadUI() and AddOnLoaded("BagPad") then
-		return "BagPad keeps the bags while Forever's gamepad UI is on"
+		return "it is off in the settings"
+	elseif GamepadUI() then
+		return "it needs Forever's gamepad UI off (Options > Gameplay > Gamepad > Enable Gamepad UI, then /reload)"
+	elseif AddOnLoaded("BagPad") then
+		return "BagPad is loaded; turn BagPad off to use it"
 	end
 	return nil
 end
@@ -99,10 +102,17 @@ local function Slot(bag, slot)
 	return button
 end
 
+-- The game's slot methods, each in a pcall so one that fails doesn't stop the rest. A failure goes
+-- to the play log once per method.
+local failed = {}
 local function Call(button, method, ...)
 	local fn = button[method]
 	if type(fn) == "function" then
-		pcall(fn, button, ...)
+		local ok, err = pcall(fn, button, ...)
+		if not ok and not failed[method] then
+			failed[method] = true
+			Log("slot method failed:", method, tostring(err))
+		end
 	end
 end
 
@@ -514,6 +524,6 @@ function ns.ApplyBagWindow()
 		Bags.active = false
 		ns.Print("The bags window is off. /reload to get the game's bags back.")
 	elseif reason then
-		ns.Print("The bags window is " .. reason .. ".")
+		ns.Print("The bags window is not in use: " .. reason .. ".")
 	end
 end

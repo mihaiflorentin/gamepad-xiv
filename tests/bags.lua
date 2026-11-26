@@ -106,17 +106,21 @@ local function Login()
 end
 
 -- Off by default: nothing changes.
-Check("off: stands aside", ns.BagsStandAside(), "off in the settings")
+Check("off: stands aside", ns.BagsStandAside(), "it is off in the settings")
 Login()
 Check("off: game bags untouched", ContainerFrameCombinedBags:GetParent(), nil)
 
--- BagPad with the gamepad UI on keeps the bags.
+-- It needs Forever's gamepad UI off, and BagPad off.
 ns.db.bagWindow = true
-loaded.BagPad, gamepadUI = true, true
-Check("BagPad keeps the bags", ns.BagsStandAside(), "BagPad keeps the bags while Forever's gamepad UI is on")
+gamepadUI = true
+Check("gamepad UI on: stands aside", ns.BagsStandAside():find("needs Forever's gamepad UI off") ~= nil, true)
+ns.ApplyBagWindow()
+Check("gamepad UI on: says why", printed[#printed]:find("^The bags window is not in use: it needs") ~= nil, true)
 gamepadUI = false
-Check("BagPad without the gamepad UI: ours", ns.BagsStandAside(), nil)
+loaded.BagPad = true
+Check("BagPad loaded: stands aside", ns.BagsStandAside(), "BagPad is loaded; turn BagPad off to use it")
 loaded.BagPad = nil
+Check("gamepad UI off, no BagPad: in use", ns.BagsStandAside(), nil)
 
 -- Turned on: the game's bag windows go under a hidden frame.
 ns.ApplyBagWindow()
@@ -154,9 +158,29 @@ Check("R1 wraps to the backpack", ns.Bags.cursor, 1)
 GamepadXIVNavPAD4.scripts.OnClick(GamepadXIVNavPAD4, "LeftButton", true)
 Check("Triangle sorts", _G.sorted, true)
 
--- Back is the addon's while the window is open.
+-- Back is the addon's while the window is open. Back on the last (only) window lets go: the focus
+-- ends, the window stays open and Back goes back to the addon's usual Back; Back again later, after
+-- the window list changed, is the addon's again.
 ns.Nav.UpdateBack()
 Check("Back bound", bindings.PADBACK, "CLICK GamepadXIVNavBack:LeftButton")
+GamepadXIVNavBack.scripts.OnClick(GamepadXIVNavBack, "LeftButton", true)
+Check("Back on the only window: focus ends", ns.NavFocused(), nil)
+Check("window stays open", window.shown, true)
+Check("Back given back", bindings.PADBACK, nil)
+ns.Nav.UpdateBack()
+Check("still given back", bindings.PADBACK, nil)
+ns.NavFocus("Bags")
+ns.Nav.UpdateBack()
+Check("focus again: Back is ours again", bindings.PADBACK, "CLICK GamepadXIVNavBack:LeftButton")
+
+-- The chat box holding the keys: the bags don't take the focus, and Back stays the chat box's.
+ns.NavFocus(nil)
+ns.ChatBoxHoldsKeys = function() return true end
+Check("busy: no focus on open", ns.NavOpened("Bags"), false)
+ns.Nav.UpdateBack()
+Check("busy: Back left alone", bindings.PADBACK, nil)
+ns.ChatBoxHoldsKeys = nil
+ns.NavFocus("Bags")
 
 -- A toggle that closes and opens inside it (as the game's does) flips the window once.
 GameCalls("CloseBackpack")

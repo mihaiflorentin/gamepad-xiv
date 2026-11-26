@@ -624,7 +624,8 @@ Kept in `.reference/`, which is git-ignored and not packaged (the packager build
     - a gold cursor frame, the item tooltip beside the window, money and free slots in the header, a footer hint that names what {PAD1} does there.
     - The game's bag windows are moved under a hidden frame with `SetParent`.
     - Post-hooks on the game's Toggle / Open / Close bag functions are settled once per frame: a toggle flips the window, an open shows it, and a close hides it only if the game has no bag open.
-    - It stands aside while BagPad is loaded and Forever's gamepad UI is on.
+    - It stands aside while Forever's gamepad UI is on, because Forever's FrameControlsManager marks the game's bag frame focused on every `ContainerFrame.OpenBag` event, even out of sight (`Blizzard_GamepadSharedUtility/FrameControlsManager.lua:217`). It also stands aside while BagPad is loaded.
+    - Back on the last open window lets go: the focus ends and Back returns to the usual Back (chat) until a window opens, closes or takes the focus again. Our windows don't take the focus, and Back stays free, while the chat box or the settings window holds the keys (`ns.NavBusy`).
     - Turning it off needs a reload.
   - **Tests:** `tests/bags.lua` (all pass), and an Unreleased changelog line.
 - Known gaps in the bags window:
@@ -633,7 +634,8 @@ Kept in `.reference/`, which is git-ignored and not packaged (the packager build
   - not movable;
   - Escape doesn't close it (adding it to `UISpecialFrames` would write a Blizzard table);
   - in combat the focus ends, so items are used by mouse or the bars.
-  - With gamepad mode on, the game's hidden bag frame stays "open" after Circle closes ours. Check in game whether Forever's cursor tries to focus it.
+  - After Circle closes ours, the game's hidden bag frame stays "open". A toggle then flips ours, which the hooks handle.
+  - So testing the bags needs gamepad mode off (Phase 0) and BagPad off.
 - Next: test the bags window in game, then the bank (part of row 1), then mail. Phase 0 is still for the player to run.
 - Build order agreed with the player: bags and bank, mail, loot, NPC interaction, map, popups, trade (milestone A), then the rest.
 
