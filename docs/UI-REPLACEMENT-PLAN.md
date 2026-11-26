@@ -607,7 +607,15 @@ Kept in `.reference/`, which is git-ignored and not packaged (the packager build
   - the alpha checks in `.github/workflows/release.yml`;
   - the alpha / beta order in News.lua's version compare (tested on 9 version pairs);
   - `.reference/` in `.gitignore`.
-- Nothing is built from the plan yet. The next step is Phase 0, the in-game test.
+- Committed and pushed: 85f57ec (plan, alpha pipeline, News.lua version order).
+- Built, not committed: `Nav.lua`, the navigation core (in the toc after Repeat.lua), with `tests/nav.lua`. It holds:
+  - the window registry with priority groups and the player's own order and skips;
+  - the Back cycle both ways (`ns.NavCycle`), plus `ns.NavFocus`, `ns.NavOpened` and `ns.NavClosed`;
+  - the key bindings of the focused window to `GamepadXIVNav<Key>` buttons (the D-pad repeats while held), bound again when another binding takes a key;
+  - focus ends at combat start;
+  - the screen-position cursor `ns.NavPick` and the footer hints `ns.NavHint`.
+  - No window uses it yet, and Back isn't wired to it yet, so nothing changes in game.
+- Next: the window kit (a themed window, list and grid widgets, the hint bar), then the bags. Phase 0 is still for the player to run.
 - Build order agreed with the player: bags and bank, mail, loot, NPC interaction, map, popups, trade (milestone A), then the rest.
 
 ### Research data: the player's setup
