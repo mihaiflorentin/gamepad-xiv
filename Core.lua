@@ -134,6 +134,7 @@ ns.DEFAULTS = {
 	chatLinks = true, -- open chat links under the cursor, and put Shift-clicked item links in chat
 	openBagsWhenNeeded = false, -- experimental: open the bags for a spell that targets an item, and at the mailbox
 	bagWindow = false, -- alpha: the addon's own bags window (Bags.lua)
+	withoutGamepadUI = false, -- alpha: run with Forever's gamepad UI off (docs/UI-REPLACEMENT-PLAN.md, phase 2)
 	partyHighlight = "fill", -- "outline", "thick", "fill", "pulse" or "none": how the selected party member's frame is marked
 	raidHighlight = "thick", -- the same, for raid frames
 	partyPrompt = "bottom", -- "bottom", "top" or "off": the button prompt with the party frames
@@ -817,6 +818,12 @@ end
 
 function ns.IsGamepadUI()
 	return InputUtil and InputUtil.IsGamepadUIEnabled and InputUtil.IsGamepadUIEnabled()
+end
+
+-- The addon runs: with Forever's gamepad UI on, or with it off when "Without Forever's gamepad UI"
+-- (alpha) is on.
+function ns.ControllerOn()
+	return ns.IsGamepadUI() or (ns.db and ns.db.withoutGamepadUI) and true or false
 end
 
 -- One-time changes to saved settings, in order. Each runs once per character profile: the number of

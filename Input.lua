@@ -10,6 +10,21 @@ local TEMP_CVARS = {
 	SoftTargetIconInteract = "0", -- the client's prompt shows Forever's button; see HookInteractPrompt
 }
 
+-- With Forever's gamepad UI off, the temporary CVars Forever's gamepad mode sets (Blizzard_Gamepad
+-- Core.lua, SetupCVarsForInputMode), so soft targeting, interact and the camera behave the same.
+-- SoftTargetIconInteract stays the addon's own (TEMP_CVARS).
+local NO_GAMEPAD_UI_CVARS = {
+	SoftTargetEnemy = "1", SoftTargetFriend = "0", SoftTargetIconEnemy = "0", SoftTargetIconFriend = "0",
+	SoftTargetWithLocked = "1", SoftTargetMatchLocked = "1",
+	SoftTargetNameplateEnemy = "0", SoftTargetNameplateInteract = "0", SoftTargetTooltipEnemy = "0",
+	SoftTargetTooltipFriend = "0", SoftTargetInteract = "1", SoftTargetInteractRange = "20",
+	SoftTargetIconGameObject = "1", SoftTargetEnemyArc = "1", SoftTargetFriendArc = "2", SoftTargetInteractArc = "1",
+	SoftTargetForce = "0", SoftTargetNameplateSize = "20", TargetAutoEnemy = "1", TargetAutoFriend = "1",
+	TargetEnemyAttacker = "1", TargetAutoLock = "1",
+	CameraFollowYawSpeed = "1.0", CameraFollowPitchSpeed = "0.5", CameraFollowPitchStrength = "1.0",
+	CameraFollowPitchDeadZone = "0.0", CameraReduceUnexpectedMovement = "0", CameraKeepCharacterCentered = "1",
+}
+
 -- Input settings the client may only honour as real values, so they are also saved.
 -- The player's own values are kept in the saved variables and survive a crash, so they can be put back.
 local INPUT_CVARS = {
@@ -208,6 +223,15 @@ local function ApplyTempCVars(apply)
 	if not apply and ns.IsGamepadUI() then
 		SetTemp("SoftTargetIconInteract", "1") -- Forever's own value, for its prompt
 	end
+	local noUI = apply and not ns.IsGamepadUI()
+	for name, value in pairs(NO_GAMEPAD_UI_CVARS) do
+		if noUI then
+			SetTemp(name, value)
+		elseif ns.noUICVarsSet then
+			RemoveTemp(name)
+		end
+	end
+	ns.noUICVarsSet = noUI
 	UpdateCameraCVars()
 end
 
@@ -225,6 +249,9 @@ end
 
 -- Forever's reserved buttons do the context-sensitive work (loot, talk, attack, cancel...).
 local function ForeverButtonBinding(index, fallback)
+	if not ns.IsGamepadUI() then
+		return fallback -- Forever's gamepad bar isn't in use
+	end
 	local topBar = GamepadMainActionBarFrame and GamepadMainActionBarFrame.PageUnit
 		and GamepadMainActionBarFrame.PageUnit.actionBars and GamepadMainActionBarFrame.PageUnit.actionBars.topBar
 	local button = topBar and topBar.Right and topBar.Right["ActionButton" .. index]
@@ -3179,7 +3206,7 @@ function ns.Sync()
 	end
 
 	local db = ns.db
-	local on = db.enabled and ns.IsGamepadUI() and not ns.foreverEditorOpen
+	local on = db.enabled and ns.ControllerOn() and not ns.foreverEditorOpen
 
 	driver:SetAttribute("fc-priority", db.priorityBindings and 1 or 0)
 	driver:SetAttribute("fc-hide-WL", db.showTopLeft ~= "always" and 1 or 0)

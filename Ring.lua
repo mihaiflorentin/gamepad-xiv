@@ -1265,6 +1265,8 @@ function ns.OnRing(action)
 		ring.sub = nil
 		ShowPage()
 		ns.ringOpen = true
+		-- A focused window of the addon's (the bags) lets go of the keys the ring takes.
+		if ns.NavSuspend then ns.NavSuspend() end
 		ring:Show()
 		ns.RingArmCombat()
 		PlaySound(SOUNDKIT.GAMEPAD_RADIAL_MENU_OPEN)

@@ -5,6 +5,7 @@
 ### New
 
 - Added a bags window for the controller, off by default (alpha).
+- Added an option to play without Forever's gamepad UI (alpha).
 
 ### Fixed
 

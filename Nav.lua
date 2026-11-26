@@ -311,6 +311,9 @@ function ns.NavFocus(name)
 		return true
 	end
 	Nav.focused = window
+	if window then
+		Nav.resume = nil
+	end
 	Nav.ApplyBindings()
 	Call(old, "OnBlur")
 	Call(window, "OnFocus")
@@ -360,14 +363,34 @@ function ns.NavClosed(name)
 	end
 end
 
--- Another of the addon's windows holds the controller keys its own way: the chat box while typing or
--- browsing, and the settings window.
+-- Something else of the addon's holds the controller keys its own way: the chat box while typing or
+-- browsing, the settings window, the ring, a flyout or the bars' move mode (the driver's bindings,
+-- which a focused window's would cover).
 function ns.NavBusy()
 	if ns.ChatBoxHoldsKeys and ns.ChatBoxHoldsKeys() then
 		return true
 	end
+	if ns.ringOpen then
+		return true
+	end
+	local driver = _G.GamepadXIVDriver
+	if driver and driver.GetAttribute then
+		local flyout = driver:GetAttribute("fc-flyout")
+		if (flyout and flyout ~= "") or driver:GetAttribute("fc-editing") == 1 then
+			return true
+		end
+	end
 	local config = _G.GamepadXIVConfigFrame
 	return config ~= nil and config.IsShown ~= nil and config:IsShown() and true or false
+end
+
+-- The focused window lets go while something else holds the keys, and gets the focus back after.
+function ns.NavSuspend()
+	if Nav.focused and not InCombatLockdown() then
+		Nav.resume = Nav.focused.name
+		ns.NavLog("suspended:", Nav.resume)
+		ns.NavFocus(nil)
+	end
 end
 
 -- A window that should take the controller as it opens (popups, trade) calls this.
@@ -501,6 +524,18 @@ watch:SetScript("OnUpdate", function(_, elapsed)
 	since = 0
 	if InCombatLockdown() then
 		return
+	end
+	local busy = ns.NavBusy()
+	if busy and Nav.focused then
+		ns.NavSuspend()
+	elseif not busy and Nav.resume and not Nav.focused then
+		local name = Nav.resume
+		Nav.resume = nil
+		local resumed = Nav.windows[name]
+		if resumed and IsOpen(resumed) then
+			ns.NavLog("resumed:", name)
+			ns.NavFocus(name)
+		end
 	end
 	Nav.UpdateBack()
 	local window = Nav.focused

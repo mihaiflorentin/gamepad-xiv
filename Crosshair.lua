@@ -137,6 +137,9 @@ local function Layout(canvas)
 	look.alpha = db.crosshairAlpha or 1
 	look.outline = db.crosshairOutline and true or false
 	local style = db.crosshairStyle
+	if style == "forever" and not ns.IsGamepadUI() then
+		style = "cross" -- no Forever reticle without its gamepad UI
+	end
 	local size = Pixels(db.crosshairSize or 16)
 	local thick = Pixels(db.crosshairThickness or 2)
 	-- With an odd thickness the middle is a pixel's center, otherwise a pixel corner.
@@ -194,7 +197,7 @@ function ns.RefreshCrosshair()
 	if not ns.db then
 		return
 	end
-	Anchor(main, GamepadReticle)
+	Anchor(main, ns.IsGamepadUI() and GamepadReticle or nil)
 	Layout(main)
 	local icons = ForeverIcons()
 	if icons and (ns.db.crosshairStyle or "forever") == "forever" then
@@ -212,11 +215,14 @@ watcher:SetScript("OnUpdate", function()
 	end
 	local style = db.crosshairStyle or "forever"
 	local reticle = GamepadReticle
-	local custom = style ~= "forever"
-	local visible = custom and style ~= "none" and reticle and reticle:IsVisible() and not IsCursorVisible()
+	local noUI = not ns.IsGamepadUI()
+	local custom = style ~= "forever" or noUI
+	-- Without Forever's gamepad UI there is no reticle: the addon's crosshair shows while it runs.
+	local where = noUI and (db.enabled and db.withoutGamepadUI) or (reticle and reticle:IsVisible())
+	local visible = custom and style ~= "none" and where and not IsCursorVisible()
 	frame:SetShown(visible and true or false)
 	if visible then
-		Anchor(main, GamepadReticle)
+		Anchor(main, not noUI and GamepadReticle or nil)
 	end
 	local icons = ForeverIcons()
 	if custom and icons and icons:GetAlpha() > 0 then

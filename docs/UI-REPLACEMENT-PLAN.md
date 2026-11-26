@@ -636,7 +636,19 @@ Kept in `.reference/`, which is git-ignored and not packaged (the packager build
   - in combat the focus ends, so items are used by mouse or the bars.
   - After Circle closes ours, the game's hidden bag frame stays "open". A toggle then flips ours, which the hooks handle.
   - So testing the bags needs gamepad mode off (Phase 0) and BagPad off.
-- Next: test the bags window in game, then the bank (part of row 1), then mail. Phase 0 is still for the player to run.
+- Phase 0 results from the player (2026-11-26, gamepad UI off):
+  - the controller works;
+  - the bags window works, including ground-targeted items placed with Cross;
+  - but the whole addon switched itself off: `Input.lua` Sync had `on = db.enabled and ns.IsGamepadUI()`, so no crossbars, and the crosshair only drew over Forever's reticle.
+  - Button icons were Xbox, because the game's icon set is "Generic" without the gamepad UI. Fixed with `ns.ButtonAtlas` / `ns.OwnLabelStyle`, which read the controller's `labelStyle` and map PlayStation keys to the `gamepad-ps-*` atlases.
+  - The ring didn't take its keys while the bags window had the focus (Nav's priority bindings covered the driver's). Fixed: `ns.NavSuspend` / `NavBusy` (ring open, flyout, move mode) and resume after.
+- Phase 2 started: setting `withoutGamepadUI` ("Without Forever's gamepad UI (alpha)", General > ALPHA):
+  - `ns.ControllerOn()` replaces the gamepad UI gate in Sync;
+  - Forever's 29 temp CVars are set by us when the gamepad UI is off (`NO_GAMEPAD_UI_CVARS`, Input.lua);
+  - Cross interact falls back to `INTERACTTARGET` (`ForeverButtonBinding`);
+  - the crosshair draws in the screen center, and "Forever's" style draws the cross.
+  - Not tested in game yet.
+- Next: the player tests the crossbars, targeting, interact, crosshair, ring and popups with the gamepad UI off; fix what breaks; then the bank (part of row 1), then mail.
 - Build order agreed with the player: bags and bank, mail, loot, NPC interaction, map, popups, trade (milestone A), then the rest.
 
 ### Research data: the player's setup

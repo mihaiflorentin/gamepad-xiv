@@ -296,7 +296,12 @@ local function BuildTabs()
 					tip = "Experimental. Opens your bags when a spell or scroll asks you to pick an item, and at the mailbox, if the game left them closed." },
 				{ type = "check", key = "bagWindow", label = "Bags window (alpha)",
 					onChange = function() if ns.ApplyBagWindow then ns.ApplyBagWindow() end end,
-					tip = "Alpha. All your bags in one window moved with the D-pad: {PAD1} uses, equips, sells at a vendor or puts the item in the bank, mail or trade, {PAD3} picks it up or puts it down, {PAD4} sorts, {PADLSHOULDER} / {PADRSHOULDER} jump between bags and {PAD2} closes. {PADBACK} steps between the addon's open windows. Needs Forever's gamepad UI off (Options > Gameplay > Gamepad) and BagPad off. Turning it off needs a /reload." },
+					tip = "Alpha. Needs \"Without Forever's gamepad UI\" below. All your bags in one window moved with the D-pad: {PAD1} uses, equips, sells at a vendor or puts the item in the bank, mail or trade, {PAD3} picks it up or puts it down, {PAD4} sorts, {PADLSHOULDER} / {PADRSHOULDER} jump between bags and {PAD2} closes. {PADBACK} steps between the addon's open windows. Needs Forever's gamepad UI off (Options > Gameplay > Gamepad) and BagPad off. Turning it off needs a /reload." },
+				{ type = "spacer", label = "" },
+				{ type = "header", label = "ALPHA" },
+				{ type = "check", key = "withoutGamepadUI", label = "Without Forever's gamepad UI (alpha)",
+					onChange = function() ns.Print("/reload to apply \"Without Forever's gamepad UI\".") end,
+					tip = "Alpha. Runs the crossbars, targeting and the crosshair with Forever's gamepad UI turned off (Options > Gameplay > Gamepad > Enable Gamepad UI), so the addon's own windows, such as the bags window, can take over. Windows the addon hasn't replaced yet have no controller navigation then. Turning Forever's gamepad UI on or off resets your Edit Mode layout. Needs a /reload." },
 			},
 		},
 		{
