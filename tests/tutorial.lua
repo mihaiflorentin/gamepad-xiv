@@ -85,6 +85,13 @@ hooksecurefunc = function(name, fn)
 	local old = _G[name]
 	_G[name] = function(...) local r = old(...); fn(...); return r end
 end
+-- Core.lua's icon helper, on the stubbed icon utility.
+function ns.ButtonAtlas(key)
+	local utility = InputIconTextureSetUtility
+	if utility and utility.GetActiveInputIconButtonTextures and utility.GetActiveInputIconButtonTextures(key) then
+		return utility.GetNormalActiveInputIconButtonTexture(key)
+	end
+end
 assert(loadfile("Repeat.lua"))("GamepadXIV", ns)
 assert(loadfile(arg[1] or "Tutorial.lua"))("GamepadXIV", ns)
 
