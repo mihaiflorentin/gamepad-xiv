@@ -1,10 +1,16 @@
 # Pushing a v* tag publishes to CurseForge and GitHub Releases.
-# Pushing to main only builds the package and keeps it as a run artifact.
+# Pushing to main or ui-rework only builds the package and keeps it as a run artifact.
+#
+# The tag name sets the CurseForge release type (the packager reads it):
+#   v0.1.30          a release, from main; every player gets it.
+#   v0.2.0-alpha.1   an alpha, from ui-rework; only players who set Gamepad XIV to Alpha in the
+#                    CurseForge app (or download the file by hand) get it.
+#   v0.2.0-beta.1    a beta, the same way for players who picked Beta.
 name: Package and release
 
 on:
   push:
-    branches: [main]
+    branches: [main, ui-rework]
     tags: ["v*"]
 
 jobs:
@@ -35,6 +41,23 @@ jobs:
       - name: Require the CurseForge token
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         run: test -n "$CF_API_TOKEN" || { echo "::error::The CF_API_TOKEN secret is empty"; exit 1; }
+
+      # A release tag must point at main, so an alpha commit is never published to every player.
+      # Alpha and beta tags must be named v<x>.<y>.<z>-alpha.<n> or -beta.<n>, so the packager marks them.
+      - name: Check the tag
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+              || { echo "::error::Release tag $TAG is not on main. Alpha builds need a -alpha.N tag."; exit 1; }
+            echo "Publishing $TAG as a release"
+          elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta)\.[0-9]+$ ]]; then
+            echo "Publishing $TAG as ${BASH_REMATCH[1]}"
+          else
+            echo "::error::Tag $TAG is not vX.Y.Z, vX.Y.Z-alpha.N or vX.Y.Z-beta.N"; exit 1
+          fi
 
       - name: Publish release
         if: ${{ startsWith(github.ref, 'refs/tags/') }}

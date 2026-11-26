@@ -28,6 +28,14 @@ local function Parts(version)
 	for number in numbers:gmatch("%d+") do
 		parts[#parts + 1] = tonumber(number)
 	end
+	-- Test builds come before their release: v0.2.0-alpha.2 < v0.2.0-beta.1 < v0.2.0.
+	local stage, build = tostring(version or ""):match("%-(%a+)%.?(%d*)$")
+	stage = stage and stage:lower()
+	while #parts < 3 do
+		parts[#parts + 1] = 0
+	end
+	parts[4] = stage == "alpha" and 1 or stage == "beta" and 2 or 3
+	parts[5] = parts[4] < 3 and tonumber(build) or 0
 	return parts
 end
 
