@@ -116,7 +116,7 @@ local function Update()
 		return
 	end
 	local book = ns.db and ns.db.spellbookAssign and ns.IsActive and ns.IsActive() and SpellbookFrame()
-	local nav = SmartNavigation
+	local nav = ns.Mode():Navigator()
 	local button = book and nav and nav.activeInfo and nav.currentButton
 	local close = book and CloseButtonOf(book)
 	if button and Visible(button) and Inside(button, book) then

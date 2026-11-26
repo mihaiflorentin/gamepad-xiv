@@ -27,3 +27,11 @@ Every list or menu of the addon's own that the D-pad moves through must wrap aro
 - Use `ns.StepWrap(index, delta, count)` from `Repeat.lua`. While the D-pad is held (`ns.RepeatOnHold`), it stops at the ends instead, so a held press doesn't loop.
 - The mouse wheel scrolls and stops at the ends. It never wraps.
 - When you add a new list, menu, dropdown or settings page, add the wrap in the same change.
+
+## Both modes go through Mode.lua
+
+The addon runs with Forever's gamepad UI on (the Forever adapter) and off (the Standalone adapter). See `Mode.lua` and `docs/UI-REPLACEMENT-PLAN.md`.
+
+- Never check the gamepad UI, or reach for Forever's gamepad objects (`SmartNavigation`, `GamepadMode.FrameControlsManager`, `GamepadMainActionBarFrame`, `GamepadReticle`, the icon set), from a feature. Ask `ns.Mode()` and call its method, such as `ns.Mode():Navigator()`, `:CursorButton()`, `:BarButton(i)`, `:Reticle()` or `:IconAtlas(key)`.
+- `ns.Mode().nativeNav` is true when Forever's cursor drives the game's windows. Features that only help that cursor do nothing without it.
+- When a feature needs something the two modes do differently, add a method to both adapters in `Mode.lua`, with the same name and arguments, and a check in `tests/mode.lua`. That test fails when one adapter lacks a method the other has.

@@ -9,6 +9,7 @@
 ## OptionalDeps: Blizzard_Gamepad, Blizzard_GamepadActionBars
 
 Core.lua
+Mode.lua
 Repeat.lua
 Nav.lua
 Profiles.lua

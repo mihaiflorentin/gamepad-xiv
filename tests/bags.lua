@@ -87,6 +87,10 @@ local ns = { db = {} }
 local printed = {}
 function ns.Print(text) table.insert(printed, text) end
 function ns.ButtonText(text) return text end
+function ns.IsGamepadUI() return gamepadUI end
+function ns.ControllerOn() return true end
+function GetTime() return 0 end
+assert(loadfile("Mode.lua"))("GamepadXIV", ns)
 assert(loadfile("Repeat.lua"))("GamepadXIV", ns)
 assert(loadfile("Nav.lua"))("GamepadXIV", ns)
 assert(loadfile("Bags.lua"))("GamepadXIV", ns)

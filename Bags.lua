@@ -55,16 +55,12 @@ local function AddOnLoaded(name)
 	return loaded and loaded(name) and true or false
 end
 
-local function GamepadUI()
-	return InputUtil and InputUtil.IsGamepadUIEnabled and InputUtil.IsGamepadUIEnabled() or false
-end
-
 -- Why the window stands aside, or nil when it is in use.
 function ns.BagsStandAside()
 	if not (ns.db and ns.db.bagWindow) then
 		return "it is off in the settings"
-	elseif GamepadUI() then
-		return "it needs Forever's gamepad UI off (Options > Gameplay > Gamepad > Enable Gamepad UI, then /reload)"
+	elseif ns.Mode():BagsWindowBlocked() then
+		return ns.Mode():BagsWindowBlocked()
 	elseif AddOnLoaded("BagPad") then
 		return "BagPad is loaded; turn BagPad off to use it"
 	end
@@ -563,6 +559,7 @@ ns.NavRegister({
 		PAD3 = SlotClick("LeftButton"),
 	},
 	Hint = Bags.Hint,
+	Current = function() return Bags.Current() end,
 	Redraw = function() Bags.DrawCursor() end,
 	OnFocus = function() Bags.DrawCursor() end,
 	OnBlur = function() Bags.DrawCursor() end,

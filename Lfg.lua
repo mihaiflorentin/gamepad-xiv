@@ -56,7 +56,7 @@ end
 
 -- Forever's controller cursor is in the window (and not in a menu or a popup over it).
 local function CursorInWindow()
-	local nav = SmartNavigation
+	local nav = ns.Mode():Navigator()
 	local frame = nav and nav.activeInfo and nav.activeInfo.frame
 	if frame ~= LFGParentFrame and frame ~= LFGBrowseFrame then
 		return false
@@ -83,7 +83,7 @@ end
 
 -- The list entry under the controller cursor, or nil.
 local function FocusedEntry()
-	local frame = SmartNavigation and SmartNavigation.currentButton
+	local frame = ns.Mode().nativeNav and ns.Mode():CursorButton()
 	local scrollBox = LFGBrowseFrame and LFGBrowseFrame.ScrollBox
 	for _ = 1, 4 do
 		-- A forbidden frame (the trade window's secure money input) throws on any method but IsForbidden.
@@ -206,7 +206,7 @@ local function UpdateHint()
 	if not hint then
 		return
 	end
-	local shown = WindowShown() and ns.IsGamepadUI and ns.IsGamepadUI() and not InCombatLockdown()
+	local shown = WindowShown() and ns.Mode().nativeNav and not InCombatLockdown()
 		and not (ns.LfgFilterShown and ns.LfgFilterShown())
 	hint:SetShown(shown and true or false)
 	if shown then
@@ -263,7 +263,7 @@ local function ShowConfirm(info)
 		confirm.cancel:SetScript("OnClick", function() HideConfirm("cancelled with the mouse") end)
 	end
 	confirm.info = info
-	confirm.navButton = SmartNavigation and SmartNavigation.currentButton
+	confirm.navButton = ns.Mode().nativeNav and ns.Mode():CursorButton()
 	confirm.title:SetText("Whisper " .. Ambiguate(info.leaderName, "short") .. "?")
 	confirm.message:SetText("\"" .. ns.LfgMessage(info) .. "\"")
 	confirm.keys:SetText(ns.ButtonText("{PAD1} Send     {PAD4} Cancel", 20))
@@ -285,13 +285,13 @@ local function OnConfirmPress()
 		return
 	end
 	if not CursorInWindow() then
-		ns.LfgLog("A: cursor not in the window; its frame:", FrameName(SmartNavigation and SmartNavigation.activeInfo and SmartNavigation.activeInfo.frame))
+		ns.LfgLog("A: cursor not in the window; its frame:", FrameName(ns.Mode():Navigator() and ns.Mode():Navigator().activeInfo and ns.Mode():Navigator().activeInfo.frame))
 		return
 	end
 	local entry = FocusedEntry()
 	local info, why = GroupInfo(entry)
 	if not info then
-		ns.LfgLog("A: nothing to whisper,", why, "cursor on:", FrameName(SmartNavigation and SmartNavigation.currentButton))
+		ns.LfgLog("A: nothing to whisper,", why, "cursor on:", FrameName(ns.Mode().nativeNav and ns.Mode():CursorButton()))
 		return
 	end
 	if ns.db.lfgAsk == "off" then
@@ -320,7 +320,7 @@ local function UpdateBindings()
 	if InCombatLockdown() then
 		return
 	end
-	if not (WindowShown() and ns.IsGamepadUI and ns.IsGamepadUI() and CursorInWindow()) then
+	if not (WindowShown() and ns.Mode().nativeNav and CursorInWindow()) then
 		ClearBindings("cursor left the window")
 		return
 	end
@@ -430,7 +430,7 @@ watcher:SetScript("OnUpdate", function(_, elapsed)
 		end
 		return
 	end
-	if InCombatLockdown() or not (ns.IsGamepadUI and ns.IsGamepadUI()) then
+	if InCombatLockdown() or not (ns.Mode().nativeNav) then
 		wasDown = false
 		return
 	end
@@ -439,7 +439,7 @@ watcher:SetScript("OnUpdate", function(_, elapsed)
 	if not windowWasShown then
 		windowWasShown = true
 		wasDown = down
-		ns.LfgLog("window open, cursor frame:", FrameName(SmartNavigation and SmartNavigation.activeInfo and SmartNavigation.activeInfo.frame))
+		ns.LfgLog("window open, cursor frame:", FrameName(ns.Mode():Navigator() and ns.Mode():Navigator().activeInfo and ns.Mode():Navigator().activeInfo.frame))
 		wipe(takenBack)
 	end
 	if down and not wasDown then
@@ -447,7 +447,7 @@ watcher:SetScript("OnUpdate", function(_, elapsed)
 	end
 	wasDown = down
 	-- Moving off the entry cancels the question.
-	if confirm and confirm:IsShown() and SmartNavigation and SmartNavigation.currentButton ~= confirm.navButton then
+	if confirm and confirm:IsShown() and ns.Mode().nativeNav and ns.Mode():CursorButton() ~= confirm.navButton then
 		HideConfirm("cursor moved")
 	end
 	elapsedSince = elapsedSince + elapsed

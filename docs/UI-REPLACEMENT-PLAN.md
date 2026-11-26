@@ -648,6 +648,16 @@ Kept in `.reference/`, which is git-ignored and not packaged (the packager build
   - Cross interact falls back to `INTERACTTARGET` (`ForeverButtonBinding`);
   - the crosshair draws in the screen center, and "Forever's" style draws the cross.
   - Not tested in game yet.
+- **Mode adapters (Mode.lua), decided 2026-11-26.** Everything built must work with the gamepad UI on and off, so features ask `ns.Mode()`. It returns the Forever adapter (gamepad UI on) or the Standalone adapter (off), both with the same methods:
+  - `IconAtlas(key)`: the game's icon set, or the controller's own `labelStyle` art standalone;
+  - `BarButton(i)`: Forever's gamepad bar button (the interact button is 1), nil standalone;
+  - `Navigator()`, `FocusManager()`, `CursorButton()`, `UIFocused()`: Forever's cursor and focus manager, or nil / the addon's own Nav window standalone;
+  - `Reticle()`, `CrosshairShown()`, `CrosshairStyle(style)`: Forever's reticle, or the screen center and the cross standalone;
+  - `TempCVars()`: none, or Forever's 29 temporary CVars standalone;
+  - `BagsWindowBlocked()`: the reason the bags window can't take over (Forever), or nil;
+  - the `nativeNav` flag.
+  - Call sites moved onto it: Core (icons), Input (interact, Back's focus manager, temp CVars, right-stick scroll, equipment set fix), Crosshair, Items, Lfg, Spellbook, MenuWrap, Bags.
+  - `tests/mode.lua` checks that both adapters have the same methods. AGENTS.md has the rule.
 - Next: the player tests the crossbars, targeting, interact, crosshair, ring and popups with the gamepad UI off; fix what breaks; then the bank (part of row 1), then mail.
 - Build order agreed with the player: bags and bank, mail, loot, NPC interaction, map, popups, trade (milestone A), then the rest.
 

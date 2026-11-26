@@ -70,7 +70,7 @@ local function Check()
 	if InCombatLockdown() then
 		return
 	end
-	local current = SmartNavigation and SmartNavigation.currentButton
+	local current = ns.Mode().nativeNav and ns.Mode():CursorButton() or nil
 	local menu = current and current.GetParent and MenuOf(current)
 	if not menu then
 		Unbind("no menu")

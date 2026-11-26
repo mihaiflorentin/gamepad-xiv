@@ -10,20 +10,6 @@ local TEMP_CVARS = {
 	SoftTargetIconInteract = "0", -- the client's prompt shows Forever's button; see HookInteractPrompt
 }
 
--- With Forever's gamepad UI off, the temporary CVars Forever's gamepad mode sets (Blizzard_Gamepad
--- Core.lua, SetupCVarsForInputMode), so soft targeting, interact and the camera behave the same.
--- SoftTargetIconInteract stays the addon's own (TEMP_CVARS).
-local NO_GAMEPAD_UI_CVARS = {
-	SoftTargetEnemy = "1", SoftTargetFriend = "0", SoftTargetIconEnemy = "0", SoftTargetIconFriend = "0",
-	SoftTargetWithLocked = "1", SoftTargetMatchLocked = "1",
-	SoftTargetNameplateEnemy = "0", SoftTargetNameplateInteract = "0", SoftTargetTooltipEnemy = "0",
-	SoftTargetTooltipFriend = "0", SoftTargetInteract = "1", SoftTargetInteractRange = "20",
-	SoftTargetIconGameObject = "1", SoftTargetEnemyArc = "1", SoftTargetFriendArc = "2", SoftTargetInteractArc = "1",
-	SoftTargetForce = "0", SoftTargetNameplateSize = "20", TargetAutoEnemy = "1", TargetAutoFriend = "1",
-	TargetEnemyAttacker = "1", TargetAutoLock = "1",
-	CameraFollowYawSpeed = "1.0", CameraFollowPitchSpeed = "0.5", CameraFollowPitchStrength = "1.0",
-	CameraFollowPitchDeadZone = "0.0", CameraReduceUnexpectedMovement = "0", CameraKeepCharacterCentered = "1",
-}
 
 -- Input settings the client may only honour as real values, so they are also saved.
 -- The player's own values are kept in the saved variables and survive a crash, so they can be put back.
@@ -220,18 +206,20 @@ local function ApplyTempCVars(apply)
 			RemoveTemp(name)
 		end
 	end
-	if not apply and ns.IsGamepadUI() then
+	if not apply and ns.Mode().nativeNav then
 		SetTemp("SoftTargetIconInteract", "1") -- Forever's own value, for its prompt
 	end
-	local noUI = apply and not ns.IsGamepadUI()
-	for name, value in pairs(NO_GAMEPAD_UI_CVARS) do
-		if noUI then
+	-- The mode's own temporary CVars (Mode.lua: Forever's, set by the addon without its gamepad UI).
+	for name in pairs(ns.modeCVarsSet or {}) do
+		RemoveTemp(name)
+	end
+	ns.modeCVarsSet = nil
+	if apply then
+		ns.modeCVarsSet = ns.Mode():TempCVars()
+		for name, value in pairs(ns.modeCVarsSet) do
 			SetTemp(name, value)
-		elseif ns.noUICVarsSet then
-			RemoveTemp(name)
 		end
 	end
-	ns.noUICVarsSet = noUI
 	UpdateCameraCVars()
 end
 
@@ -249,12 +237,7 @@ end
 
 -- Forever's reserved buttons do the context-sensitive work (loot, talk, attack, cancel...).
 local function ForeverButtonBinding(index, fallback)
-	if not ns.IsGamepadUI() then
-		return fallback -- Forever's gamepad bar isn't in use
-	end
-	local topBar = GamepadMainActionBarFrame and GamepadMainActionBarFrame.PageUnit
-		and GamepadMainActionBarFrame.PageUnit.actionBars and GamepadMainActionBarFrame.PageUnit.actionBars.topBar
-	local button = topBar and topBar.Right and topBar.Right["ActionButton" .. index]
+	local button = ns.Mode():BarButton(index) -- none without Forever's gamepad UI
 	local name = button and button:GetName()
 	if name then
 		return "CLICK " .. name .. ":LeftButton", button
@@ -852,7 +835,7 @@ local function FixEquipmentSetList()
 		return
 	end
 	local function Fix()
-		if not (InputUtil and InputUtil.IsGamepadUIEnabled and InputUtil.IsGamepadUIEnabled()) then
+		if not ns.Mode().nativeNav then -- the equipment set list bug is in Forever's gamepad layout
 			return
 		end
 		local scrollBox, scrollBar = pane.ScrollBox, pane.ScrollBar
@@ -1061,7 +1044,7 @@ local function CreateBackChat()
 	-- After chat, the next Back is Forever's own, which lets go of the windows: the end of the cycle.
 	local afterChat = false
 	local function BackAction()
-		local manager = GamepadMode and GamepadMode.FrameControlsManager
+		local manager = ns.Mode():FocusManager()
 		if not manager then
 			return ""
 		end
@@ -1507,8 +1490,7 @@ local function CreateGroundTargetWatcher()
 		applied = targeting
 		ns.Trail("ground targeting " .. targeting)
 		ns.PlayLog("placing:", targeting == 2 and "spot" or targeting == 1 and "item or object" or "done",
-			"under character", tostring(ns.db.groundUnderCharacter), "ui focus", tostring(GamepadMode
-			and GamepadMode.FrameControlsManager and GamepadMode.FrameControlsManager.isUIFocused))
+			"under character", tostring(ns.db.groundUnderCharacter), "ui focus", tostring(ns.Mode():UIFocused()))
 		driver:SetAttribute("fc-spellTargeting", targeting)
 		SecureHandlerExecute(driver, [[
 			self:RunAttribute("UpdateTargetBindings")
@@ -1544,7 +1526,7 @@ local function CreateWindowCamera()
 	local released = false
 	watcher:SetScript("OnUpdate", function()
 		local listener = inputBindingAxisListener
-		local nav = SmartNavigation
+		local nav = ns.Mode():Navigator()
 		local bindings = nav and nav.rightStickScrollBindings
 		local scroll = bindings and bindings.axes and GAMEPAD_STICK_RIGHT and bindings.axes[GAMEPAD_STICK_RIGHT]
 		if not (listener and listener.IsGamePadStickEnabled and listener.left and listener.right and scroll) then

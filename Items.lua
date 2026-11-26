@@ -93,7 +93,7 @@ end
 local function FocusedAction()
 	local service, toService, fromService = OpenService()
 	-- Forever's cursor is in use: it keeps its last button when control goes back to the player.
-	local nav = SmartNavigation
+	local nav = ns.Mode():Navigator()
 	local button = service and nav and nav.activeInfo and nav.currentButton
 	if not (Usable(button) and button.IsVisible and button:IsVisible()) then
 		return nil
@@ -254,7 +254,7 @@ local function Update()
 		return
 	end
 	local command, button, text
-	if ns.IsGamepadUI and ns.IsGamepadUI() and CursorFree() then
+	if ns.Mode().nativeNav and CursorFree() then
 		command, button, text = FocusedAction()
 	end
 	local service = command and OpenService()
@@ -332,7 +332,7 @@ local function TargetingItem()
 end
 
 local function BagsWanted()
-	return ns.db and ns.db.openBagsWhenNeeded and ns.IsGamepadUI and ns.IsGamepadUI()
+	return ns.db and ns.db.openBagsWhenNeeded and ns.Mode().nativeNav
 end
 
 local function CheckSpell()
