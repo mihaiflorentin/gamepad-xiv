@@ -156,8 +156,13 @@ ChatTypeInfo = {
 -- /gxiv is an addon's (tainted), /reload the game's (secure).
 SlashCmdList = { GXIV = function(rest) _G.gxivRan = rest end, RELOAD = function() error("must not run here") end }
 SLASH_GXIV1, SLASH_RELOAD1 = "/gxiv", "/reload"
-SecureCmdList = { TARGET = true }
-SLASH_TARGET1 = "/target"
+SecureCmdList = { TARGET = true, USE = true }
+SLASH_TARGET1, SLASH_USE1 = "/target", "/use"
+-- Emotes, /reload and /roll: run here by calling the game's function behind each.
+EMOTE1_TOKEN, EMOTE1_CMD1, EMOTE1_CMD2 = "DANCE", "/dance", "/DANCE"
+performed, rolled, reloaded = {}, nil, 0
+function RandomRoll(low, high) rolled = low .. "-" .. high end
+C_UI = { Reload = function() reloaded = reloaded + 1 end }
 function issecurevariable(_, key) return key ~= "GXIV" end
 
 -- The chat data, as LfgFilter.lua keeps it.
@@ -202,7 +207,10 @@ ns.ChatAPI = {
 		local decorated = "{rt3} " .. text .. " {rt3}"
 		return #decorated <= 255 and decorated or text
 	end,
-	Info = function(key) return type(key) == "string" and CHANNELS[key] or nil end,
+	Info = function(key)
+		if type(key) == "string" and key:find("^#TAB:") then return ns.ChatCustomTabInfo(key) end
+		return type(key) == "string" and CHANNELS[key] or nil
+	end,
 	Chats = function() return chats end,
 	Icons = function(text) return text end,
 	Color = function(name) return name end,
@@ -259,7 +267,8 @@ function ChatFrameUtil.LinkItem(_, link)
 		ChatFrameUtil.OpenChat(link)
 	end
 end
-C_ChatInfo = { SendChatMessage = function(text) gameSent[#gameSent + 1] = text end }
+C_ChatInfo = { SendChatMessage = function(text) gameSent[#gameSent + 1] = text end,
+	PerformEmote = function(token, target) performed[#performed + 1] = token .. ":" .. tostring(target) end }
 local unhookedOpenChat = ChatFrameUtil.OpenChat -- a copy kept before the hooks, as other code may
 
 assert(loadfile("ChatBox.lua"))("GamepadXIV", ns)
@@ -304,19 +313,22 @@ Check("typing: Cross sends", Key("PAD1"), "CLICK GamepadXIVChatBoxSend:LeftButto
 Check("typing: Circle", Key("PAD2"), "CLICK GamepadXIVChatBoxBack:LeftButton")
 Check("active key on All", ns.ChatBoxActiveKey(), nil)
 
--- Game commands go through the macro button; the chat box's own commands don't.
-Type("/dance")
+-- Protected game commands go through the macro button; emotes, /reload, /roll and the chat box's own
+-- commands don't.
+Type("/use Hearthstone")
 Check("game command: Cross runs the macro", Key("PAD1"), "CLICK GamepadXIVChatBoxMacro:LeftButton")
-Check("game command: macrotext", GamepadXIVChatBoxMacro:GetAttribute("macrotext"), "/dance")
+Check("game command: macrotext", GamepadXIVChatBoxMacro:GetAttribute("macrotext"), "/use Hearthstone")
+Type("/dance")
+Check("emote: Send", Key("PAD1"), "CLICK GamepadXIVChatBoxSend:LeftButton")
 Type("/reload")
-Check("the game's slash command: macro", Key("PAD1"), "CLICK GamepadXIVChatBoxMacro:LeftButton")
+Check("/reload: Send", Key("PAD1"), "CLICK GamepadXIVChatBoxSend:LeftButton")
 Type("/target [@focus]")
 Check("secure command: macro", Key("PAD1"), "CLICK GamepadXIVChatBoxMacro:LeftButton")
 Type("/w Bob hi")
 Check("whisper command: Send", Key("PAD1"), "CLICK GamepadXIVChatBoxSend:LeftButton")
 Type("/gxiv")
 Check("addon command: Send", Key("PAD1"), "CLICK GamepadXIVChatBoxSend:LeftButton")
-Type("/dance")
+Type("/use Hearthstone")
 input.scripts.OnEnterPressed(input)
 Check("Enter can't run a game command: still typing", input:HasFocus(), true)
 Check("Enter can't run a game command: says so", printed[#printed] and printed[#printed]:find("{PAD1}", 1, true) ~= nil, true)
@@ -345,9 +357,9 @@ Check("up: newest", input:GetText(), "/gxiv test")
 Click("Up")
 Check("up again: older", input:GetText(), "hello")
 Click("Up")
-Check("up again: older", input:GetText(), "/dance")
+Check("up again: older", input:GetText(), "/use Hearthstone")
 Click("Up")
-Check("up at the oldest: stays", input:GetText(), "/dance")
+Check("up at the oldest: stays", input:GetText(), "/use Hearthstone")
 Click("Down")
 Check("down: newer", input:GetText(), "hello")
 Click("Down")
@@ -885,6 +897,328 @@ Click("Send")
 Check("Yell row", ns.db.chatLanguageYELL, 7)
 Click("Back")
 Check("Circle closes it", menu:IsShown(), false)
+
+-- All's Messages: a hidden kind is left out of the All feed; untagged lines (addon messages) always show.
+local filters = {}
+ChatFrameUtil.AddMessageEventFilter = function(event, fn) filters[event] = fn end
+ChatFrameUtil.RemoveMessageEventFilter = function(event) filters[event] = nil end
+GetTime = GetTime or function() return 0 end
+ns.SetChatTabShows("all", "loot", false)
+Check("filters on once something is hidden", filters.CHAT_MSG_LOOT ~= nil, true)
+GamepadXIVChatFeed.GetScrollOffset = function() return 0 end
+GamepadXIVChatConversation.GetScrollOffset = function() return 0 end
+local function FeedCount() return #GamepadXIVChatFeed.lines end
+local before = FeedCount()
+filters.CHAT_MSG_LOOT(ChatFrame1, "CHAT_MSG_LOOT", "You receive loot: [Linen Cloth].")
+ns.ChatBoxFeed("You receive loot: [Linen Cloth].", 0, 0.7, 0)
+Check("hidden loot left out of All", FeedCount(), before)
+filters.CHAT_MSG_SAY(ChatFrame1, "CHAT_MSG_SAY", "hello", "Someone")
+ns.ChatBoxFeed("[Someone] says: hello", 1, 1, 1)
+Check("Say still shows", FeedCount(), before + 1)
+ns.ChatBoxFeed("An addon message", 1, 1, 1)
+Check("untagged line shows", FeedCount(), before + 2)
+filters.CHAT_MSG_LOOT(ChatFrame2 or {}, "CHAT_MSG_LOOT", "x")
+ns.ChatBoxFeed("Another addon message", 1, 1, 1)
+Check("another chat frame's event doesn't tag the main frame's line", FeedCount(), before + 3)
+ns.SetChatTabShows("all", "channel:Trade", false)
+filters.CHAT_MSG_CHANNEL(ChatFrame1, "CHAT_MSG_CHANNEL", "WTS", "Seller", "", "2. Trade - City", "", "", 0, 2, "Trade")
+ns.ChatBoxFeed("[2. Trade] [Seller]: WTS", 1, 0.75, 0.75)
+Check("hidden channel left out", FeedCount(), before + 3)
+Check("shown switch reads back", ns.ChatTabShows("all", "say"), true)
+Check("hidden switch reads back", ns.ChatTabShows("all", "loot"), false)
+
+-- Tabs from the settings: System and loot is off until picked, Say on by default; reset puts them back.
+Check("System and loot off by default", ns.ChatTabShown("#SYSTEM"), false)
+Check("Say on by default", ns.ChatTabShown("#SAY"), true)
+Check("General off by default", ns.ChatTabShown("#CH:General"), false)
+ns.SetChatTab("#SYSTEM", true)
+Check("System and loot picked", ns.ChatTabShown("#SYSTEM"), true)
+ns.ResetChatTabs()
+Check("reset: System and loot off", ns.ChatTabShown("#SYSTEM"), false)
+Check("reset: loot back in All", ns.ChatTabShows("all", "loot"), true)
+Check("reset: filters off", filters.CHAT_MSG_LOOT, nil)
+
+-- System and loot: a stop once picked; you can't write there, so typing on it goes to Say.
+ns.FocusChatBox()
+Type("")
+local function CountStops()
+	for _ = 1, 20 do
+		if GamepadXIVChatFeed:IsShown() then break end
+		Click("Next")
+	end
+	local n = 0
+	repeat
+		Click("Next")
+		n = n + 1
+	until GamepadXIVChatFeed:IsShown() or n > 20
+	return n
+end
+local withoutSystem = CountStops()
+ns.SetChatTab("#SYSTEM", true)
+Check("System and loot adds a stop", CountStops(), withoutSystem + 1)
+local readOnlySends = 0
+for _ = 1, withoutSystem + 1 do
+	Click("Next")
+	if ns.ChatBoxActiveKey() == nil and not GamepadXIVChatFeed:IsShown() then
+		Type("from a read-only tab")
+		Click("Send")
+		Check("read-only tab: typing goes to Say", sentTo[#sentTo], "#SAY:from a read-only tab")
+		readOnlySends = readOnlySends + 1
+		ns.FocusChatBox()
+	end
+end
+Check("read-only tabs tried", readOnlySends >= 1, true)
+ns.ResetChatTabs()
+
+-- Channel tabs menu: Leave for each channel you are in, Join for the others.
+local left = {}
+GetChannelList = function() return 1, "General", false end
+EnumerateServerChannels = function() return "General", "Trade", "Chromie Time", "Chromie Time", "Trade", "Meeting Stone" end
+LeaveChannelByName = function(name) left[#left + 1] = name end
+ns.FocusChatBox()
+Type("")
+Click("Back")
+local function PickRow(text)
+	local index
+	for i, item in ipairs(menu.rows) do
+		if item:IsShown() and item.text.text and item.text.text:find(text, 1, true) then index = i end
+	end
+	if not index then return false end
+	for _ = 1, 30 do
+		if menu.rows[index].bg:IsShown() then
+			Click("Send")
+			return true
+		end
+		Click("Down")
+	end
+	return false
+end
+Click("Tabs")
+Check("square menu: Channel tabs", PickRow("Channel tabs"), true)
+Check("channel tabs: Leave General listed and picked", PickRow("Leave|r  1. General"), true)
+Check("leave: the game's leave by number", left[1], "1")
+Check("channel tabs: no Join for a joined channel", PickRow("Join|r  General"), false)
+Check("channel tabs: no Chromie Time", PickRow("Chromie"), false)
+local tradeRows = 0
+for _, item in ipairs(menu.rows) do
+	if item:IsShown() and item.text.text and item.text.text:find("Join|r  Trade", 1, true) then tradeRows = tradeRows + 1 end
+end
+Check("channel tabs: Join Trade once", tradeRows, 1)
+Check("channel tabs: Join Trade picked", PickRow("Join|r  Trade"), true)
+Check("join: /join typed for Cross to send", input:GetText(), "/join Trade")
+Check("join: typing", input:HasFocus(), true)
+
+-- Each tab's Channels: kinds added to a tab are copied into its conversation as they come.
+local added = {}
+ns.ChatAPI.AddLine = function(tab, outgoing, text, class, sender, senderClass, kind, language)
+	added[#added + 1] = { tab = tab, o = outgoing, m = text, s = sender, k = kind, l = language }
+	chats[tab] = chats[tab] or { lines = {}, unread = 0 }
+	return chats[tab]
+end
+ns.ChatAPI.FullName = function(name) return name end
+ns.ChatAPI.EventKeys = { CHAT_MSG_SAY = "#SAY", CHAT_MSG_LOOT = "#SYSTEM", CHAT_MSG_SYSTEM = "#SYSTEM", CHAT_MSG_CHANNEL = "channel" }
+ns.ResetChatTabs()
+Fire("CHAT_MSG_EMOTE", "waves.", "Bob-Realm")
+Check("emote: not in Say by default", #added, 0)
+ns.SetChatTabShows("#SAY", "emote", true)
+Fire("CHAT_MSG_EMOTE", "waves.", "Bob-Realm")
+Check("emote added to Say: copied there", added[1] and added[1].tab, "#SAY")
+Check("emote line: the name and the emote", added[1] and added[1].m, "Bob waves.")
+Check("emote line: its own colour", added[1] and added[1].k, "EMOTE")
+added = {}
+Fire("CHAT_MSG_SAY", "hi", "Bob-Realm", "Common")
+Check("a Say line isn't copied into Say", #added, 0)
+Fire("CHAT_MSG_COMBAT_XP_GAIN", "You gain 120 experience.")
+Check("XP: System and loot shows progress by default", added[1] and added[1].tab, "#SYSTEM")
+added = {}
+Fire("CHAT_MSG_LOOT", "You receive loot: [Linen Cloth].")
+Check("loot: kept in System and loot already, not copied", #added, 0)
+Check("System and loot takes loot by default", ns.ChatTabTakes("#SYSTEM", "CHAT_MSG_LOOT"), true)
+ns.SetChatTabShows("#SYSTEM", "loot", false)
+Check("loot turned off in System and loot", ns.ChatTabTakes("#SYSTEM", "CHAT_MSG_LOOT"), false)
+Check("system lines still taken", ns.ChatTabTakes("#SYSTEM", "CHAT_MSG_SYSTEM"), true)
+ns.SetChatTabShows("#SAY", "say", false)
+Check("a tab's own channel stays on", ns.ChatTabShows("#SAY", "say"), true)
+ns.SetChatTabShows("#CH:Trade", "channel:General", true)
+Fire("CHAT_MSG_CHANNEL", "anyone?", "Ann-Realm", "Common", "1. General - Town", "", "", 0, 1, "General")
+Check("General added to Trade", added[1] and added[1].tab, "#CH:Trade")
+Check("General line: the player", added[1] and added[1].s, "Ann-Realm")
+Check("General line: the channel's colour", added[1] and added[1].k, "CHANNEL1")
+added = {}
+Fire("CHAT_MSG_CHANNEL", "WTS", "Ann-Realm", "Common", "2. Trade - City", "", "", 0, 2, "Trade")
+Check("a Trade line isn't copied into Trade", #added, 0)
+ns.ResetChatTabs()
+Check("reset: Say without emotes", ns.ChatTabShows("#SAY", "emote"), false)
+Check("reset: loot back in System and loot", ns.ChatTabShows("#SYSTEM", "loot"), true)
+Check("reset: All shows everything", ns.ChatTabShows("all", "channel:Trade"), true)
+
+-- The Square menu has Messages for the tab you are on.
+ns.FocusChatBox()
+Type("")
+for _ = 1, 20 do
+	if GamepadXIVChatFeed:IsShown() then break end
+	Click("Next")
+end
+Click("Back")
+Click("Tabs")
+Check("square menu: Channels in this tab", PickRow("Channels in this tab"), true)
+Check("messages menu: for All", menu.title.text:find("Channels in All", 1, true) ~= nil, true)
+Check("messages menu: Say listed first", menu.rows[1].text.text:find("Say", 1, true) ~= nil, true)
+Click("Send")
+Check("Cross: Say off in All", ns.ChatTabShows("all", "say"), false)
+Click("Send")
+Check("Cross again: back on", ns.ChatTabShows("all", "say"), true)
+
+-- A tab showing more channels you can write to: the triggers pick where its messages go.
+
+Click("Back")
+ns.SetChatTabShows("#SAY", "channel:General", true)
+ns.FocusChatBox()
+Type("")
+for _ = 1, 20 do
+	if ns.ChatBoxActiveKey() == "#SAY" then break end
+	Click("Next")
+end
+Check("on Say", ns.ChatBoxActiveKey(), "#SAY")
+Check("R2 bound on Say with General added", Key("PADRTRIGGER"), "CLICK GamepadXIVChatBoxChannelNext:LeftButton")
+Click("ChannelNext")
+Check("R2 on Say with General added: to General", ns.ChatBoxActiveKey(), "#CH:General")
+Type("hello general")
+Click("Send")
+Check("sent to General from the Say tab", sentTo[#sentTo], "#CH:General:hello general")
+ns.FocusChatBox()
+Click("ChannelPrev")
+Check("L2: back to Say", ns.ChatBoxActiveKey(), "#SAY")
+ns.ResetChatTabs()
+ns.FocusChatBox()
+for _ = 1, 20 do
+	if ns.ChatBoxActiveKey() == "#SAY" then break end
+	Click("Next")
+end
+Click("ChannelNext")
+Check("plain Say tab: the triggers do nothing", ns.ChatBoxActiveKey(), "#SAY")
+
+-- Channel names: however the game spells one, it's the same channel.
+ns.ResetChatTabs()
+ns.SetChatTabShows("all", "channel:TradeLocal", false)
+filters.CHAT_MSG_CHANNEL(ChatFrame1, "CHAT_MSG_CHANNEL", "WTS", "Seller", "", "5. Trade (Local) - City", "", "", 0, 5, "Trade (Local) - City")
+local feedBefore = #GamepadXIVChatFeed.lines
+ns.ChatBoxFeed("[5. Trade (Local)] [Seller]: WTS", 1, 0.75, 0.75)
+Check("Trade (Local) is TradeLocal", #GamepadXIVChatFeed.lines, feedBefore)
+Check("a channel tab's own kind, from its key", ns.ChatTabShows("#CH:Trade (Local) - City", "channel:TradeLocal"), true)
+
+-- Lines copied into System and loot read as the game's chat words them.
+ns.ResetChatTabs()
+added = {}
+Fire("CHAT_MSG_CHANNEL_NOTICE", "YOU_CHANGED", "", "", "1. General - Town", "", "", 0, 1, "General")
+Check("channel notices are not copied", #added, 0)
+Fire("CHAT_MSG_ACHIEVEMENT", "%s has earned the achievement [Level 10]!", "Bob-Realm")
+Check("achievement: the name filled in", added[1] and added[1].m, "Bob has earned the achievement [Level 10]!")
+ns.SetChatTabShows("#SYSTEM", "loot", true)
+
+-- Your own tabs: a name, the channels picked, on / off, rename and delete.
+ns.ResetChatTabs()
+Click("Back")
+local stopsBefore = CountStops()
+local crafting = ns.NewChatTab("  Crafting  ")
+Check("new tab: a key", crafting, "#TAB:1")
+Check("new tab: the name trimmed", ns.ChatCustomTabInfo(crafting).name, "Crafting")
+Check("new tab: on", ns.ChatTabShown(crafting), true)
+Check("new tab: a stop", CountStops(), stopsBefore + 1)
+Check("new tab: shows nothing at first", ns.ChatTabShows(crafting, "say"), false)
+Check("no name, no tab", ns.NewChatTab("   "), nil)
+added = {}
+ns.SetChatTabShows(crafting, "loot", true)
+Fire("CHAT_MSG_LOOT", "You receive loot: [Copper Ore].")
+Check("loot picked: copied into the tab", added[1] and added[1].tab, crafting)
+-- Typing there goes to the one channel it shows you can write to; R2 picks among several.
+IsInGuild = function() return true end
+ns.SetChatTabShows(crafting, "guild", true)
+ns.SetChatTabShows(crafting, "channel:General", true)
+ns.FocusChatBox()
+Type("")
+local onCrafting = false
+for _ = 1, 20 do
+	Click("Next")
+	if ns.ChatBoxActiveKey() == "#GUILD" then onCrafting = true break end
+end
+Check("on your tab: typing goes to Guild, the first it shows", onCrafting, true)
+Check("your tab: R2 bound", Key("PADRTRIGGER"), "CLICK GamepadXIVChatBoxChannelNext:LeftButton")
+Click("ChannelNext")
+Check("your tab: R2 to General", ns.ChatBoxActiveKey(), "#CH:General")
+Type("")
+Click("Back")
+ns.ResetChatTabs()
+Check("reset: your tab stays", ns.ChatCustomTabInfo(crafting) ~= nil, true)
+Check("reset: its channels stay", ns.ChatTabShows(crafting, "loot"), true)
+Check("rename", ns.RenameChatTab(crafting, "Mats"), true)
+Check("renamed", ns.ChatCustomTabInfo(crafting).name, "Mats")
+Check("rename to nothing: kept", ns.RenameChatTab(crafting, ""), false)
+ns.SetChatTab(crafting, false)
+Check("turned off: no stop", CountStops(), stopsBefore)
+ns.SetChatTab(crafting, true)
+Check("delete", ns.DeleteChatTab(crafting), true)
+Check("deleted: gone", ns.ChatCustomTabInfo(crafting), nil)
+Check("deleted: its channels gone", ns.db.chatTabKinds[crafting], nil)
+Check("deleted: no stop", CountStops(), stopsBefore)
+
+-- Emotes, /reload and /roll run from Enter, as the game does it for them.
+ns.FocusChatBox()
+Type("/dance")
+input.scripts.OnEnterPressed(input)
+Check("Enter runs an emote", performed[#performed], "DANCE:nil")
+Check("emote: typing stopped", input:HasFocus(), false)
+ns.FocusChatBox()
+Type("/DANCE Bob")
+input.scripts.OnEnterPressed(input)
+Check("emote at a name", performed[#performed], "DANCE:Bob")
+ns.FocusChatBox()
+Type("/roll")
+input.scripts.OnEnterPressed(input)
+Check("/roll", rolled, "1-100")
+ns.FocusChatBox()
+Type("/roll 50")
+input.scripts.OnEnterPressed(input)
+Check("/roll 50", rolled, "1-50")
+ns.FocusChatBox()
+Type("/roll 10-20")
+input.scripts.OnEnterPressed(input)
+Check("/roll 10-20", rolled, "10-20")
+ns.FocusChatBox()
+Type("/reload")
+input.scripts.OnEnterPressed(input)
+Check("Enter runs /reload", reloaded, 1)
+Check("an emote in combat runs too", (function()
+	local was = InCombatLockdown
+	InCombatLockdown = function() return true end
+	ns.FocusChatBox()
+	Type("/dance")
+	input.scripts.OnEnterPressed(input)
+	InCombatLockdown = was
+	return #performed
+end)(), 3)
+
+-- Cross (the Send button) runs them the same as Enter.
+ns.FocusChatBox()
+Type("/dance")
+Click("Send")
+Check("Cross runs an emote", performed[#performed], "DANCE:nil")
+ns.FocusChatBox()
+Type("/roll 7")
+Click("Send")
+Check("Cross runs /roll", rolled, "1-7")
+ns.FocusChatBox()
+Type("/reload")
+Click("Send")
+Check("Cross runs /reload", reloaded, 2)
+ns.FocusChatBox()
+Type("/gxiv pad")
+Click("Send")
+Check("Cross runs an addon command", _G.gxivRan, "pad")
+ns.FocusChatBox()
+Type("hi from the pad")
+Click("Send")
+Check("Cross sends a message", sentTo[#sentTo], "#SAY:hi from the pad")
 
 if fails > 0 then
 	print("chatbox: " .. fails .. " FAILED")

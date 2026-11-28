@@ -384,6 +384,64 @@ local function BuildTabs()
 						at = at + 1
 					end
 				end
+				-- The chat box tabs: each one on or off, and its Messages, the kinds of lines it shows
+				-- (ChatBox.lua keeps the choices; Reset here and Reset tab put them back).
+				tinsert(rows, { type = "spacer", label = "" })
+				tinsert(rows, { type = "header", label = "CHAT BOX TABS" })
+				local function Messages(key)
+					return { text = "Channels", run = CloseAnd(function() if ns.ChatBoxMessages then ns.ChatBoxMessages(key) end end) }
+				end
+				local MESSAGES_TIP = " Channels picks what the tab shows: say, loot, Trade and the rest. Its own channel always shows."
+				tinsert(rows, { type = "buttons", label = "All tab", buttons = { Messages("all") },
+					tip = "Everything the game's chat shows. Channels turns off the ones you don't want there, like Trade or loot." })
+				for _, tab in ipairs({ { "#SAY", "Say" }, { "#YELL", "Yell" }, { "#PARTY", "Party" }, { "#RAID", "Raid" },
+						{ "#GUILD", "Guild" }, { "#OFFICER", "Officer" }, { "#SYSTEM", "System and loot" },
+						{ "#CH:General", "General" }, { "#CH:Trade", "Trade" }, { "#CH:LocalDefense", "Local Defense" },
+						{ "#CH:LookingForGroup", "Looking For Group" }, { "#CH:WorldDefense", "World Defense" },
+						{ "#CH:GuildRecruitment", "Guild Recruitment" } }) do
+					local group = tab[1] == "#PARTY" or tab[1] == "#RAID"
+					local buttons = { Messages(tab[1]) }
+					if not group then
+						table.insert(buttons, 1, {
+							text = function() return ns.ChatTabShown and ns.ChatTabShown(tab[1]) and "|cff40ff40On|r" or "Off" end,
+							run = function() if ns.SetChatTab and ns.ChatTabShown then ns.SetChatTab(tab[1], not ns.ChatTabShown(tab[1])) end end,
+						})
+					end
+					tinsert(rows, { type = "buttons", label = tab[2] .. " tab", buttons = buttons,
+						tip = (group and "There while you are in a party or raid."
+							or tab[1] == "#SYSTEM" and "A read-only tab of system messages, loot, money and skill ups: quiet while crafting. Typing on it goes to Say. Off by default."
+							or tab[1]:find("^#CH:") and "A tab for this channel while you are in it. Off by default."
+							or "On by default.") .. MESSAGES_TIP })
+				end
+				-- Your own tabs: rows made from ns.ChatCustomTabs (ChatBox.lua) by ns.SyncCustomTabRows,
+				-- after this marker, then New tab.
+				local anchor = { type = "spacer", label = "", customAnchor = true }
+				tinsert(rows, anchor)
+				tinsert(rows, { type = "header", label = "CUSTOM TABS" })
+				tinsert(rows, { type = "action", label = "New tab", button = "Create", customNew = true,
+					run = function()
+						OpenTextDialog("New tab", "Tab name", "",
+							"A custom chat box tab. Then pick its Channels: say, loot, Trade or anything else.",
+							function(name)
+								local key = ns.NewChatTab and ns.NewChatTab(name)
+								if key then
+									ns.Print("Made the tab " .. ns.ChatCustomTabInfo(key).name .. ". Pick its Channels next.")
+								else
+									ns.Print("The tab needs a name.")
+								end
+								UpdateRows()
+							end, "Create")
+					end,
+					tip = "Adds a tab with a name you pick, showing the channels you pick. It can be turned off, renamed and deleted here." })
+				ns.configChatRows = rows
+				tinsert(rows, { type = "spacer", label = "" })
+				tinsert(rows, { type = "action", label = "Tabs and Channels", button = "Reset",
+					run = function()
+						if ns.ResetChatTabs then ns.ResetChatTabs() end
+						ns.Print("The chat box tabs and their Channels are back to the defaults.")
+					end,
+					reset = function() if ns.ResetChatTabs then ns.ResetChatTabs() end end,
+					tip = "Every tab as it comes, showing what it shows by default. Custom tabs stay as they are." })
 				-- Sounds for incoming chat (Sounds.lua).
 				if ns.ChatSounds then
 					tinsert(rows, { type = "spacer", label = "" })
@@ -825,7 +883,7 @@ local function StepRow(row, delta, big)
 	if row.type == "buttons" then
 		row.sub = math.max(1, math.min(#row.buttons, (row.sub or 1) + delta))
 	elseif row.type == "check" then
-		SetValue(row, not ns.db[row.key])
+		SetValue(row, not ((row.get and row.get()) or (not row.get and ns.db[row.key])))
 	elseif row.type == "choice" then
 		local index, choices = ChoiceIndex(row)
 		index = (index - 1 + delta) % #choices + 1
@@ -1164,7 +1222,7 @@ local function CreateRowFrame(index)
 
 	-- A row of up to three buttons (type "buttons"); D-pad left / right picks one, A presses it.
 	frame.multi = {}
-	for i = 1, 3 do
+	for i = 1, 4 do
 		local button = CreateFlatButton(frame, 112, 24)
 		if i == 1 then
 			button:SetPoint("RIGHT", -4, 0)
@@ -1239,10 +1297,78 @@ local function CreateRowFrame(index)
 	return frame
 end
 
+-- Your own chat box tabs as rows in the Chat tab, before New tab: On / Off, Channels, Rename and
+-- Delete (on the second press). Remade when the tabs change.
+function ns.SyncCustomTabRows()
+	local rows = ns.configChatRows
+	if not (rows and ns.ChatCustomTabs) then
+		return
+	end
+	local list = ns.ChatCustomTabs()
+	local signature = {}
+	for _, custom in ipairs(list) do
+		signature[#signature + 1] = custom.key .. "=" .. custom.name
+	end
+	signature = table.concat(signature, ";")
+	if signature == ns.customRowsSignature then
+		return
+	end
+	ns.customRowsSignature = signature
+	for i = #rows, 1, -1 do
+		if rows[i].customTab then
+			table.remove(rows, i)
+		end
+	end
+	local at
+	for i, row in ipairs(rows) do
+		if row.customNew then
+			at = i
+		end
+	end
+	if not at then
+		return
+	end
+	for _, custom in ipairs(list) do
+		local key, armed = custom.key, nil
+		local delete = { text = "Delete", danger = true }
+		delete.run = function()
+			if armed and GetTime() - armed < 5 then
+				local name = custom.name
+				ns.DeleteChatTab(key)
+				ns.Print("Deleted the tab " .. name .. ".")
+				UpdateRows()
+				return
+			end
+			armed = GetTime()
+			delete.text = "Sure?"
+			C_Timer.After(5, function() delete.text = "Delete"; armed = nil; UpdateRows() end)
+			UpdateRows()
+		end
+		tinsert(rows, at, { type = "buttons", label = custom.name, customTab = key, small = true,
+			buttons = {
+				{ text = function() return ns.ChatTabShown(key) and "|cff40ff40On|r" or "Off" end,
+					run = function() ns.SetChatTab(key, not ns.ChatTabShown(key)); UpdateRows() end },
+				{ text = "Channels", run = CloseAnd(function() if ns.ChatBoxMessages then ns.ChatBoxMessages(key) end end) },
+				{ text = "Rename", run = function()
+					OpenTextDialog("Rename tab", "Tab name", custom.name, "The tab's new name.", function(name)
+						if not ns.RenameChatTab(key, name) then
+							ns.Print("The tab needs a name.")
+						end
+						UpdateRows()
+					end, "Rename")
+				end },
+				delete,
+			},
+			tip = "A custom tab. Its Channels pick what it shows. Typing on it goes to the one channel it shows you can write to, else Say; with several, {PADLTRIGGER} / {PADRTRIGGER} pick. Delete asks for a second press." })
+		at = at + 1
+	end
+end
+
 function UpdateRows()
 	if not (window and rowFrames and window.scrollBar) then
 		return
 	end
+	ns.SyncCustomTabRows()
 	local rows = CurrentRows()
 	cursor = math.max(1, math.min(cursor, #rows))
 	-- Never rest on a section title: the next row down, or up at the end.
@@ -1292,11 +1418,16 @@ function UpdateRows()
 			end
 			local buttons = row.type == "buttons" and row.buttons or {}
 			row.sub = buttons[1] and math.max(1, math.min(row.sub or 1, #buttons)) or nil
+			-- Four buttons are narrower, and the label stops before them.
+			local buttonWidth = #buttons > 3 and 76 or 112
+			frame.label:SetPoint("RIGHT", -math.max(240, #buttons * (buttonWidth + 6) + 8), 0)
 			for i, button in ipairs(frame.multi) do
 				local data = buttons[#buttons - i + 1]
+				button:SetWidth(buttonWidth)
 				button:SetShown(data ~= nil)
 				if data then
-					button:SetText(data.danger and ("|cffff7070" .. data.text .. "|r") or data.text)
+					local text = type(data.text) == "function" and data.text() or data.text
+					button:SetText(data.danger and ("|cffff7070" .. text .. "|r") or text)
 					local picked = scroll + index == cursor and row.sub == #buttons - i + 1
 					button:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3], picked and 0.9 or 0)
 					if not picked then
@@ -1316,7 +1447,7 @@ function UpdateRows()
 			frame.dropdown:SetShown(dropdown and true or false)
 			frame.action:SetShown(row.type == "action")
 			if row.type == "check" then
-				frame.check:SetChecked(ns.db[row.key] and true or false)
+				frame.check:SetChecked(((row.get and row.get()) or (not row.get and ns.db[row.key])) and true or false)
 			elseif row.type == "choice" then
 				local choiceIndex, choices = ChoiceIndex(row)
 				local text = choices[choiceIndex][2]
@@ -1356,7 +1487,7 @@ function UpdateRows()
 	-- Only where there is a setting to reset (not on the Profiles tab).
 	local resettable = false
 	for _, row in ipairs(rows) do
-		resettable = resettable or (row.key ~= nil and ns.DEFAULTS[row.key] ~= nil)
+		resettable = resettable or (row.key ~= nil and ns.DEFAULTS[row.key] ~= nil) or row.reset ~= nil
 	end
 	window.defaults:SetShown(resettable)
 	for index, button in ipairs(tabButtons) do
@@ -1420,6 +1551,9 @@ local function ResetTab()
 	for _, row in ipairs(CurrentRows()) do
 		if row.key and ns.DEFAULTS[row.key] ~= nil then
 			ns.db[row.key] = ns.DEFAULTS[row.key]
+		end
+		if row.reset then
+			row.reset() -- settings kept their own way, such as the chat box tabs
 		end
 	end
 	ns.UpdateMinimapButton()

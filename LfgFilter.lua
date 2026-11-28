@@ -67,6 +67,7 @@ local CHANNEL_EVENTS = {
 	CHAT_MSG_SAY = "#SAY", CHAT_MSG_YELL = "#YELL", CHAT_MSG_GUILD = "#GUILD", CHAT_MSG_OFFICER = "#OFFICER",
 	CHAT_MSG_INSTANCE_CHAT = "#INSTANCE", CHAT_MSG_INSTANCE_CHAT_LEADER = "#INSTANCE",
 	CHAT_MSG_CHANNEL = "channel", CHAT_MSG_SYSTEM = "#SYSTEM", CHAT_MSG_LOOT = "#SYSTEM",
+	CHAT_MSG_SKILL = "#SYSTEM", CHAT_MSG_TRADESKILLS = "#SYSTEM", CHAT_MSG_MONEY = "#SYSTEM", CHAT_MSG_CURRENCY = "#SYSTEM",
 }
 
 -- A conversation's channel: one of CHANNELS, a numbered channel such as General or Trade
@@ -78,6 +79,9 @@ local function ChannelInfo(key)
 	end
 	if CHANNELS[key] then
 		return CHANNELS[key]
+	end
+	if key:find("^#TAB:") then -- a tab of your own (ChatBox.lua)
+		return ns.ChatCustomTabInfo and ns.ChatCustomTabInfo(key) or nil
 	end
 	if key:find("^#GRP:") then -- a past group's chat (ChatHistory.lua), read only
 		return ns.ChatHistory and ns.ChatHistory.Info(key) or nil
@@ -348,8 +352,14 @@ local function Ratings()
 end
 
 -- Names are kept as Name-Realm, so ratings match across characters.
+-- The game names a player "Unknown" (UNKNOWNOBJECT) until their data loads: that is no one yet, and
+-- the roster waits for the name (UNIT_NAME_UPDATE).
 local function FullName(name)
 	if type(name) ~= "string" or Secret(name) or name == "" then
+		return nil
+	end
+	local base = name:match("^[^-]*")
+	if base == "Unknown" or base == UNKNOWNOBJECT then
 		return nil
 	end
 	if not name:find("-", 1, true) then
@@ -737,6 +747,7 @@ local function SetStatus(text)
 	end
 end
 
+state.SEARCH_GAP = 3 -- seconds between searches
 local function DoSearch(reason)
 	if state.searching and GetTime() - state.searchStart < SEARCH_TIMEOUT then
 		Log("search waits for the running one:", reason)
@@ -744,6 +755,26 @@ local function DoSearch(reason)
 		return
 	end
 	state.searchAgain = nil
+	-- The game rate-limits searches: one more within 3 seconds of the last waits for the gap, once.
+	local since = state.searchStart and (GetTime() - state.searchStart)
+	if since and since >= 0 and since < state.SEARCH_GAP then
+		state.searchDeferred = reason or "again"
+		if not state.searchTimer then
+			state.searchTimer = true
+			C_Timer.After(state.SEARCH_GAP - since, function()
+				state.searchTimer = nil
+				local again = state.searchDeferred
+				state.searchDeferred = nil
+				if again then
+					DoSearch(again .. " (after the gap)")
+				end
+			end)
+		end
+		Log("search waits for the 3 s gap:", reason)
+		SetStatus("Searching in a moment: the game limits how often you can search.")
+		return
+	end
+	state.searchDeferred = nil
 	local category = CurrentCategory()
 	if not category then
 		Log("search: no category available")
@@ -2645,6 +2676,12 @@ local function PostListing()
 	end
 	local data = { activityIDs = ids, newPlayerFriendly = form.newPlayers and true or false }
 	local update = C_LFGList.HasActiveEntryInfo()
+	state.ReturnComment()
+	if update and not state.commentEdited then
+		state.CopyComment() -- an update sends the box's text: keep the listed note in it
+	end
+	local _, noteBox = state.CommentBox()
+	local note = noteBox and Plain(noteBox:GetText(), "") or ""
 	ns.Trail(update and "lfg filter: C_LFGList.UpdateListing" or "lfg filter: C_LFGList.CreateListing")
 	local ok, result = pcall(update and C_LFGList.UpdateListing or C_LFGList.CreateListing, data)
 	Log(update and "update listing" or "create listing", #ids, "activities", ok and ("returned " .. tostring(result)) or ("failed: " .. tostring(result)))
@@ -2652,6 +2689,8 @@ local function PostListing()
 		ns.Print((IsInGroup() and "The group" or "You") .. " could not be listed. See /gxiv lfgfilterlog.")
 		return
 	end
+	state.commentEdited = nil
+	state.RememberNote(note)
 	if not IsInGroup() and not update then
 		ns.Print("You are listed: groups looking for players can see you and invite you.")
 	end
@@ -2679,6 +2718,193 @@ local function RemoveListing()
 	Log("remove listing", ok and "ok" or ("failed: " .. tostring(err)))
 end
 
+-- The listing note. The game sends the text of the Group finder's own note box (LFGListingComment),
+-- which addon code can't fill in, so that box is lent to the Listing tab to type in, then given back.
+-- Only widget calls are made on it (parent, points, focus, hooks): none of its Lua runs from here.
+function state.CommentBox()
+	local scroll = _G.LFGListingComment
+	return scroll, scroll and scroll.EditBox
+end
+
+-- The note your listing has now, "" when none.
+function state.ListedComment()
+	local entry = C_LFGList.HasActiveEntryInfo() and Call("GetActiveEntryInfo", C_LFGList.GetActiveEntryInfo)
+	return type(entry) == "table" and Plain(entry.comment, "") or ""
+end
+
+-- Puts the listed note in the box, as the Group finder does before you change a listing.
+function state.CopyComment()
+	if C_LFGList.HasActiveEntryInfo() and C_LFGList.CopyActiveEntryInfoToCreationFields then
+		local ok, err = pcall(C_LFGList.CopyActiveEntryInfoToCreationFields)
+		Log("copy listing note", ok and "ok" or ("failed: " .. tostring(err)))
+	end
+end
+
+-- The Listing note row: what List sends. Listed, that is the listed note until you change it;
+-- not listed, whatever is in the box.
+function state.CommentValue()
+	local _, box = state.CommentBox()
+	local listed = C_LFGList.HasActiveEntryInfo()
+	local text = (state.commentEdited or not listed) and box and Plain(box:GetText(), "") or state.ListedComment()
+	text = strtrim(((text or ""):gsub("[\r\n]+", " ")))
+	if text == "" then
+		return "|cff999999None|r"
+	end
+	if #text > 24 then
+		text = text:sub(1, 22) .. "..."
+	end
+	return (state.commentEdited and listed and "|cffffaa55" or "|cffdddddd") .. text .. "|r"
+end
+
+-- The last notes you listed with, newest first, shown under the note box to type again: the game
+-- empties its box (joining a group does) and addons can't fill it.
+state.NOTES_KEPT = 5
+function state.RememberNote(text)
+	text = strtrim(((text or ""):gsub("[\r\n]+", " ")))
+	if text == "" or not ns.db then
+		return
+	end
+	local notes = ns.db.lfgNotes or {}
+	for index = #notes, 1, -1 do
+		if notes[index]:lower() == text:lower() then -- the same note again moves to the top
+			table.remove(notes, index)
+		end
+	end
+	table.insert(notes, 1, text)
+	while #notes > state.NOTES_KEPT do
+		table.remove(notes)
+	end
+	ns.db.lfgNotes = notes
+end
+function state.RecentNotesText()
+	local notes = ns.db and ns.db.lfgNotes or {}
+	if #notes == 0 then
+		return "|cff999999Your last notes show here once you list with one.|r"
+	end
+	local lines = { "|cffffd100Your last notes|r" }
+	for index, note in ipairs(notes) do
+		lines[#lines + 1] = "|cffaaaaaa" .. index .. ".|r  |cffdddddd" .. note .. "|r"
+	end
+	return table.concat(lines, "\n")
+end
+
+function state.EditComment()
+	if not CanEditListing() then
+		ns.Print("Only the group leader can list the group.")
+		return
+	end
+	local scroll, box = state.CommentBox()
+	if not box then
+		ns.Print("Open the Group finder once, then the listing note can be written here.")
+		Log("listing note: LFGListingComment not loaded")
+		return
+	end
+	local form = ListForm()
+	if form.category ~= 0 and C_LFGList.IsPlayerAuthenticatedForLFG and not C_LFGList.IsPlayerAuthenticatedForLFG(form.category) then
+		ns.Print("The game needs an authenticator on your account before you can write a listing note.")
+		return
+	end
+	if not box:IsEnabled() then
+		ns.Print("The Group finder's note box is turned off right now.")
+		Log("listing note: box disabled")
+		return
+	end
+	if not state.commentHooked then
+		state.commentHooked = true
+		box:HookScript("OnTextChanged", function(_, userInput)
+			if userInput and state.commentLent then
+				state.commentEdited = true
+			end
+		end)
+		-- Never moved from inside the game's own focus or show handling: a frame frame later.
+		box:HookScript("OnEditFocusLost", function() state.ReturnCommentSoon() end)
+		if _G.LFGListingFrame then
+			_G.LFGListingFrame:HookScript("OnShow", function() state.ReturnCommentSoon() end)
+		end
+	end
+	if not state.commentEdited then
+		state.CopyComment()
+	end
+	state.RememberNote(state.ListedComment()) -- the listed note, before the game empties the box
+	if not state.commentHome then
+		local points = {}
+		for index = 1, scroll:GetNumPoints() do
+			points[index] = { scroll:GetPoint(index) }
+		end
+		state.commentHome = { parent = scroll:GetParent(), points = points }
+	end
+	local plate = window and window.commentPlate
+	if not plate then
+		return
+	end
+	plate.recent:SetText(state.RecentNotesText())
+	plate:Show()
+	state.commentLent = true
+	local ok, err = pcall(function()
+		scroll:SetParent(plate)
+		scroll:ClearAllPoints()
+		scroll:SetPoint("TOP", plate.label, "BOTTOM", 0, -10)
+		scroll:SetFrameLevel(plate:GetFrameLevel() + 2)
+		scroll:Show()
+		box:SetFocus()
+	end)
+	Log("listing note:", ok and "editing" or ("lend failed: " .. tostring(err)))
+	if not ok then
+		state.ReturnComment()
+		ns.Print("The listing note box could not be opened. See /gxiv lfgfilterlog.")
+	end
+end
+
+ns.LfgFilterState = state -- for tests/lfgnote.lua
+
+-- Gives the box back to the Group finder, where it was: focus off first, then moved out of the
+-- plate, and only then the plate hidden (hiding it with the box still in it, focused, crashed the game).
+function state.ReturnComment()
+	local plate = window and window.commentPlate
+	if not state.commentLent then
+		if plate then
+			plate:Hide()
+		end
+		return
+	end
+	state.commentLent = nil
+	local scroll, box = state.CommentBox()
+	local home = state.commentHome
+	if box and box:HasFocus() then
+		box:ClearFocus()
+	end
+	if scroll and home then
+		local ok, err = pcall(function()
+			scroll:SetParent(home.parent)
+			scroll:ClearAllPoints()
+			for _, point in ipairs(home.points) do
+				scroll:SetPoint(point[1], point[2], point[3], point[4], point[5])
+			end
+		end)
+		if not ok then
+			Log("listing note: return failed:", tostring(err))
+		end
+	end
+	if plate then
+		plate:Hide()
+	end
+	Log("listing note: returned", state.commentEdited and "(changed, not sent)" or "")
+end
+
+-- From the game's handlers (the box losing focus, the window hiding): on the next frame.
+function state.ReturnCommentSoon()
+	if state.commentLent and not state.commentReturning then
+		state.commentReturning = true
+		C_Timer.After(0, function()
+			state.commentReturning = nil
+			if state.commentLent then
+				state.ReturnComment()
+				Refresh()
+			end
+		end)
+	end
+end
+
 local function RoleCheck()
 	if not CanRoleCheck() then
 		ns.Print("Only the group leader or an assistant can start a role check.")
@@ -2704,6 +2930,7 @@ local function ListRowsList()
 	rows[#rows + 1] = { kind = "cycle", label = "Activities", picker = "listActivities", value = ListActivitiesText }
 	rows[#rows + 1] = { kind = "toggle", label = "New player friendly", value = function() return form.newPlayers end,
 		toggle = function() form.newPlayers = not form.newPlayers or nil end }
+	rows[#rows + 1] = { kind = "edit", label = "Listing note", value = state.CommentValue, run = state.EditComment }
 	rows[#rows + 1] = { kind = "action", label = state.ListLabel(), run = PostListing }
 	if listed then
 		rows[#rows + 1] = { kind = "action", label = "Remove listing", run = RemoveListing }
@@ -2736,12 +2963,26 @@ local function MoveListRow(delta)
 	state.createCursor = index
 end
 
+-- While the listing note is typed: {PAD1} or {PAD2} is done, {PAD4} sends it with the listing.
 local ListNav = {}
-function ListNav.Up() MoveListRow(-1) end
-function ListNav.Down() MoveListRow(1) end
+function ListNav.Up()
+	if not state.commentLent then
+		MoveListRow(-1)
+	end
+end
+function ListNav.Down()
+	if not state.commentLent then
+		MoveListRow(1)
+	end
+end
 function ListNav.Left() end
 function ListNav.Right() end
 function ListNav.Accept()
+	if state.commentLent then
+		state.ReturnComment()
+		Refresh()
+		return
+	end
 	local row = ListRowsList()[state.createCursor or 1]
 	if not row then
 		return
@@ -2749,11 +2990,18 @@ function ListNav.Accept()
 		OpenPicker(row.picker)
 	elseif row.kind == "toggle" then
 		row.toggle()
-	elseif row.kind == "action" then
+	elseif row.kind == "action" or row.kind == "edit" then
 		row.run()
 	end
 end
-function ListNav.Back() window:Hide() end
+function ListNav.Back()
+	if state.commentLent then
+		state.ReturnComment()
+		Refresh()
+		return
+	end
+	window:Hide()
+end
 function ListNav.Alt() end
 function ListNav.Phrases() end
 function ListNav.CloseChat() end
@@ -2854,7 +3102,8 @@ end
 local HOLD_NAV = { Up = true, Down = true, Left = true, Right = true }
 function SettingsNav.Accept()
 	if window.settingsInput:HasFocus() then
-		return -- Enter saves while typing
+		window.settingsInput:Save()
+		return
 	end
 	local row = SettingsRowsList()[state.settingsCursor or 1]
 	if not row then
@@ -3243,7 +3492,7 @@ local function DrawSettings()
 		end
 		editor.tags:SetText(table.concat(tags, "   "))
 		editor.help:SetText(ns.ButtonText(editing
-			and "Typing: Enter saves, {PAD2} cancels. {PADDLEFT}{PADDRIGHT} pick a tag, {PAD3} puts it in."
+			and "Typing: {PAD1} or Enter saves, {PAD2} cancels. {PADDLEFT}{PADDRIGHT} pick a tag, {PAD3} puts it in."
 			or "{PAD1} edits the message, {PAD3} puts the default back. A keyboard or the on-screen keyboard is needed to type.", 16))
 		editor.UpdatePreview()
 	end
@@ -3282,6 +3531,8 @@ local function DrawListing()
 				frame.toggle:Show()
 			elseif row.kind == "action" then
 				frame.label:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+			elseif row.kind == "edit" then
+				frame.value:SetText(row.value())
 			end
 		end
 	end
@@ -3295,6 +3546,10 @@ local function DrawListing()
 			names[#names + 1] = ActivityName(id)
 		end
 		lines[#lines + 1] = "|cff55ee55Listed|r for " .. (#names > 0 and table.concat(names, ", ") or "?")
+		local comment = Plain(entry.comment, "")
+		if comment ~= "" then
+			lines[#lines + 1] = "|cffffd100Listing note:|r " .. comment
+		end
 		local duration = Plain(entry.duration, nil)
 		if duration then
 			lines[#lines + 1] = "|cff999999Expires in " .. math.floor(duration / 60) .. " min|r"
@@ -3305,6 +3560,9 @@ local function DrawListing()
 	end
 	if not CanEditListing() then
 		lines[#lines + 1] = "|cffff8855Only the group leader can list or change the listing.|r"
+	end
+	if state.commentEdited then
+		lines[#lines + 1] = "|cffffaa55The listing note changed: " .. state.ListLabel() .. " to send it.|r"
 	end
 	window.listStatus:SetText(table.concat(lines, "\n"))
 
@@ -3728,7 +3986,7 @@ local function FooterText()
 		if state.picker then
 			return "{PAD1} Choose     {PAD3} Search     {PAD2} Cancel"
 		elseif window.settingsInput:HasFocus() then
-			return "Enter saves     {PADDLEFT}{PADDRIGHT} Tag     {PAD3} Put the tag in     {PAD2} Cancel"
+			return "{PAD1} Save     {PADDLEFT}{PADDRIGHT} Tag     {PAD3} Put the tag in     {PAD2} Cancel"
 		end
 		local row = SettingsRowsList()[state.settingsCursor or 1]
 		if row and row.message then
@@ -3738,6 +3996,9 @@ local function FooterText()
 	elseif state.tab == TAB_LIST then
 		if state.picker then
 			return MULTI_PICKERS[state.picker] and "{PAD1} Tick     {PAD3} Search     {PAD2} Done" or "{PAD1} Choose     {PAD3} Search     {PAD2} Cancel"
+		end
+		if state.commentLent then
+			return "Type with a keyboard or the on-screen keyboard     {PAD1} Done     {PAD4} " .. state.ListLabel() .. "     {PAD2} Done"
 		end
 		local row = ListRowsList()[state.createCursor or 1]
 		local verb = row and (row.kind == "cycle" and "Open" or row.kind == "toggle" and "Switch" or "Select") or "Select"
@@ -4127,6 +4388,31 @@ local function BuildListing(content)
 		row.roleText:SetPoint("RIGHT", -12, 0)
 		window.partyFrames[index] = row
 	end
+	-- The Group finder's note box shows on this plate while you type (state.EditComment).
+	local plate = CreateFrame("Frame", nil, listing, "BackdropTemplate")
+	plate:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })
+	plate:SetBackdropColor(0.04, 0.04, 0.06, 0.97)
+	plate:SetBackdropBorderColor(1, 0.82, 0, 0.95)
+	plate:SetPoint("BOTTOMLEFT", pane, "BOTTOMLEFT", 0, 0)
+	plate:SetPoint("BOTTOMRIGHT", pane, "BOTTOMRIGHT", 0, 0)
+	plate:SetHeight(220)
+	plate:SetFrameLevel(listing:GetFrameLevel() + 20)
+	plate:EnableMouse(true)
+	plate.label = Text(plate, "GameFontNormal")
+	plate.label:SetPoint("TOP", 0, -12)
+	plate.label:SetText("Listing note, for everyone who sees your listing")
+	plate.keys = Text(plate, "GameFontHighlightSmall")
+	plate.keys:SetPoint("BOTTOM", 0, 10)
+	plate.keys:SetText(Hint("{PAD1} Done     {PAD4} List with this note"))
+	plate.recent = Text(plate, "GameFontHighlightSmall")
+	plate.recent:SetPoint("BOTTOMLEFT", plate, "BOTTOMLEFT", 24, 34)
+	plate.recent:SetPoint("RIGHT", plate, "RIGHT", -24, 0)
+	plate.recent:SetJustifyH("LEFT")
+	plate.recent:SetJustifyV("BOTTOM")
+	plate.recent:SetSpacing(3)
+	plate:Hide()
+	listing:HookScript("OnHide", function() state.ReturnCommentSoon() end)
+	window.commentPlate = plate
 end
 
 local function BuildSettings(content)
@@ -4221,14 +4507,16 @@ local function BuildSettings(content)
 	input:SetScript("OnMouseDown", function(self)
 		self:SetFocus()
 	end)
-	input:SetScript("OnEnterPressed", function(self)
-		local text = strtrim((self:GetText() or ""):gsub("\n", " "))
+	-- Enter or {PAD1} saves.
+	function input.Save(self)
+		local text = strtrim(((self:GetText() or ""):gsub("\n", " ")))
 		if text ~= "" then
 			ns.db.lfgMessage = text
 			Log("group finder message saved")
 		end
 		self:ClearFocus()
-	end)
+	end
+	input:SetScript("OnEnterPressed", input.Save)
 	input:SetScript("OnEscapePressed", function(self)
 		self.cancelled = true
 		self:ClearFocus()
@@ -4996,6 +5284,8 @@ ns.ChatAPI = {
 	Send = function(name, text, why) return SendTo(name, text, why) end,
 	Info = ChannelInfo, Name = ChatName, Chats = Chats, Icons = Markers.Icons, Color = ClassColored, Short = Short,
 	Log = Log, Unread = UnreadTotal,
+	-- For each tab's Messages (ChatBox.lua): where each chat event's lines are kept, and adding a line.
+	EventKeys = CHANNEL_EVENTS, AddLine = AddLine,
 	-- For past groups (ChatHistory.lua): the "Chat lines kept" and "Chat kept for" settings on a
 	-- conversation, and names as conversations are kept (Name-Realm).
 	Prune = PruneChat, FullName = FullName,
@@ -5381,6 +5671,39 @@ end
 local roster = {}
 local rosterSeeded = false
 
+function state.IsUnknown(name)
+	return type(name) == "string" and FullName(name) == nil
+end
+
+-- Removes the "Unknown" player older versions kept from members whose name hadn't loaded yet.
+function state.ForgetUnknown()
+	local removed = 0
+	local account = GamepadXIVAccountDB or {}
+	for _, map in ipairs({ account.lfgGroupCounts, account.lfgPlayerRoles, account.lfgDungeons, account.lfgRatings,
+		ns.db and ns.db.lfgInGroup }) do
+		if type(map) == "table" then
+			for name in pairs(map) do
+				if state.IsUnknown(name) then
+					map[name] = nil
+					removed = removed + 1
+				end
+			end
+		end
+	end
+	local recent = ns.db and ns.db.lfgRecent
+	if type(recent) == "table" then
+		for index = #recent, 1, -1 do
+			if type(recent[index]) == "table" and state.IsUnknown(recent[index].name) then
+				tremove(recent, index)
+				removed = removed + 1
+			end
+		end
+	end
+	if removed > 0 then
+		Log("removed", removed, "entries for an Unknown player")
+	end
+end
+
 -- Party members go to the Ratings tab; someone you rated Avoid joining is announced.
 local function UpdateRoster()
 	if not ns.db then
@@ -5472,6 +5795,7 @@ for event in pairs(CHANNEL_EVENTS) do
 	pcall(events.RegisterEvent, events, event)
 end
 events:RegisterEvent("GROUP_ROSTER_UPDATE")
+events:RegisterEvent("UNIT_NAME_UPDATE")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("PLAYER_REGEN_DISABLED")
 -- Events this client may not have are skipped.
@@ -5559,6 +5883,9 @@ events:SetScript("OnEvent", function(_, event, ...)
 				Chats()[key].number = number
 			end
 		end
+		if ns.ChatTabTakes and not ns.ChatTabTakes(key, event) then
+			return -- a kind turned off in the tab's Messages (ChatBox.lua)
+		end
 		local sender = key ~= "#SYSTEM" and FullName(who) or nil
 		-- Each sender's last chat line, this session only: the chat box's Report uses it.
 		local lineID = select(11, ...)
@@ -5636,6 +5963,12 @@ events:SetScript("OnEvent", function(_, event, ...)
 		if ns.UpdateLfgHint then
 			ns.UpdateLfgHint()
 		end
+	elseif event == "UNIT_NAME_UPDATE" then
+		-- A member who joined as "Unknown" has their name now.
+		local unit = ...
+		if type(unit) == "string" and (unit:find("^party%d") or unit:find("^raid%d")) then
+			UpdateRoster()
+		end
 	elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
 		UpdateRoster()
 		if window and window:IsShown() then
@@ -5645,6 +5978,7 @@ events:SetScript("OnEvent", function(_, event, ...)
 	elseif event == "PLAYER_LOGIN" or event == "UPDATE_BINDINGS" then
 		UpdateKeyOverride(event)
 		if event == "PLAYER_LOGIN" then
+			state.ForgetUnknown()
 			ns.PruneLfgChats("login")
 			ns.ApplyChatChoice("login")
 		else

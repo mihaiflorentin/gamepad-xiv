@@ -3,6 +3,20 @@ local _, ns = ...
 -- Generated from CHANGELOG.md by tools/make_changelog.py. Do not edit; run the script instead.
 -- Newest first. Each line is { kind, text }: "h" a section, "-" an entry, "--" a sub-entry.
 ns.CHANGELOG = {
+	{ version = "v0.1.31", lines = {
+		{ "h", "New" },
+		{ "-", "Added a System and loot tab to the chatbox." },
+		{ "-", "Added Channels to each chatbox tab." },
+		{ "-", "Chatbox tabs now support more than one channel, and L2 / R2 switch the channel your message goes to." },
+		{ "-", "Added leaving and joining channels to the chatbox Channel tabs menu." },
+		{ "-", "Added chatbox tab and Channels options to the Chat settings." },
+		{ "-", "Added custom chatbox tabs, made with New tab in the Chat settings." },
+		{ "-", "Added a listing note to the LFG Filter Listing tab." },
+		{ "-", "The listing note box shows your last 5 notes." },
+		{ "-", "Rate limited the LFG Filter search to wait 3 seconds after the last one, so the game doesn't limit it." },
+		{ "h", "Fixed" },
+		{ "-", "Someone joining your group no longer shows as \"Unknown\" in LFG Filter." },
+	} },
 	{ version = "v0.1.30", lines = {
 		{ "h", "New" },
 		{ "-", "Added a Report option to the chatbox player menu." },

@@ -2,8 +2,9 @@ local _, ns = ...
 
 -- The chat box: where the game's chat was, while the Chat setting is "Chat window" (LfgFilter.lua hides
 -- the game's chat and keeps the conversations). Tabs along the top: All (everything the game's chat
--- would show), Whispers, Say, Party, Raid, Guild, the channels, then Combat (this session's combat log,
--- read-only). The Whispers tab has a column of the recent conversations on the left and the picked one
+-- would show), Whispers, Say, Party, Raid, Guild, the channels, System and loot (read-only, when picked
+-- in Channel tabs), then Combat (this session's combat log, read-only). Each tab's Channels ({PAD3} menu
+-- or the settings) choose the kinds of lines it shows: fewer in All, more in the others. The Whispers tab has a column of the recent conversations on the left and the picked one
 -- on the right; {PADDLEFT} / {PADDRIGHT} pick the player while browsing. Each tab's lines are in the game's colour for that chat; your own lines are
 -- marked (the "Highlight my messages" setting).
 --
@@ -42,6 +43,7 @@ local current = "all" -- "all", "whispers", "combat", a channel ("#PARTY") or a 
 local shownSeq
 local mode -- nil, "typing" or "browse"
 local allTarget = "#SAY" -- where a message typed on the All tab goes ({PADLTRIGGER} / {PADRTRIGGER}, or a command)
+local tabTargets = {} -- the same on a tab whose Channels add channels you can write to: tab -> key
 local jumpAt -- scrolled up when a message came: back to the newest at this time (10 s after it)
 local JUMP_SECONDS = 10
 local shownKey, shownCount -- the conversation drawn last and how many lines it had
@@ -91,6 +93,9 @@ end
 local function API()
 	return ns.ChatAPI
 end
+
+local TabKinds -- what each tab shows (below)
+local ChannelMembership -- leaving and joining channels (below)
 
 local function Log(...)
 	if ns.ChatAPI then
@@ -225,6 +230,12 @@ local function IsChannelKey(key)
 	return channel and not channel.readOnly
 end
 
+-- A tab you read but can't write to: System and loot. Typing there goes to Say, as on Combat.
+local function IsReadOnlyKey(key)
+	local channel = type(key) == "string" and API().Info(key)
+	return channel and channel.readOnly and true or false
+end
+
 -- The tab a stop belongs to.
 local function TabOf(key)
 	if IsWhisperKey(key) then
@@ -237,7 +248,17 @@ end
 local function Target()
 	if current == "all" then
 		return allTarget
-	elseif current == "combat" then
+	end
+	local targets = Line.TabTargets(current)
+	if targets then
+		for _, key in ipairs(targets) do
+			if key == tabTargets[current] then
+				return key
+			end
+		end
+		return targets[1]
+	end
+	if current == "combat" or IsReadOnlyKey(current) then
 		return "#SAY"
 	elseif current == "whispers" then
 		return LastWhisper()
@@ -325,6 +346,10 @@ local function TabCandidates()
 			Add(key)
 		end
 	end
+	list[#list + 1] = "#SYSTEM" -- read-only, so not one of IsChannelKey's
+	for _, custom in ipairs(ns.ChatCustomTabs()) do
+		list[#list + 1] = custom.key
+	end
 	return list
 end
 
@@ -387,6 +412,16 @@ local function Stops()
 		-- A channel picked with its command (/y) before it has lines.
 		stops[#stops + 1] = { key = pinned, tab = pinned, chat = API().Chats()[pinned] }
 	end
+	-- System and loot only when picked in Channel tabs.
+	if TabChoices()["#SYSTEM"] == true then
+		stops[#stops + 1] = { key = "#SYSTEM", tab = "#SYSTEM", chat = API().Chats()["#SYSTEM"] }
+	end
+	-- Your own tabs (New tab in the settings), unless turned off.
+	for _, custom in ipairs(ns.ChatCustomTabs()) do
+		if TabChoices()[custom.key] ~= false then
+			stops[#stops + 1] = { key = custom.key, tab = custom.key, chat = API().Chats()[custom.key] }
+		end
+	end
 	stops[#stops + 1] = { key = "combat", tab = "combat" }
 	return stops, whispers
 end
@@ -413,9 +448,12 @@ end
 
 local TargetText
 function TargetText(key)
+	if key == current and key ~= "all" and Line.TabTargets(key) and Target() ~= key then
+		return TargetText(Target())
+	end
 	if key == "all" then
 		return TargetText(allTarget)
-	elseif key == "combat" then
+	elseif key == "combat" or IsReadOnlyKey(key) then
 		return "Say:"
 	elseif key == "whispers" then
 		local last = LastWhisper()
@@ -439,7 +477,7 @@ end
 -- The conversation you are typing to, for muting its sound (Sounds.lua): a channel key or a player's
 -- name, nil while not typing or on All and Combat.
 function ns.ChatBoxActiveKey()
-	if not Typing() or current == "all" or current == "combat" then
+	if not Typing() or current == "all" or current == "combat" or (IsReadOnlyKey(current) and not Line.TabTargets(current)) then
 		return nil
 	end
 	return Target()
@@ -498,6 +536,46 @@ local function IsAddonCommand(command)
 	return lookup.found
 end
 
+-- The game's commands addon code may run itself, by calling the game function behind each: emotes,
+-- /reload and /roll. So Enter and the combat pad run them too, in and out of combat. Only the game's
+-- protected commands (SecureCmdList: /cast, /use, /target...) need the macro button.
+local Direct = {}
+local function Roll(rest)
+	local low, high = rest:match("^(%d+)%s*[%s%-]%s*(%d+)$")
+	if not low then
+		high = rest:match("^(%d+)$")
+	end
+	RandomRoll(tonumber(low) or 1, tonumber(high) or 100)
+end
+local function Reload()
+	local reload = (C_UI and C_UI.Reload) or ReloadUI
+	reload()
+end
+Direct.run = { reload = Reload, rl = Reload, roll = Roll, random = Roll, rand = Roll, rnd = Roll }
+-- The emote token for a command word ("dance" -> "DANCE"), from the game's EMOTEn_TOKEN / EMOTEn_CMDm
+-- strings, read once.
+function Direct.Emote(command)
+	if not Direct.emotes then
+		Direct.emotes = {}
+		for index = 1, 1000 do
+			local token = _G["EMOTE" .. index .. "_TOKEN"]
+			if token then
+				for alias = 1, 20 do
+					local word = _G["EMOTE" .. index .. "_CMD" .. alias]
+					if type(word) ~= "string" then
+						break
+					end
+					Direct.emotes[(word:lower():gsub("^/", ""))] = token
+				end
+			end
+		end
+	end
+	return Direct.emotes[command]
+end
+function Direct.Find(command)
+	return Direct.run[command] or Direct.Emote(command) ~= nil
+end
+
 -- True when Command() below handles the text itself, false for a game command the macro button runs.
 local function OwnCommand(text)
 	local command = text:match("^/(%S+)")
@@ -508,7 +586,7 @@ local function OwnCommand(text)
 	if COMMANDS[command] or WHISPER[command] or REPLY[command] or EMOTE[command] or tonumber(command) then
 		return true
 	end
-	return IsAddonCommand("/" .. command)
+	return IsAddonCommand("/" .. command) or Direct.Find(command)
 end
 
 -- Returns the conversation and the message, true when the command ran here, or nil for one only the
@@ -569,6 +647,22 @@ function Command(text)
 	if handler then
 		Log("command", command, "->", key)
 		handler(rest or "")
+		return true
+	end
+	if Direct.run[command] then
+		Log("game command run directly:", command)
+		Direct.run[command](rest)
+		return true
+	end
+	local token = Direct.Emote(command)
+	if token then
+		if ns.ChatLocked and ns.ChatLocked() then
+			ns.Print("The game locks chat for addons during this fight, so the emote wasn't sent.")
+			return true
+		end
+		local perform = (C_ChatInfo and C_ChatInfo.PerformEmote) or DoEmote
+		local ok, err = pcall(perform, token, rest ~= "" and rest or nil)
+		Log("emote", token, ok and "done" or ("failed: " .. tostring(err)))
 		return true
 	end
 	return nil
@@ -850,6 +944,19 @@ end
 -- On the All tab, {PADLTRIGGER} / {PADRTRIGGER} pick where the message goes: Say, the channels with a tab,
 -- the other channels you are in, then your recent whispers.
 function StepAllTarget(delta)
+	local targets = current ~= "all" and Line.TabTargets(current)
+	if targets then
+		local index = 1
+		for i, key in ipairs(targets) do
+			if key == Target() then
+				index = i
+			end
+		end
+		tabTargets[current] = targets[(index - 1 + delta) % #targets + 1]
+		Log("tab", current, "sends to", tabTargets[current])
+		Draw()
+		return
+	end
 	if current ~= "all" then
 		return
 	end
@@ -977,6 +1084,9 @@ local function MenuItems()
 		end
 		return items
 	end
+	if menuState.kind == "messages" then
+		return TabKinds.Items()
+	end
 	if menuState.kind == "tabs" then
 		local shown = {}
 		for _, stop in ipairs((Stops())) do
@@ -988,7 +1098,10 @@ local function MenuItems()
 			local name = channel and channel.name or key
 			name = name:gsub("(%l)(%u)", "%1 %2") -- LocalDefense -> Local Defense
 			items[#items + 1] = { text = (on and "|cff40ff40[x]|r  " or "|cff777777[  ]|r  ")
-				.. "|cff" .. (channel and channel.color or "ffffff") .. name .. "|r", value = key, on = on }
+				.. "|cff" .. (channel and channel.color or "ffffff") .. name .. "|r", value = key, on = on, verb = "Tab on / off" }
+		end
+		for _, item in ipairs(ChannelMembership.Items()) do
+			items[#items + 1] = item
 		end
 		return items
 	end
@@ -1012,6 +1125,7 @@ local function DrawMenu()
 	menuState.index = math.max(1, math.min(menuState.index, #items))
 	local phrases = API().Phrases or {}
 	menu.title:SetText(menuState.kind == "line" and (Line.title or "Options") or menuState.kind == "tabs" and "Channel tabs"
+		or menuState.kind == "messages" and ("Channels in " .. TabKinds.TabName(TabKinds.tab) .. "  |cff999999(new lines)|r")
 		or menuState.kind == "languages" and ("Languages" .. (IsInGroup() and "  |cff999999(only out of a group)|r" or ""))
 		or menuState.group and phrases[menuState.group] and phrases[menuState.group].name or "Ready-made messages")
 	-- For a moment after {PAD1}: "Added" by the title and a tick on the message (or why it wasn't).
@@ -1037,7 +1151,8 @@ local function DrawMenu()
 	end
 	menu:SetHeight(46 + math.min(#items, MENU_ROWS) * 20)
 	menu.hint:SetText(Buttons("{PADDUP}{PADDDOWN} Move   {PAD1} "
-		.. (menuState.kind == "line" and "Pick" or menuState.kind == "tabs" and "Tab on / off" or menuState.kind == "languages" and "Change" or menuState.group and "Add" or "Open")
+		.. (menuState.kind == "line" and "Pick" or menuState.kind == "tabs" and (MenuItems()[menuState.index] or {}).verb or menuState.kind == "tabs" and "Tab on / off"
+			or menuState.kind == "messages" and ((MenuItems()[menuState.index] or {}).own and "Always shown" or "Show / hide") or menuState.kind == "languages" and "Change" or menuState.group and "Add" or "Open")
 		.. "   {PAD2} Back", 13))
 end
 
@@ -1070,6 +1185,62 @@ function Line.OpenLanguagesMenu()
 	ApplyBindings()
 	DrawMenu()
 	Log("languages menu")
+end
+
+-- Channels: which kinds of lines a tab shows (the one you are on, or one picked in the settings).
+function Line.OpenMessagesMenu(tab)
+	if not menu then
+		return
+	end
+	TabKinds.tab = tab or Line.MessagesTab() or "all"
+	menuState.group, menuState.index, menuState.kind = nil, 1, "messages"
+	menu:Show()
+	ApplyBindings()
+	DrawMenu()
+	Log("messages menu", TabKinds.tab)
+end
+
+-- Where a tab whose Channels add channels you can write to sends: its own channel first, then the ones
+-- added, picked with {PADLTRIGGER} / {PADRTRIGGER}. Nil when there is only one place (or none) to send to.
+local WRITABLE = { say = "#SAY", yell = "#YELL", party = "#PARTY", raid = "#RAID", instance = "#INSTANCE",
+	guild = "#GUILD", officer = "#OFFICER" }
+-- Party, Raid, Instance and Guild only while you are in one.
+function Line.CanSend(key)
+	if key == "#PARTY" then
+		return IsInGroup and IsInGroup() or false
+	elseif key == "#RAID" then
+		return IsInRaid and IsInRaid() or false
+	elseif key == "#INSTANCE" then
+		return IsInGroup and LE_PARTY_CATEGORY_INSTANCE and IsInGroup(LE_PARTY_CATEGORY_INSTANCE) or false
+	elseif key == "#GUILD" or key == "#OFFICER" then
+		return IsInGuild and IsInGuild() or false
+	end
+	return true
+end
+
+function Line.TabTargets(tab)
+	if type(tab) ~= "string" or tab == "all" or not (tab == "#SYSTEM" or TabKinds.Home(tab) or ns.IsChatCustomTab(tab)) then
+		return nil
+	end
+	local list = {}
+	if not IsReadOnlyKey(tab) then
+		list[1] = tab
+	end
+	for _, kind in ipairs(TabKinds.List()) do
+		local key = WRITABLE[kind.key] or kind.chat
+		if key and key ~= tab and kind.key ~= TabKinds.Home(tab) and TabKinds.Shows(tab, kind.key) and Line.CanSend(key) then
+			list[#list + 1] = key
+		end
+	end
+	-- A read-only tab (System and loot, your own tabs) sends to the one channel it shows, else Say.
+	return (#list > 1 or (#list == 1 and IsReadOnlyKey(tab))) and list or nil
+end
+
+-- The tab you are on when it has a Channels menu: All, System and loot and the channel tabs.
+function Line.MessagesTab()
+	if current == "all" or current == "#SYSTEM" or TabKinds.Home(current) or ns.IsChatCustomTab(current) then
+		return current
+	end
 end
 
 -- Channel tabs: on and off, from browse ({PAD3}), the settings or the menu.
@@ -1122,6 +1293,18 @@ local function MenuPick(index)
 		Draw()
 		return
 	end
+	if menuState.kind == "messages" then
+		if not item.own then
+			TabKinds.Set(TabKinds.tab, item.value, not item.on)
+			Log("messages", TabKinds.tab, item.value, not item.on)
+		end
+		DrawMenu()
+		return
+	end
+	if menuState.kind == "tabs" and item.action then
+		item.action()
+		return
+	end
 	if menuState.kind == "tabs" then
 		TabChoices()[item.value] = not item.on
 		Log("channel tab", item.value, not item.on)
@@ -1147,7 +1330,7 @@ local function MenuPick(index)
 end
 
 local function MenuBack()
-	if menuState.kind == "tabs" or menuState.kind == "line" or menuState.kind == "languages" then
+	if menuState.kind == "tabs" or menuState.kind == "line" or menuState.kind == "languages" or menuState.kind == "messages" then
 		menuState.kind = nil
 		CloseMenu()
 	elseif menuState.group then
@@ -1458,6 +1641,9 @@ function Line.Menu(player, link, pick)
 		end }
 	end
 	items[#items + 1] = { text = "Channel tabs  >", action = OpenTabsMenu }
+	if Line.MessagesTab() then
+		items[#items + 1] = { text = "Channels in this tab  >", action = function() Line.OpenMessagesMenu() end }
+	end
 	if ns.ChatLanguages then
 		items[#items + 1] = { text = "Languages  >", action = Line.OpenLanguagesMenu }
 	end
@@ -1558,11 +1744,11 @@ local function Send()
 			return
 		elseif not target then
 			if text:find("^/%S") and not OwnCommand(text) then
-				-- A game command: only the secure macro button can run it, from {PAD1} out of combat.
+				-- A protected game command: only the secure macro button can run it, from {PAD1}.
 				if InCombatLockdown() then
-					ns.Print("Game commands such as /cast and emotes work from the chat box out of combat. In combat, use the \"/\" key, which opens the game's chat box.")
+					ns.Print("Protected commands such as /cast and /target can't start from the chat box in combat. Use the \"/\" key, which opens the game's chat box.")
 				else
-					ns.Print(Buttons("Press {PAD1} to run game commands such as /reload; Enter can't run them.", 12))
+					ns.Print(Buttons("Press {PAD1} to run protected commands such as /cast and /target; Enter can't run them.", 12))
 				end
 			else
 				ns.Print("Type /w name and the message.")
@@ -2043,7 +2229,7 @@ function Draw()
 		-- Chat setting's tip, as the stick has no icon of its own.
 		-- {PAD1} with nothing typed puts the quick reply in.
 		local cross = macroBound and "Run" or strtrim(input:GetText() or "") == "" and "Add reply" or "Send"
-		local channel = current == "all" and "{PADLTRIGGER}{PADRTRIGGER} Channel   " or ""
+		local channel = (current == "all" or #(Line.TabTargets(current) or {}) > 1) and "{PADLTRIGGER}{PADRTRIGGER} Channel   " or ""
 		hint = "{PADLSHOULDER}{PADRSHOULDER} Tab   " .. channel .. "{PADRSTICK} Ready-made messages   {PAD3} Erase   {PAD1} " .. cross
 			.. "   {PAD4} Window   {PAD2} Browse"
 		-- Shorter for a narrow box, but still with the All tab's channel keys.
@@ -2100,6 +2286,488 @@ function ns.ChatBoxYield(why)
 	end
 end
 
+---------------------------------------------------------------------------------------------------
+-- Channels: which kinds of lines each tab shows (ns.db.chatTabKinds[tab][kind] = true / false; nil is
+-- the default). All shows every kind, System and loot the system, loot and progress lines, and every
+-- other tab its own channel, which stays on. The game's own chat is untouched.
+--   All copies the game's main chat frame, so a line's kind comes from the chat event behind it: a
+-- message filter (the game runs filters through securecallfunction, so this never taints its chat
+-- code) notes the event just before that frame adds the line, and the All feed reads the note. The
+-- filters are only registered while All hides something. Lines without an event (addon messages)
+-- always show.
+--   The other tabs are conversations (LfgFilter.lua): a tab's own lines are kept there as before, and
+-- the kinds added to a tab are copied into its conversation as they come (TabKinds.OnEvent).
+
+TabKinds = {
+	GROUPS = {
+		{ key = "say", name = "Say", events = { "CHAT_MSG_SAY" } },
+		{ key = "yell", name = "Yell", events = { "CHAT_MSG_YELL" } },
+		{ key = "emote", name = "Emotes", events = { "CHAT_MSG_EMOTE", "CHAT_MSG_TEXT_EMOTE" } },
+		{ key = "party", name = "Party", events = { "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER" } },
+		{ key = "raid", name = "Raid", events = { "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER", "CHAT_MSG_RAID_WARNING" } },
+		{ key = "instance", name = "Instance", events = { "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER" } },
+		{ key = "guild", name = "Guild", events = { "CHAT_MSG_GUILD", "CHAT_MSG_GUILD_ACHIEVEMENT" } },
+		{ key = "officer", name = "Officer", events = { "CHAT_MSG_OFFICER" } },
+		{ key = "whisper", name = "Whispers", events = { "CHAT_MSG_WHISPER", "CHAT_MSG_WHISPER_INFORM",
+			"CHAT_MSG_BN_WHISPER", "CHAT_MSG_BN_WHISPER_INFORM" } },
+		{ key = "system", name = "System", events = { "CHAT_MSG_SYSTEM", "CHAT_MSG_CHANNEL_NOTICE", "CHAT_MSG_AFK", "CHAT_MSG_DND" } },
+		{ key = "loot", name = "Loot", events = { "CHAT_MSG_LOOT", "CHAT_MSG_CURRENCY" } },
+		{ key = "progress", name = "Money, XP and skills", events = { "CHAT_MSG_MONEY", "CHAT_MSG_COMBAT_XP_GAIN",
+			"CHAT_MSG_COMBAT_HONOR_GAIN", "CHAT_MSG_SKILL", "CHAT_MSG_TRADESKILLS", "CHAT_MSG_COMBAT_FACTION_CHANGE",
+			"CHAT_MSG_ACHIEVEMENT", "CHAT_MSG_OPENING" } },
+		{ key = "npc", name = "NPC speech", events = { "CHAT_MSG_MONSTER_SAY", "CHAT_MSG_MONSTER_YELL",
+			"CHAT_MSG_MONSTER_EMOTE", "CHAT_MSG_MONSTER_WHISPER", "CHAT_MSG_RAID_BOSS_EMOTE", "CHAT_MSG_RAID_BOSS_WHISPER" } },
+	},
+	-- A tab's own kind: always on there.
+	HOME = { ["#SAY"] = "say", ["#YELL"] = "yell", ["#PARTY"] = "party", ["#RAID"] = "raid", ["#INSTANCE"] = "instance",
+		["#GUILD"] = "guild", ["#OFFICER"] = "officer" },
+	SYSTEM = { system = true, loot = true, progress = true }, -- System and loot's kinds by default
+	byEvent = {},
+	registered = false,
+}
+for _, group in ipairs(TabKinds.GROUPS) do
+	for _, event in ipairs(group.events) do
+		TabKinds.byEvent[event] = group.key
+	end
+end
+TabKinds.byEvent.CHAT_MSG_CHANNEL = "channel" -- "channel:<name>", one switch per channel
+
+-- A channel's name as one word, the same however the game spells it: "General - Elwynn Forest" and
+-- "General" are "General", "Trade (Local)" and "TradeLocal" are "TradeLocal".
+function TabKinds.Base(name)
+	if type(name) ~= "string" or Secret(name) then
+		return nil
+	end
+	local base = name:gsub("^%d+%.%s*", ""):gsub("%s+%-.*$", ""):gsub("[%s%p]", "")
+	return base ~= "" and base or nil
+end
+
+-- The kind of a chat event's line: "say", "loot", "channel:Trade"... base is the event's channel name.
+function TabKinds.Of(event, base)
+	local kind = TabKinds.byEvent[event]
+	if kind == "channel" then
+		base = TabKinds.Base(base)
+		return base and ("channel:" .. base) or nil
+	end
+	return kind
+end
+
+function TabKinds.Home(tab)
+	local base = type(tab) == "string" and TabKinds.Base(tab:match("^#CH:(.+)$"))
+	return base and ("channel:" .. base) or TabKinds.HOME[tab]
+end
+
+function TabKinds.Choices(tab)
+	ns.db.chatTabKinds = ns.db.chatTabKinds or {}
+	return ns.db.chatTabKinds[tab]
+end
+
+function TabKinds.Default(tab, kind)
+	if tab == "all" then
+		return true
+	elseif tab == "#SYSTEM" then
+		return TabKinds.SYSTEM[kind] or false
+	end
+	return kind == TabKinds.Home(tab)
+end
+
+-- Whether a tab shows a kind of line.
+function TabKinds.Shows(tab, kind)
+	if kind == TabKinds.Home(tab) then
+		return true
+	end
+	local choices = TabKinds.Choices(tab)
+	local choice = choices and choices[kind]
+	if choice ~= nil then
+		return choice
+	end
+	return TabKinds.Default(tab, kind)
+end
+
+function TabKinds.Set(tab, kind, on)
+	if kind == TabKinds.Home(tab) then
+		return
+	end
+	ns.db.chatTabKinds = ns.db.chatTabKinds or {}
+	local choices = ns.db.chatTabKinds[tab] or {}
+	ns.db.chatTabKinds[tab] = choices
+	if on == TabKinds.Default(tab, kind) then
+		choices[kind] = nil
+	else
+		choices[kind] = on and true or false
+	end
+	if next(choices) == nil then
+		ns.db.chatTabKinds[tab] = nil
+	end
+	TabKinds.Update()
+end
+
+-- The message filter: notes the kind of the line the game's main chat frame is about to add.
+function TabKinds.Filter(frame, event, ...)
+	if frame == ChatFrame1 then
+		TabKinds.tag, TabKinds.tagAt = TabKinds.Of(event, (select(9, ...))), GetTime()
+	end
+	return false
+end
+
+-- All's filters on while All hides anything, off otherwise.
+function TabKinds.Update()
+	local choices = TabKinds.Choices("all")
+	local want = choices ~= nil and next(choices) ~= nil
+	if want == TabKinds.registered then
+		return
+	end
+	local add = ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter or ChatFrame_AddMessageEventFilter
+	local remove = ChatFrameUtil and ChatFrameUtil.RemoveMessageEventFilter or ChatFrame_RemoveMessageEventFilter
+	if not (add and remove) then
+		return
+	end
+	for event in pairs(TabKinds.byEvent) do
+		pcall(want and add or remove, event, TabKinds.Filter)
+	end
+	TabKinds.registered = want
+	Log("All messages filters", want and "on" or "off")
+end
+
+-- Whether the All feed keeps the line being added now. The note only counts in the frame it was made.
+function TabKinds.Keep()
+	local kind = TabKinds.tag
+	TabKinds.tag = nil
+	if not kind or TabKinds.tagAt ~= GetTime() then
+		return true
+	end
+	return TabKinds.Shows("all", kind)
+end
+
+-- Whether a tab's conversation takes one of its own lines (LfgFilter.lua asks): System and loot
+-- leaves out the kinds turned off there.
+function ns.ChatTabTakes(key, event)
+	if key ~= "#SYSTEM" or not ns.db then
+		return true
+	end
+	local kind = TabKinds.Of(event)
+	return not kind or TabKinds.Shows(key, kind)
+end
+
+-- The tabs with kinds besides their own: System and loot (its progress lines come from several
+-- events) and the tabs given more kinds.
+function TabKinds.Extra(kind, home)
+	local tabs = {}
+	local function Consider(tab)
+		if tab ~= "all" and tab ~= home and kind ~= TabKinds.Home(tab) and TabKinds.Shows(tab, kind) then
+			tabs[#tabs + 1] = tab
+		end
+	end
+	Consider("#SYSTEM")
+	for tab in pairs(ns.db and ns.db.chatTabKinds or {}) do
+		if tab ~= "#SYSTEM" then
+			Consider(tab)
+		end
+	end
+	return tabs
+end
+
+-- A chat event's line copied into the tabs that show its kind besides their own.
+function TabKinds.OnEvent(_, event, ...)
+	if not ns.db or not API() or not API().AddLine then
+		return
+	end
+	local text, sender = ...
+	if Secret(text) or Secret(sender) or type(text) ~= "string" then
+		return
+	end
+	-- Channel notices are codes (YOU_CHANGED), not text: the game's chat words them.
+	if event == "CHAT_MSG_CHANNEL_NOTICE" then
+		return
+	end
+	local kind = TabKinds.Of(event, (select(9, ...)))
+	if not kind then
+		return
+	end
+	-- Where the line is kept already (LfgFilter.lua's events); a channel's own tab is left out by kind.
+	local home = API().EventKeys and API().EventKeys[event]
+	local tabs = TabKinds.Extra(kind, home)
+	if #tabs == 0 then
+		return
+	end
+	local chatType = event:sub(10) -- CHAT_MSG_PARTY_LEADER: PARTY_LEADER
+	if chatType == "CHANNEL" then
+		local number = select(8, ...)
+		chatType = type(number) == "number" and not Secret(number) and number > 0 and ("CHANNEL" .. number) or "CHANNEL"
+	end
+	sender = type(sender) == "string" and sender ~= "" and sender or nil
+	local player = sender and (kind == "say" or kind == "yell" or kind == "party" or kind == "raid" or kind == "instance"
+		or kind == "guild" or kind == "officer" or kind == "whisper" or kind:find("^channel:")
+		or event == "CHAT_MSG_AFK" or event == "CHAT_MSG_DND")
+	local message = text
+	if sender and text:find("%s", 1, true) then
+		-- Achievements and NPC emotes name who it is about: "%s has earned...".
+		local ok, out = pcall(string.format, text, Ambiguate(sender, "short"))
+		message = ok and out or text
+	elseif not player and sender then
+		if event == "CHAT_MSG_EMOTE" then
+			message = Ambiguate(sender, "short") .. " " .. text
+		elseif kind == "npc" then
+			message = sender .. ": " .. text
+		end
+	end
+	local outgoing = player and (event:find("_INFORM$") or Ambiguate(sender, "none") == UnitName("player")) or nil
+	for _, tab in ipairs(tabs) do
+		local chat = API().AddLine(tab, outgoing and true or nil, message, nil, player and API().FullName(sender) or nil,
+			nil, chatType, player and (select(3, ...)) or nil)
+		local info = API().Info(tab)
+		if chat and not outgoing and not (info and info.quiet) then
+			chat.unread = (chat.unread or 0) + 1
+		end
+	end
+	if Draw then Draw() end
+end
+
+TabKinds.events = CreateFrame("Frame")
+for event in pairs(TabKinds.byEvent) do
+	TabKinds.events:RegisterEvent(event)
+end
+TabKinds.events:SetScript("OnEvent", TabKinds.OnEvent)
+
+-- The kinds a tab can show: the fixed ones, then each channel you are in.
+function TabKinds.List()
+	local list = {}
+	for _, group in ipairs(TabKinds.GROUPS) do
+		list[#list + 1] = { key = group.key, name = group.name }
+	end
+	if GetChannelList then
+		local values = { GetChannelList() }
+		for i = 1, #values, 3 do
+			local base = TabKinds.Base(values[i + 1])
+			if base then
+				list[#list + 1] = { key = "channel:" .. base, name = (base:gsub("(%l)(%u)", "%1 %2")), chat = ChannelKey(values[i + 1]) }
+			end
+		end
+	end
+	return list
+end
+
+-- The switches of the Messages menu, for the tab it was opened on.
+function TabKinds.Items()
+	local tab, items = TabKinds.tab or "all", {}
+	for _, kind in ipairs(TabKinds.List()) do
+		local own = kind.key == TabKinds.Home(tab)
+		local on = TabKinds.Shows(tab, kind.key)
+		items[#items + 1] = { value = kind.key, on = on, own = own,
+			text = (on and "|cff40ff40[x]|r  " or "|cff777777[  ]|r  ") .. kind.name .. (own and "  |cff999999(this tab)|r" or "") }
+	end
+	return items
+end
+
+-- A tab's name for the menu title.
+function TabKinds.TabName(tab)
+	if tab == "all" then
+		return "All"
+	end
+	local info = API() and API().Info(tab)
+	return info and info.name or tostring(tab)
+end
+
+---------------------------------------------------------------------------------------------------
+-- Leaving and joining channels, at the end of Channel tabs: Leave for each numbered channel you are
+-- in (General, Trade...), Join for the zone's channels you left. Leave is the game's /leave call; Join
+-- puts "/join <name>" in the chat box for {PAD1} to send, so the game's own command joins it and its
+-- chat window shows the channel again. Out of combat only, like the rest of the chat box keys.
+
+ChannelMembership = {}
+
+-- Channels the game lists that you can't use here.
+ChannelMembership.HIDDEN = { ["Chromie Time"] = true }
+
+-- The numbered channels you are in: { id, name } with the name without its zone ("General").
+function ChannelMembership.Joined()
+	local joined = {}
+	if GetChannelList then
+		local values = { GetChannelList() }
+		for i = 1, #values, 3 do
+			local id, name = values[i], values[i + 1]
+			if type(id) == "number" and type(name) == "string" and not Secret(name) then
+				joined[#joined + 1] = { id = id, name = (name:gsub("%s+%-.*$", "")) }
+			end
+		end
+	end
+	return joined
+end
+
+local function Spaced(name)
+	return (name:gsub("(%l)(%u)", "%1 %2"))
+end
+
+function ChannelMembership.Items()
+	local items, joined = {}, {}
+	for _, channel in ipairs(ChannelMembership.Joined()) do
+		joined[TabKinds.Base(channel.name) or channel.name] = true
+		items[#items + 1] = { text = "|cffff8080Leave|r  " .. channel.id .. ". " .. Spaced(channel.name), verb = "Leave",
+			action = function()
+				local ok, err = pcall(LeaveChannelByName, tostring(channel.id))
+				Log("leave channel", channel.name, ok and "done" or ("failed: " .. tostring(err)))
+				-- The channel list changes when the game confirms; redraw then.
+				C_Timer.After(0.5, DrawMenu)
+				C_Timer.After(0.5, Draw)
+			end }
+	end
+	-- The game's list holds every channel in its data, Chromie Time once per era: those are left out,
+	-- and each name is offered once.
+	local server = EnumerateServerChannels and { EnumerateServerChannels() } or {}
+	for _, name in ipairs(server) do
+		if type(name) == "string" and not Secret(name) and not ChannelMembership.HIDDEN[name] and not joined[TabKinds.Base(name) or name] then
+			joined[TabKinds.Base(name) or name] = true
+			items[#items + 1] = { text = "|cff80ff80Join|r  " .. Spaced(name), verb = "Join",
+				action = function()
+					menuState.kind = nil
+					menu:Hide()
+					StartTyping()
+					input:SetText("/join " .. name)
+					input:SetCursorPosition(#input:GetText())
+					Log("join channel: typed /join", name)
+					ApplyBindings()
+					Draw()
+				end }
+		end
+	end
+	return items
+end
+
+---------------------------------------------------------------------------------------------------
+-- Your own tabs (New tab in the settings): a name and the channels it shows, nothing at first.
+-- ns.db.chatCustomTabs = { { key = "#TAB:1", name = "Crafting" }, ... }. Read-only like System and
+-- loot: typing there goes to the one channel it shows you can write to (Say when none, {PADLTRIGGER} /
+-- {PADRTRIGGER} when several). Its lines are kept as a conversation, as the channels' are.
+
+local customInfo = {} -- key -> the table ns.ChatAPI.Info gives (LfgFilter.lua asks ns.ChatCustomTabInfo)
+
+function ns.ChatCustomTabs()
+	if not ns.db then
+		return {}
+	end
+	ns.db.chatCustomTabs = ns.db.chatCustomTabs or {}
+	return ns.db.chatCustomTabs
+end
+
+function ns.IsChatCustomTab(key)
+	return type(key) == "string" and key:find("^#TAB:") ~= nil
+end
+
+function ns.ChatCustomTabInfo(key)
+	for _, custom in ipairs(ns.ChatCustomTabs()) do
+		if custom.key == key then
+			local info = customInfo[key] or { color = "ffffff", readOnly = true, quiet = true, custom = true,
+				shown = function() return true end }
+			info.name = custom.name
+			customInfo[key] = info
+			return info
+		end
+	end
+end
+
+local function CleanTabName(name)
+	name = strtrim(tostring(name or "")):gsub("|", ""):sub(1, 24)
+	return name ~= "" and name or nil
+end
+
+-- A new tab, on, showing nothing until its channels are picked. Returns its key.
+function ns.NewChatTab(name)
+	name = CleanTabName(name)
+	if not name then
+		return nil
+	end
+	ns.db.chatCustomNext = (ns.db.chatCustomNext or 0) + 1
+	local key = "#TAB:" .. ns.db.chatCustomNext
+	table.insert(ns.ChatCustomTabs(), { key = key, name = name })
+	TabChoices()[key] = true
+	Log("new tab", key, name)
+	if Draw then Draw() end
+	return key
+end
+
+function ns.RenameChatTab(key, name)
+	name = CleanTabName(name)
+	for _, custom in ipairs(ns.ChatCustomTabs()) do
+		if custom.key == key and name then
+			custom.name = name
+			Log("tab renamed", key, name)
+			if Draw then Draw() end
+			return true
+		end
+	end
+	return false
+end
+
+function ns.DeleteChatTab(key)
+	local list = ns.ChatCustomTabs()
+	for i, custom in ipairs(list) do
+		if custom.key == key then
+			table.remove(list, i)
+			TabChoices()[key] = nil
+			if ns.db.chatTabKinds then
+				ns.db.chatTabKinds[key] = nil
+			end
+			API().Chats()[key] = nil
+			customInfo[key] = nil
+			if current == key then
+				current = "all"
+			end
+			Log("tab deleted", key)
+			if Draw then Draw() end
+			return true
+		end
+	end
+	return false
+end
+
+---------------------------------------------------------------------------------------------------
+-- For the settings window (Config.lua): tab switches, each tab's Channels and the reset.
+
+-- Whether a channel has a tab: the choice made, else Say, Guild and the like by default and
+-- numbered channels and System and loot not.
+function ns.ChatTabShown(key)
+	local choice = TabChoices()[key]
+	if choice ~= nil then
+		return choice
+	end
+	return not key:find("^#CH:") and key ~= "#SYSTEM"
+end
+
+function ns.SetChatTab(key, on)
+	TabChoices()[key] = on and true or false
+	if not on and current == key then
+		current = "all"
+	end
+	Log("channel tab from the settings", key, on)
+	if Draw then Draw() end
+end
+
+function ns.ChatTabShows(tab, kind)
+	return TabKinds.Shows(tab, kind)
+end
+
+function ns.SetChatTabShows(tab, kind, on)
+	TabKinds.Set(tab, kind, on)
+	Log("messages from the settings", tab, kind, on)
+end
+
+-- Back to the defaults: tabs as they come, each showing what it does by default.
+function ns.ResetChatTabs()
+	-- Your own tabs stay, with their on / off and channels.
+	local tabs, kinds = {}, {}
+	for _, custom in ipairs(ns.ChatCustomTabs()) do
+		tabs[custom.key] = TabChoices()[custom.key]
+		kinds[custom.key] = ns.db.chatTabKinds and ns.db.chatTabKinds[custom.key]
+	end
+	ns.db.chatBoxTabs = tabs
+	ns.db.chatTabKinds = kinds
+	ns.db.chatAllHide = nil -- from the alpha's Show in All
+	TabKinds.Update()
+	current = "all"
+	Log("chat tabs and messages reset")
+	if Draw then Draw() end
+end
+
 -- A line of yours in the All feed: you are its speaker ("[You]: ", "[You] says: "), not just named in it.
 local function OwnFeedLine(text)
 	local name, rest = text:match("|Hplayer:([^:|]+)[^|]*|h.-|h(.*)$")
@@ -2110,6 +2778,9 @@ local function OwnFeedLine(text)
 end
 
 function ns.ChatBoxFeed(text, r, g, b)
+	if not TabKinds.Keep() then
+		return
+	end
 	if feed then
 		text = API() and API().Icons(text) or text
 		if ns.db and ns.db.chatTimestamps then
@@ -2454,6 +3125,7 @@ local function Create()
 		return frame
 	end
 	feed = Messages("GamepadXIVChatFeed", true)
+	TabKinds.Update() -- All's message filters, when All hides something
 	convo = Messages("GamepadXIVChatConversation", false)
 
 	-- The Whispers tab's column of recent conversations.
@@ -2837,6 +3509,22 @@ function ns.ChatBoxChooseTabs()
 	mode = "browse"
 	ApplyBindings()
 	OpenTabsMenu()
+	Draw()
+end
+
+-- A tab's Channels from the settings, the same way.
+function ns.ChatBoxMessages(tab)
+	if InCombatLockdown() then
+		ns.Print("Channels can be chosen out of combat.")
+		return
+	end
+	if not box or not box:IsShown() then
+		ns.Print("Channels are for the chat box: set Chat to \"Chat window (controller)\" first.")
+		return
+	end
+	mode = "browse"
+	ApplyBindings()
+	Line.OpenMessagesMenu(tab)
 	Draw()
 end
 

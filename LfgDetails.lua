@@ -362,10 +362,10 @@ local function DrawEntry(entry)
 		AddText(table.concat(names, "\n"), "GameFontHighlightSmall", 3, #names)
 	end
 
-	-- The comment.
+	-- The listing note.
 	if entry.comment ~= "" then
 		AddDivider()
-		AddText("|cffffd100Comment|r", "GameFontNormalSmall")
+		AddText("|cffffd100Listing note|r", "GameFontNormalSmall")
 		AddText(entry.comment, "GameFontHighlightSmall", 3, 8)
 	end
 end
