@@ -1,5 +1,23 @@
 # Gamepad XIV
 
+## v0.1.32
+
+### New
+
+- Added a System and loot tab to the chatbox.
+- Added Channels to each chatbox tab.
+- Chatbox tabs now support more than one channel, and L2 / R2 switch the channel your message goes to.
+- Added leaving and joining channels to the chatbox Channel tabs menu.
+- Added chatbox tab and Channels options to the Chat settings.
+- Added custom chatbox tabs, made with New tab in the Chat settings.
+- Added a listing note to the LFG Filter Listing tab.
+- The listing note box shows your last 5 notes.
+- Rate limited the LFG Filter search to wait 3 seconds after the last one, so the game doesn't limit it.
+
+### Fixed
+
+- Someone joining your group no longer shows as "Unknown" in LFG Filter.
+
 ## v0.1.31
 
 ### New

@@ -1745,10 +1745,11 @@ local function Send()
 		elseif not target then
 			if text:find("^/%S") and not OwnCommand(text) then
 				-- A protected game command: only the secure macro button can run it, from {PAD1}.
+				-- Blizzard's UI lets only its own chat or a secure button run these.
 				if InCombatLockdown() then
-					ns.Print("Protected commands such as /cast and /target can't start from the chat box in combat. Use the \"/\" key, which opens the game's chat box.")
+					ns.Print("Blizzard's UI doesn't let addons run protected commands such as /target and /cast, and in combat the chat box can't run them at all. Use the \"/\" key, which opens the game's chat box.")
 				else
-					ns.Print(Buttons("Press {PAD1} to run protected commands such as /cast and /target; Enter can't run them.", 12))
+					ns.Print(Buttons("Blizzard's UI doesn't let addons run protected commands such as /target and /cast from Enter. Press {PAD1} instead.", 12))
 				end
 			else
 				ns.Print("Type /w name and the message.")
